@@ -8,7 +8,7 @@
 html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;font-family:Arial,sans-serif}
 body{display:grid;place-items:center}
 #wrap{position:relative;width:100vw;height:100vh;display:grid;place-items:center;background:#000}
-#tv{display:block;max-width:100vw;max-height:100vh;width:auto;height:auto;aspect-ratio:16/9;background:#071019;box-shadow:0 0 0 1px #111}
+#tv{display:block;max-width:100vw;max-height:100vh;width:auto;height:auto;aspect-ratio:16/9;background:#071019;box-shadow:0 0 0 1px #111;cursor:pointer}
 input{display:none}
 </style>
 </head>
@@ -99,9 +99,123 @@ function settingsSlider(label,val,min,max,txtv,x,y){tx(label,x,y+25,12);const bx
 function settingsSegment(label,vals,sel,x,y){tx(label,x,y+29,12);const bx=x+350,bw=380;rr(bx,y+6,bw,37,7,"#1f2c3b");const sw=bw/vals.length;vals.forEach((v,i)=>{if(i===sel)rr(bx+i*sw,y+6,sw,37,7,"#0d70e2");tx(v,bx+i*sw+sw/2,y+30,11,"#fff",false,"center")})}
 function fullShow(){imgCover(demo,0,0,1280,720);const g=ctx.createLinearGradient(0,330,0,720);g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(1,"rgba(0,0,0,.88)");ctx.fillStyle=g;ctx.fillRect(0,0,1280,720);brand(42,30,"DIAPORAMA");clock();tx("001. Opéra d'Oslo",78,548,31,"#fff",true);tx("Norvège 2026",78,606,19)}
 function draw(){ctx.clearRect(0,0,1280,720);if(slideshow)fullShow();else [preview,photos,editor,settings][page]()}
-function mouse(e){const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*1280/r.width,y=(e.clientY-r.top)*720/r.height;if(slideshow){slideshow=false;draw();return}if(y>=640&&x>=280&&x<=1000){page=Math.max(0,Math.min(3,Math.floor((x-280)/180)));draw();return}if(page===0){if(x<160||x>1120)slideshow=true;draw();return}if(page===1&&y>=102&&y<=204){if(x<405||x<780)document.getElementById('folderInput').click();else document.getElementById('photoInput').click();return}if(page===1&&y>=262&&y<=412){albumSel=Math.max(0,Math.min(5,Math.floor((x-45)/177)));draw();return}if(page===2&&x>=32&&x<=342&&y>=112&&y<=537){editorElement=Math.max(0,Math.min(4,Math.floor((y-112)/85)));draw();return}if(page===3&&x>=32&&x<=322&&y>=102&&y<=626){settingsCat=Math.max(0,Math.min(8,Math.floor((y-102)/58)));draw();return}}
-cv.addEventListener('click',mouse);
-document.addEventListener('keydown',e=>{if(slideshow){if(e.key==="Escape"||e.key==="Backspace"){slideshow=false;draw()}return}if(e.key==="ArrowRight"){page=(page+1)%4;draw()}else if(e.key==="ArrowLeft"){page=(page+3)%4;draw()}else if(e.key==="Enter"&&page===0){slideshow=true;draw()}});
+function canvasPoint(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*1280/r.width,y:(e.clientY-r.top)*720/r.height}}
+function sliderFromX(x,min,max){const t=Math.max(0,Math.min(1,(x-715)/375));return min+(max-min)*t}
+function exportWebSettings(){const data={duration,fixedImage,loop,randomOrder,transitionSel,transitionSeconds,kenBurns,zoomLevel,showDate,showTime,showTemp,showSeconds,tempCelsius,dateFormat,time24,imageMode,gridSnap,oled,autoHide,autoStart,startDirect,favoritesOnly,layoutPreset,videoSound,albumSearch,albumSort,allAlbumsSelected,ruleAlbum,ruleEnabled,ruleDays,ruleStart,ruleEnd,ruleDuration,ruleTransition,ruleMetadata,elemVisible,editorStyles,editorFont};const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="Photo-TV-settings.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast("Réglages exportés")}
+function applyImportedSettings(data){for(const key of ["duration","fixedImage","loop","randomOrder","transitionSel","transitionSeconds","kenBurns","zoomLevel","showDate","showTime","showTemp","showSeconds","tempCelsius","dateFormat","time24","imageMode","gridSnap","oled","autoHide","autoStart","startDirect","favoritesOnly","layoutPreset","videoSound","albumSearch","albumSort","allAlbumsSelected","ruleAlbum","ruleEnabled","ruleDays","ruleStart","ruleEnd","ruleDuration","ruleTransition","ruleMetadata","editorFont"]){if(Object.prototype.hasOwnProperty.call(data,key))eval(key+"=data[key]")}if(Array.isArray(data.elemVisible))data.elemVisible.slice(0,elemVisible.length).forEach((v,i)=>elemVisible[i]=!!v);if(Array.isArray(data.editorStyles))data.editorStyles.slice(0,editorStyles.length).forEach((v,i)=>Object.assign(editorStyles[i],v));toast("Réglages importés");draw()}
+function loadPickedFiles(files,label){const list=[...files].filter(f=>f.type.startsWith("image/")||f.type.startsWith("video/"));if(!list.length){toast("Aucun média compatible");return}list.slice(0,6).forEach((file,i)=>{const u=URL.createObjectURL(file);photoUrls[i]=u;const im=new Image();im.onload=draw;im.src=u;imgs[u]=im});if(list[0]){albums[0][2]=photoUrls[0]}toast(label+" : "+list.length+" média"+(list.length>1?"s":""));draw()}
+function promptAlbumSearch(){const v=prompt("Rechercher un album",albumSearch);if(v!==null){albumSearch=v.trim();toast(albumSearch?"Recherche : "+albumSearch:"Recherche effacée");draw()}}
+function promptWeather(){const v=prompt("Ville météo","");if(v!==null){toast(v.trim()?"Ville météo : "+v.trim():"Météo automatique");draw()}}
+
+function mouse(e){const {x,y}=canvasPoint(e);
+if(slideshow){if(x<426){toast("Photo précédente")}else if(x>854){toast("Photo suivante")}else{slideshow=false;toast("Retour à l'aperçu")}draw();return}
+if(y>=638&&x>=218&&x<=1090){page=Math.max(0,Math.min(3,Math.floor((x-218)/218)));draw();return}
+
+if(page===0){if(x<180){toast("Photo précédente")}else if(x>1100){toast("Photo suivante")}else{slideshow=true}draw();return}
+
+if(page===1){
+ if(y>=108&&y<=210){
+   if(x>=45&&x<=405){toast("Sélectionnez votre dossier Google Takeout");document.getElementById("folderInput").click();return}
+   if(x>=420&&x<=780){document.getElementById("folderInput").click();return}
+   if(x>=795&&x<=1235){document.getElementById("photoInput").click();return}
+ }
+ if(x>=865&&x<=1120&&y>=220&&y<=266){promptAlbumSearch();return}
+ if(y>=270&&y<=468){const i=Math.floor((x-45)/177);if(i>=0&&i<6&&x>=45+i*177&&x<=210+i*177){albumSel=i;toast("Album : "+albums[i][0]);draw();return}}
+ if(y>=522&&y<=626){const i=Math.floor((x-45)/177);if(i>=0&&i<6&&x>=45+i*177&&x<=210+i*177){page=0;toast("Photo "+(i+1)+" sélectionnée");draw();return}}
+}
+
+if(page===2){
+ const first=Math.max(0,Math.min(elemNames.length-6,editorElement-2));
+ if(x>=32&&x<=352&&y>=120&&y<=642){const slot=Math.floor((y-120)/87),i=first+slot;if(slot>=0&&slot<6&&i<elemNames.length){editorElement=i;draw();return}}
+ if(x>=370&&x<=918&&y>=64&&y<=638){toast("Zone de placement sélectionnée");return}
+ if(x>=940&&x<=1248){
+   const st=editorStyles[editorElement];
+   if(y>=126&&y<=171){toast("Texte sélectionné")}
+   else if(y>=170&&y<=218){editorFont=cycle(editorFont,4);toast(["Inter","Inter Light","Serif","Monospace"][editorFont])}
+   else if(y>=220&&y<=268){st.size=12+Math.max(0,Math.min(1,(x-1051)/126))*68}
+   else if(y>=280&&y<=330){const cs=["#ffffff","#adc4ff","#ffe070","#ff7e7e","#89e6ad"];st.color=cs[(cs.indexOf(st.color)+1+cs.length)%cs.length]}
+   else if(y>=326&&y<=378){st.x=Math.max(0,Math.min(100,(x-1051)/126*100))}
+   else if(y>=387&&y<=439){st.y=Math.max(0,Math.min(100,(x-1051)/126*100))}
+   else if(y>=454&&y<=506){st.align=Math.max(0,Math.min(2,Math.floor((x-1048)/42)))}
+   else if(y>=516&&y<=568){st.shadow=!st.shadow}
+   else if(y>=570&&y<=620){elemVisible[editorElement]=!elemVisible[editorElement]}
+   draw();return
+ }
+}
+
+if(page===3){
+ if(x>=32&&x<=337&&y>=116&&y<=616){settingsCat=Math.max(0,Math.min(8,Math.floor((y-116)/55)));draw();return}
+ if(x<365||x>1248||y<72||y>633)return;
+ if(settingsCat===0){
+   if(y>=128&&y<=178){duration=Math.round(sliderFromX(x,2,120))}
+   else if(y>=185&&y<=238){fixedImage=x>=905}
+   else if(y>=240&&y<=292){loop=!loop}
+   else if(y>=294&&y<=346){randomOrder=!randomOrder}
+   else if(y>=382&&y<=474){const i=Math.floor((x-387)/141);if(i>=0&&i<6)transitionSel=i}
+   else if(y>=486&&y<=542){transitionSeconds=Math.round(sliderFromX(x,.2,4)*10)/10}
+   else if(y>=544&&y<=594){kenBurns=!kenBurns}
+   else if(y>=592&&y<=635){zoomLevel=Math.max(0,Math.min(2,Math.floor((x-715)/(380/3))))}
+ }
+ else if(settingsCat===1){const first=Math.max(0,Math.min(elemNames.length-6,editorElement-2)),slot=Math.floor((y-136)/70),i=first+slot;if(slot>=0&&slot<6&&i<elemNames.length){editorElement=i;elemVisible[i]=!elemVisible[i]}}
+ else if(settingsCat===2){const first=Math.max(0,Math.min(elemNames.length-6,editorElement-2)),slot=Math.floor((y-164)/64),i=first+slot;if(slot>=0&&slot<6&&i<elemNames.length){editorElement=i;page=2}}
+ else if(settingsCat===3){const col=Math.floor((x-387)/211),row=Math.floor((y-142)/104),i=row*4+col;if(col>=0&&col<4&&row>=0&&row<4&&i<transitions.length)transitionSel=i}
+ else if(settingsCat===4){
+   if(y>=130&&y<=182)showDate=!showDate;
+   else if(y>=184&&y<=238)dateFormat=cycle(dateFormat,3);
+   else if(y>=240&&y<=294)showTime=!showTime;
+   else if(y>=296&&y<=350)time24=!time24;
+   else if(y>=352&&y<=408)showSeconds=!showSeconds
+ }
+ else if(settingsCat===5){
+   if(y>=136&&y<=190)showTemp=!showTemp;
+   else if(y>=192&&y<=250)tempCelsius=x<905;
+   else if(y>=252&&y<=316){promptWeather();return}
+ }
+ else if(settingsCat===6){
+   if(y>=138&&y<=258&&x<800){document.getElementById("folderInput").click();return}
+   else if(y>=138&&y<=258){document.getElementById("photoInput").click();return}
+   else if(y>=300&&y<=350)albumSort=cycle(albumSort,2);
+   else if(y>=356&&y<=414){promptAlbumSearch();return}
+   else if(y>=416&&y<=474)allAlbumsSelected=!allAlbumsSelected
+ }
+ else if(settingsCat===7){
+   if(y>=120&&y<178)ruleAlbum=cycle(ruleAlbum,albums.length);
+   else if(y>=178&&y<236)ruleEnabled=!ruleEnabled;
+   else if(y>=236&&y<294)ruleDays=cycle(ruleDays,3);
+   else if(y>=294&&y<352)ruleStart=cycle(ruleStart,24);
+   else if(y>=352&&y<410){ruleEnd++;if(ruleEnd>24)ruleEnd=1}
+   else if(y>=410&&y<468){ruleDuration=ruleDuration?Math.min(120,ruleDuration+5):5}
+   else if(y>=468&&y<526){ruleTransition=ruleTransition<0?0:cycle(ruleTransition,transitions.length)}
+   else if(y>=526&&y<=590)ruleMetadata=!ruleMetadata
+ }
+ else {
+   if(y>=112&&y<=166)imageMode=cycle(imageMode,4);
+   else if(y>=168&&y<=220)gridSnap=!gridSnap;
+   else if(y>=221&&y<=274)oled=!oled;
+   else if(y>=275&&y<=327)autoHide=!autoHide;
+   else if(y>=328&&y<=380)autoStart=Math.round(sliderFromX(x,0,60));
+   else if(y>=381&&y<=433)startDirect=!startDirect;
+   else if(y>=434&&y<=486)favoritesOnly=!favoritesOnly;
+   else if(y>=487&&y<=535)layoutPreset=cycle(layoutPreset,4);
+   else if(y>=536&&y<=578&&x<1000){exportWebSettings();return}
+   else if(y>=536&&y<=578&&x>=1000){document.getElementById("settingsImport").click();return}
+   else if(y>=579&&y<=626)videoSound=!videoSound
+ }
+ draw();return
+}
+}
+
+cv.addEventListener("click",mouse);
+document.getElementById("folderInput").addEventListener("change",e=>loadPickedFiles(e.target.files,"Dossier chargé"));
+document.getElementById("photoInput").addEventListener("change",e=>loadPickedFiles(e.target.files,"Sélection chargée"));
+document.getElementById("settingsImport").addEventListener("change",e=>{const file=e.target.files?.[0];if(!file)return;file.text().then(t=>{try{applyImportedSettings(JSON.parse(t))}catch(err){toast("Fichier de réglages invalide")}})});
+
+document.addEventListener("keydown",e=>{if(slideshow){if(e.key==="Escape"||e.key==="Backspace"){slideshow=false;draw()}else if(e.key==="ArrowLeft"){toast("Photo précédente")}else if(e.key==="ArrowRight"){toast("Photo suivante")}return}
+if(e.key==="ArrowRight"){page=(page+1)%4;draw()}
+else if(e.key==="ArrowLeft"){page=(page+3)%4;draw()}
+else if(e.key==="Enter"&&page===0){slideshow=true;draw()}
+else if(e.key==="Escape"||e.key==="Backspace"){page=0;draw()}});
+
 setInterval(draw,30000);draw();
 </script>
 </body>
