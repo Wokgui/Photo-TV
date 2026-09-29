@@ -1,6 +1,9 @@
 package fr.wokgui.phototv
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.widget.EditText
+import android.text.InputType
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -62,7 +65,8 @@ class MainActivity : AppCompatActivity() {
         ui = PhotoTvView(
             context = this,
             onExactSource = { openExactSource() },
-            onPickPhotos = { openPhotoPicker() }
+            onPickPhotos = { openPhotoPicker() },
+            onWeatherLocation = { requestWeatherLocation() }
         )
         setContentView(ui)
 
@@ -70,6 +74,23 @@ class MainActivity : AppCompatActivity() {
             val uri = runCatching { Uri.parse(saved) }.getOrNull()
             if (uri != null) importTree(uri, silent = true)
         }
+    }
+
+    private fun requestWeatherLocation() {
+        val input = EditText(this).apply {
+            hint = "Ville ou code postal"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Ville météo")
+            .setMessage("Laissez vide pour la détection automatique par le service météo.")
+            .setView(input)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("OK") { _, _ ->
+                ui.setWeatherLocation(input.text?.toString().orEmpty())
+            }
+            .show()
     }
 
     private fun openExactSource() {
