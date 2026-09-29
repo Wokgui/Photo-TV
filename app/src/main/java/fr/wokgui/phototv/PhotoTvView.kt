@@ -1108,6 +1108,51 @@ class PhotoTvView(
         text(c, "Photos masquées : ${excludedUris.size} • Albums masqués : ${hiddenAlbums.size}", x + 22f, y + 485f, 11f, Color.rgb(130, 154, 181))
     }
 
+    private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
+        text(c, "Règles par album", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        val albums = albumPairs()
+        if (albums.isEmpty()) {
+            text(c, "Chargez d'abord une photothèque.", x + 22f, y + 85f, 14f, Color.rgb(174, 188, 205))
+            return
+        }
+
+        ruleAlbumIndex = ruleAlbumIndex.coerceIn(0, albums.lastIndex)
+        val albumName = albums[ruleAlbumIndex].first
+        val rule = albumRules.getOrPut(albumName) { AlbumRule() }
+
+        settingsChoice(c, "Album", albumName, x, y + 55f, 0)
+        settingsToggle(c, "Activer une règle pour cet album", rule.enabled, x, y + 113f, 1)
+        settingsSegment(c, "Jours", listOf("Tous", "Semaine", "Week-end"), rule.daysMode, x, y + 171f, 2)
+        settingsChoice(c, "À partir de", "%02d:00".format(rule.startHour), x, y + 229f, 3)
+        settingsChoice(c, "Jusqu'à", if (rule.endHour == 24) "24:00" else "%02d:00".format(rule.endHour), x, y + 287f, 4)
+        settingsChoice(
+            c,
+            "Durée par photo",
+            if (rule.durationSeconds <= 0) "Réglage global" else "${rule.durationSeconds} s",
+            x,
+            y + 345f,
+            5
+        )
+        settingsChoice(
+            c,
+            "Transition",
+            if (rule.transitionIndex < 0) "Réglage global" else transitions[rule.transitionIndex],
+            x,
+            y + 403f,
+            6
+        )
+        settingsToggle(c, "Afficher les métadonnées", rule.showMetadata, x, y + 461f, 7)
+
+        text(
+            c,
+            "Une photo présente dans plusieurs albums reste visible si au moins une règle autorise son affichage.",
+            x + 22f,
+            y + 528f,
+            10.5f,
+            Color.rgb(128, 151, 178)
+        )
+    }
+
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 50f, 0)
@@ -1193,7 +1238,8 @@ class PhotoTvView(
             synchronized(bitmapCache) { bitmapCache[key] } ?: current
         } else current
 
-        val name = transitions[transitionIndex]
+        val localTransition = ruleForItem(currentItem())?.transitionIndex?.takeIf { it >= 0 } ?: transitionIndex
+        val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
         when {
             transitionProgress >= 1f || previous == null || current == null -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
             name.startsWith("Glissement") -> {
@@ -1214,7 +1260,8 @@ class PhotoTvView(
         drawBottomGradient(c, 0f, 0f, 1280f, 720f)
         val item = currentItem()
         val vals = metadataValues(item)
-        val hideOverlays = overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L
+        val ruleAllowsMetadata = ruleForItem(item)?.showMetadata ?: true
+        val hideOverlays = !ruleAllowsMetadata || (overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L)
         val shift = oledShift()
         if (!hideOverlays) {
             styles.forEachIndexed { i, st ->
@@ -2017,6 +2064,7 @@ class PhotoTvView(
         4 -> 3
         5 -> 2
         6 -> 4
+        7 -> 7
         else -> 9
     }
 
@@ -2034,6 +2082,44 @@ class PhotoTvView(
             4 -> s.x = (s.x + dir).coerceIn(0f, 100f)
             5 -> s.y = (s.y + dir).coerceIn(0f, 100f)
             6 -> s.align = (s.align + dir + 3) % 3
+        }
+    }
+
+    private fun adjustAlbumRule(dir: Int) {
+        val albums = albumPairs()
+        if (albums.isEmpty()) return
+
+        if (settingsControl == 0) {
+            ruleAlbumIndex = (ruleAlbumIndex + dir + albums.size) % albums.size
+            return
+        }
+
+        val albumName = albums[ruleAlbumIndex.coerceIn(0, albums.lastIndex)].first
+        val rule = albumRules.getOrPut(albumName) { AlbumRule() }
+        when (settingsControl) {
+            1 -> rule.enabled = !rule.enabled
+            2 -> rule.daysMode = (rule.daysMode + dir + 3) % 3
+            3 -> rule.startHour = (rule.startHour + dir + 24) % 24
+            4 -> {
+                var next = rule.endHour + dir
+                if (next < 1) next = 24
+                if (next > 24) next = 1
+                rule.endHour = next
+            }
+            5 -> {
+                if (dir > 0) {
+                    rule.durationSeconds = if (rule.durationSeconds == 0) 5 else (rule.durationSeconds + 5).coerceAtMost(120)
+                } else {
+                    rule.durationSeconds = if (rule.durationSeconds <= 5) 0 else rule.durationSeconds - 5
+                }
+            }
+            6 -> {
+                val size = transitions.size + 1
+                var encoded = rule.transitionIndex + 1
+                encoded = (encoded + dir + size) % size
+                rule.transitionIndex = encoded - 1
+            }
+            7 -> rule.showMetadata = !rule.showMetadata
         }
     }
 
@@ -2063,7 +2149,8 @@ class PhotoTvView(
                 2 -> albumSort = (albumSort + dir + 2) % 2
                 4 -> toggleAllAlbums()
             }
-            7 -> when (settingsControl) {
+            7 -> adjustAlbumRule(dir)
+            8 -> when (settingsControl) {
                 0 -> imageMode = (imageMode + dir + 4) % 4
                 1 -> gridSnap = !gridSnap
                 2 -> oledProtection = !oledProtection
@@ -2139,7 +2226,8 @@ class PhotoTvView(
                         3 -> onAlbumSearch()
                         4 -> toggleAllAlbums()
                     }
-                    7 -> when (settingsControl) {
+                    7 -> adjustAlbumRule(1)
+                    8 -> when (settingsControl) {
                         8 -> onExportSettings()
                         9 -> onImportSettings()
                         else -> adjustSettings(1)
@@ -2221,7 +2309,8 @@ class PhotoTvView(
     private fun scheduleSlideshow() {
         handler.removeCallbacksAndMessages(null)
         if (!slideshow || paused || fixedImage || quickMenuVisible || infoPanelVisible) return
-        handler.postDelayed({ slideshowNext(1) }, durationSeconds * 1000L)
+        val seconds = ruleForItem(currentItem())?.durationSeconds?.takeIf { it > 0 } ?: durationSeconds
+        handler.postDelayed({ slideshowNext(1) }, seconds * 1000L)
     }
 
     private fun rebuildShuffleBag() {
