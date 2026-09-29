@@ -21,7 +21,7 @@ input{display:none}
 </div>
 <script>
 const cv=document.getElementById('tv'),ctx=cv.getContext('2d');
-let page=0,slideshow=false,focusNav=false,albumSel=0,editorElement=0,settingsCat=0,previewIndex=0;
+let page=0,slideshow=false,focusNav=false,albumSel=0,editorElement=0,settingsCat=0,previewIndex=0,folderMode="exact";
 const photoTitles=["001. Opéra d'Oslo","Fjord norvégien","Montagne","Lac","Paysage","Copenhague"];
 let duration=10,fixedImage=false,loop=true,randomOrder=false,transitionSel=0,transitionSeconds=2,kenBurns=true,zoomLevel=0;
 let showDate=true,showTime=true,showTemp=true,showSeconds=false,tempCelsius=true,dateFormat=0,time24=true,weatherCity="";
@@ -115,6 +115,7 @@ function canvasPoint(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r
 function sliderFromX(x,min,max){const t=Math.max(0,Math.min(1,(x-730)/375));return min+(max-min)*t}
 function exportWebSettings(){const data={duration,fixedImage,loop,randomOrder,transitionSel,transitionSeconds,kenBurns,zoomLevel,showDate,showTime,showTemp,showSeconds,tempCelsius,dateFormat,time24,weatherCity,imageMode,gridSnap,oled,autoHide,autoStart,startDirect,favoritesOnly,layoutPreset,videoSound,albumSearch,albumSort,allAlbumsSelected,ruleAlbum,ruleEnabled,ruleDays,ruleStart,ruleEnd,ruleDuration,ruleTransition,ruleMetadata,elemVisible,editorStyles,editorFont};const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="Photo-TV-settings.json";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast("Réglages exportés")}
 function applyImportedSettings(data){for(const key of ["duration","fixedImage","loop","randomOrder","transitionSel","transitionSeconds","kenBurns","zoomLevel","showDate","showTime","showTemp","showSeconds","tempCelsius","dateFormat","time24","weatherCity","imageMode","gridSnap","oled","autoHide","autoStart","startDirect","favoritesOnly","layoutPreset","videoSound","albumSearch","albumSort","allAlbumsSelected","ruleAlbum","ruleEnabled","ruleDays","ruleStart","ruleEnd","ruleDuration","ruleTransition","ruleMetadata","editorFont"]){if(Object.prototype.hasOwnProperty.call(data,key))eval(key+"=data[key]")}if(Array.isArray(data.elemVisible))data.elemVisible.slice(0,elemVisible.length).forEach((v,i)=>elemVisible[i]=!!v);if(Array.isArray(data.editorStyles))data.editorStyles.slice(0,editorStyles.length).forEach((v,i)=>Object.assign(editorStyles[i],v));toast("Réglages importés");draw()}
+async function loadFolderFiles(files){const list=[...files],media=list.filter(f=>f.type.startsWith("image/")||f.type.startsWith("video/")||/\.(jpe?g|png|webp|gif|heic|heif|mp4|webm)$/i.test(f.name));if(!media.length){toast("Aucun média compatible");return}const jsonFiles=list.filter(f=>/\.json$/i.test(f.name));const albumTitleByFolder=new Map();if(folderMode==="exact"){for(const jf of jsonFiles){try{const o=JSON.parse(await jf.text());const title=o?.albumData?.title?.trim();if(title){const path=jf.webkitRelativePath||jf.name,folder=path.includes("/")?path.slice(0,path.lastIndexOf("/")):"";if(!albumTitleByFolder.has(folder)||/\/metadata\.json$/i.test(path))albumTitleByFolder.set(folder,title)}}catch(e){}}}const groups=new Map();for(const file of media){const path=file.webkitRelativePath||file.name,folder=path.includes("/")?path.slice(0,path.lastIndexOf("/")):"";if(!groups.has(folder))groups.set(folder,[]);groups.get(folder).push(file)}const parsed=[];for(const [folder,items] of groups){const folderName=folder.split("/").filter(Boolean).pop()||"Dossier local";const title=folderMode==="exact"?(albumTitleByFolder.get(folder)||"Album indisponible — métadonnées Takeout absentes"):folderName;const firstImage=items.find(f=>f.type.startsWith("image/")&&!/\.(heic|heif)$/i.test(f.name));let thumb=demo;if(firstImage){thumb=URL.createObjectURL(firstImage);const im=new Image();im.onload=draw;im.src=thumb;imgs[thumb]=im}parsed.push([title,items.length,thumb])}if(parsed.length){albums.splice(0,albums.length,...parsed.slice(0,23));albumSel=0}const firstFolder=[...groups.values()][0]||[];let visual=0;for(const file of firstFolder){if(visual>=6)break;if(file.type.startsWith("video/")||/\.(mp4|webm|heic|heif)$/i.test(file.name))continue;const u=URL.createObjectURL(file);photoUrls[visual]=u;photoTitles[visual]=file.name.replace(/\.[^.]+$/,"");const im=new Image();im.onload=draw;im.src=u;imgs[u]=im;visual++}previewIndex=0;toast((folderMode==="exact"?"Takeout":"Dossier")+" : "+media.length+" médias • "+groups.size+" albums");draw()}
 function loadPickedFiles(files,label){const extOk=n=>/\.(jpe?g|png|webp|gif|heic|heif|mp4|webm)$/i.test(n);const list=[...files].filter(f=>f.type.startsWith("image/")||f.type.startsWith("video/")||extOk(f.name));if(!list.length){toast("Aucun média compatible");return}let visual=0;list.forEach(file=>{if(visual>=6)return;if(file.type.startsWith("video/")||/\.(mp4|webm)$/i.test(file.name))return;const u=URL.createObjectURL(file);photoUrls[visual]=u;photoTitles[visual]=file.name.replace(/\.[^.]+$/,"");const im=new Image();im.onload=draw;im.src=u;imgs[u]=im;visual++});previewIndex=0;if(visual>0)albums[0][2]=photoUrls[0];toast(label+" : "+list.length+" média"+(list.length>1?"s":""));draw()}
 function applyWebPreset(next){layoutPreset=next;const title=editorStyles[0],album=editorStyles[1],date=editorStyles[2],time=editorStyles[3],temp=editorStyles[4];if(next===1){title.size=27;title.x=6;title.y=89;elemVisible[0]=true;elemVisible[1]=false;showDate=false;showTime=false;showTemp=false}else if(next===2){title.size=34;title.x=7;title.y=79;album.size=18;album.x=7;album.y=86;elemVisible[0]=elemVisible[1]=true;date.size=11;date.x=93;date.y=91;date.align=2;showDate=true;showTime=false;showTemp=false}else if(next===3){elemVisible[0]=elemVisible[1]=false;date.x=94;date.y=11;date.align=2;date.size=13;time.x=94;time.y=18;time.align=2;time.size=31;temp.x=94;temp.y=5;temp.align=2;temp.size=19;showDate=showTime=showTemp=true}else{Object.assign(title,{size:31,x:7,y:76,align:0});Object.assign(album,{size:19,x:7,y:84,align:0});elemVisible[0]=elemVisible[1]=true;Object.assign(date,{size:11,x:73,y:10,align:2});Object.assign(time,{size:26,x:80,y:15,align:2});Object.assign(temp,{size:18,x:80,y:5,align:2});showDate=showTime=showTemp=true}}
 function promptAlbumSearch(){const v=prompt("Rechercher un album",albumSearch);if(v!==null){albumSearch=v.trim();toast(albumSearch?"Recherche : "+albumSearch:"Recherche effacée");draw()}}
@@ -128,8 +129,8 @@ if(page===0){if(x<180){previewIndex=cycle(previewIndex,photoUrls.length,-1);toas
 
 if(page===1){
  if(y>=108&&y<=210){
-   if(x>=47&&x<=435){toast("Sélectionnez votre dossier Google Takeout");document.getElementById("folderInput").click();return}
-   if(x>=450&&x<=812){document.getElementById("folderInput").click();return}
+   if(x>=47&&x<=435){folderMode="exact";toast("Sélectionnez votre dossier Google Takeout");document.getElementById("folderInput").click();return}
+   if(x>=450&&x<=812){folderMode="local";document.getElementById("folderInput").click();return}
    if(x>=828&&x<=1238){document.getElementById("photoInput").click();return}
  }
  if(y>=270&&y<=468){const i=Math.floor((x-47)/199),shown=visibleAlbums();if(i>=0&&i<Math.min(6,shown.length)&&x>=47+i*199&&x<=232+i*199){albumSel=shown[i].idx;toast("Album : "+shown[i].a[0]);draw();return}}
@@ -183,7 +184,7 @@ if(page===3){
    else if(y>=252&&y<=316){promptWeather();return}
  }
  else if(settingsCat===6){
-   if(y>=138&&y<=258&&x<800){document.getElementById("folderInput").click();return}
+   if(y>=138&&y<=258&&x<800){folderMode="exact";document.getElementById("folderInput").click();return}
    else if(y>=138&&y<=258){document.getElementById("photoInput").click();return}
    else if(y>=300&&y<=350)albumSort=cycle(albumSort,2);
    else if(y>=356&&y<=414){promptAlbumSearch();return}
@@ -219,7 +220,7 @@ if(page===3){
 }
 
 cv.addEventListener("click",mouse);
-document.getElementById("folderInput").addEventListener("change",e=>loadPickedFiles(e.target.files,"Dossier chargé"));
+document.getElementById("folderInput").addEventListener("change",e=>loadFolderFiles(e.target.files));
 document.getElementById("photoInput").addEventListener("change",e=>loadPickedFiles(e.target.files,"Sélection chargée"));
 document.getElementById("settingsImport").addEventListener("change",e=>{const file=e.target.files?.[0];if(!file)return;file.text().then(t=>{try{applyImportedSettings(JSON.parse(t))}catch(err){toast("Fichier de réglages invalide")}})});
 
