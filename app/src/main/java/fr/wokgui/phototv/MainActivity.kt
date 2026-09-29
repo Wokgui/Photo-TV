@@ -49,6 +49,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val REQ_EXACT_FOLDER = 42
         private const val REQ_PHOTOS = 43
+        private const val REQ_EXPORT_SETTINGS = 44
+        private const val REQ_IMPORT_SETTINGS = 45
         private const val PREFS = "photo_tv"
         private const val KEY_TREE = "takeout_tree"
     }
@@ -66,7 +68,9 @@ class MainActivity : AppCompatActivity() {
             context = this,
             onExactSource = { openExactSource() },
             onPickPhotos = { openPhotoPicker() },
-            onWeatherLocation = { requestWeatherLocation() }
+            onWeatherLocation = { requestWeatherLocation() },
+            onExportSettings = { exportSettings() },
+            onImportSettings = { importSettings() }
         )
         setContentView(ui)
 
@@ -74,6 +78,27 @@ class MainActivity : AppCompatActivity() {
             val uri = runCatching { Uri.parse(saved) }.getOrNull()
             if (uri != null) importTree(uri, silent = true)
         }
+    }
+
+    private fun exportSettings() {
+        startActivityForResult(
+            Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                type = "application/json"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_TITLE, "Photo-TV-settings.json")
+            },
+            REQ_EXPORT_SETTINGS
+        )
+    }
+
+    private fun importSettings() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "application/json"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            },
+            REQ_IMPORT_SETTINGS
+        )
     }
 
     private fun requestWeatherLocation() {
@@ -137,6 +162,21 @@ class MainActivity : AppCompatActivity() {
                     .putString(KEY_TREE, uri.toString())
                     .apply()
                 importTree(uri, silent = false)
+            }
+
+            REQ_EXPORT_SETTINGS -> data.data?.let { uri ->
+                runCatching {
+                    contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use {
+                        it.write(ui.exportSettingsJson())
+                    }
+                }
+            }
+
+            REQ_IMPORT_SETTINGS -> data.data?.let { uri ->
+                runCatching {
+                    val raw = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    ui.importSettingsJson(raw)
+                }
             }
 
             REQ_PHOTOS -> {
