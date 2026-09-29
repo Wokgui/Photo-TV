@@ -124,6 +124,7 @@ class PhotoTvView(
     private var forecastMaxC = 19f
     private var weatherSummary = "—"
     private var weatherLocation = ""
+    private val forecastLines = mutableListOf<String>()
     private var imageMode = 0
     private var gridSnap = true
     private var oledProtection = true
@@ -337,9 +338,27 @@ class PhotoTvView(
                     .orEmpty()
                     .ifBlank { "—" }
 
-                val today = root.optJSONArray("weather")?.optJSONObject(0)
+                val weather = root.optJSONArray("weather")
+                val today = weather?.optJSONObject(0)
                 forecastMinC = today?.optString("mintempC")?.toFloatOrNull() ?: forecastMinC
                 forecastMaxC = today?.optString("maxtempC")?.toFloatOrNull() ?: forecastMaxC
+
+                forecastLines.clear()
+                if (weather != null) {
+                    for (i in 0 until min(3, weather.length())) {
+                        val day = weather.optJSONObject(i) ?: continue
+                        val rawDate = day.optString("date")
+                        val label = runCatching {
+                            val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(rawDate)
+                            SimpleDateFormat("EEE dd/MM", Locale.FRANCE).format(parsed ?: Date())
+                        }.getOrDefault(rawDate)
+                        val minC = day.optString("mintempC").toFloatOrNull() ?: 0f
+                        val maxC = day.optString("maxtempC").toFloatOrNull() ?: 0f
+                        val minShown = if (tempCelsius) minC.toInt() else (minC * 9f / 5f + 32f).toInt()
+                        val maxShown = if (tempCelsius) maxC.toInt() else (maxC * 9f / 5f + 32f).toInt()
+                        forecastLines += "$label  $minShown° / $maxShown°"
+                    }
+                }
                 postInvalidate()
             }
         }
@@ -1159,7 +1178,10 @@ class PhotoTvView(
         val minT = if (tempCelsius) "${forecastMinC.toInt()}°" else "${(forecastMinC * 9f / 5f + 32f).toInt()}°"
         val maxT = if (tempCelsius) "${forecastMaxC.toInt()}°" else "${(forecastMaxC * 9f / 5f + 32f).toInt()}°"
         text(c, "Ressenti $feels • Aujourd'hui $minT / $maxT", x + 22f, y + 401f, 12f, Color.rgb(169, 184, 203))
-        text(c, "OK sur « Ville météo » pour choisir une ville.", x + 22f, y + 458f, 11f, Color.rgb(129, 153, 181))
+        forecastLines.take(3).forEachIndexed { i, line ->
+            text(c, line, x + 22f + i * 210f, y + 438f, 11f, Color.rgb(196, 210, 228))
+        }
+        text(c, "OK sur « Ville météo » pour choisir une ville.", x + 22f, y + 485f, 11f, Color.rgb(129, 153, 181))
     }
 
     private fun drawSettingsSource(c: Canvas, x: Float, y: Float, w: Float) {
