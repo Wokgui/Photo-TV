@@ -1,0 +1,1 @@
+<resources><style name="Theme.PhotoTV" parent="Theme.MaterialComponents.DayNight.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:windowFullscreen">true</item><item name="android:colorAccent">#FFFFFF</item></style></resources>
