@@ -63,6 +63,7 @@ class PhotoTvView(
     private val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val handler = Handler(Looper.getMainLooper())
     private val inactivityHandler = Handler(Looper.getMainLooper())
+    private val clockHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val bitmapCache = LinkedHashMap<String, Bitmap>()
     private var softSource: Bitmap? = null
@@ -112,6 +113,7 @@ class PhotoTvView(
     private var tempCelsius = true
     private var dateFormatIndex = 0
     private var time24h = true
+    private var showSeconds = false
     private var temperatureC = 17f
     private var feelsLikeC = 17f
     private var forecastMinC = 12f
@@ -188,6 +190,7 @@ class PhotoTvView(
         loadDemo()
         loadWeather()
         scheduleInactivity()
+        scheduleClock()
     }
 
     private fun loadPrefs() {
@@ -205,6 +208,7 @@ class PhotoTvView(
         tempCelsius = prefs.getBoolean("celsius", true)
         dateFormatIndex = prefs.getInt("date_format", 0).coerceIn(0, 2)
         time24h = prefs.getBoolean("time_24h", true)
+        showSeconds = prefs.getBoolean("show_seconds", false)
         weatherLocation = prefs.getString("weather_location", "") ?: ""
         imageMode = prefs.getInt("image_mode", 0).coerceIn(0, 3)
         gridSnap = prefs.getBoolean("grid_snap", true)
@@ -250,6 +254,7 @@ class PhotoTvView(
             putBoolean("celsius", tempCelsius)
             putInt("date_format", dateFormatIndex)
             putBoolean("time_24h", time24h)
+            putBoolean("show_seconds", showSeconds)
             putString("weather_location", weatherLocation)
             putInt("image_mode", imageMode)
             putBoolean("grid_snap", gridSnap)
@@ -278,6 +283,15 @@ class PhotoTvView(
                 putBoolean("s${i}_visible", s.visible)
             }
         }.apply()
+    }
+
+    private fun scheduleClock() {
+        clockHandler.removeCallbacksAndMessages(null)
+        val delay = if (showSeconds) 1000L else 30_000L
+        clockHandler.postDelayed({
+            invalidate()
+            scheduleClock()
+        }, delay)
     }
 
     fun setWeatherLocation(value: String) {
@@ -354,6 +368,7 @@ class PhotoTvView(
         root.put("tempCelsius", tempCelsius)
         root.put("dateFormatIndex", dateFormatIndex)
         root.put("time24h", time24h)
+        root.put("showSeconds", showSeconds)
         root.put("weatherLocation", weatherLocation)
         root.put("imageMode", imageMode)
         root.put("gridSnap", gridSnap)
@@ -410,6 +425,7 @@ class PhotoTvView(
             tempCelsius = root.optBoolean("tempCelsius", tempCelsius)
             dateFormatIndex = root.optInt("dateFormatIndex", dateFormatIndex).coerceIn(0, 2)
             time24h = root.optBoolean("time24h", time24h)
+            showSeconds = root.optBoolean("showSeconds", showSeconds)
             weatherLocation = root.optString("weatherLocation", weatherLocation)
             imageMode = root.optInt("imageMode", imageMode).coerceIn(0, 3)
             gridSnap = root.optBoolean("gridSnap", gridSnap)
@@ -1040,13 +1056,14 @@ class PhotoTvView(
 
     private fun drawSettingsTime(c: Canvas, x: Float, y: Float) {
         text(c, "Heure et date", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        settingsToggle(c, "Afficher la date", showDate, x, y + 78f, 0)
-        settingsChoice(c, "Format de date", dateFormatLabel(), x, y + 140f, 1)
-        settingsToggle(c, "Afficher l'heure", showTime, x, y + 205f, 2)
-        settingsChoice(c, "Format de l'heure", if (time24h) "24 h — 15:42" else "12 h — 3:42 PM", x, y + 267f, 3)
-        text(c, "Aperçu", x + 22f, y + 345f, 13f, Color.rgb(177, 191, 209))
-        text(c, mockDate(), x + 22f, y + 387f, 22f, Color.WHITE, 1)
-        text(c, currentTime(), x + 22f, y + 433f, 34f, Color.WHITE, 1)
+        settingsToggle(c, "Afficher la date", showDate, x, y + 68f, 0)
+        settingsChoice(c, "Format de date", dateFormatLabel(), x, y + 124f, 1)
+        settingsToggle(c, "Afficher l'heure", showTime, x, y + 180f, 2)
+        settingsChoice(c, "Format de l'heure", if (time24h) "24 h" else "12 h", x, y + 236f, 3)
+        settingsToggle(c, "Afficher les secondes", showSeconds, x, y + 292f, 4)
+        text(c, "Aperçu", x + 22f, y + 377f, 13f, Color.rgb(177, 191, 209))
+        text(c, mockDate(), x + 22f, y + 419f, 22f, Color.WHITE, 1)
+        text(c, currentTime(), x + 22f, y + 468f, 34f, Color.WHITE, 1)
     }
 
     private fun drawSettingsTemp(c: Canvas, x: Float, y: Float) {
@@ -1409,8 +1426,15 @@ class PhotoTvView(
     private fun itemDate(item: PhotoItem?): String =
         formattedDate(item?.takenAt?.takeIf { it > 0 } ?: System.currentTimeMillis())
 
-    private fun currentTime(): String =
-        SimpleDateFormat(if (time24h) "HH:mm" else "h:mm a", Locale.getDefault()).format(Date())
+    private fun currentTime(): String {
+        val pattern = when {
+            time24h && showSeconds -> "HH:mm:ss"
+            time24h -> "HH:mm"
+            showSeconds -> "h:mm:ss a"
+            else -> "h:mm a"
+        }
+        return SimpleDateFormat(pattern, Locale.getDefault()).format(Date())
+    }
 
     private fun tempText(): String {
         val c = temperatureC
@@ -2070,7 +2094,7 @@ class PhotoTvView(
         1 -> elementNames.lastIndex
         2 -> elementNames.lastIndex
         3 -> transitions.lastIndex
-        4 -> 3
+        4 -> 4
         5 -> 2
         6 -> 4
         7 -> 7
@@ -2152,6 +2176,10 @@ class PhotoTvView(
                 1 -> dateFormatIndex = (dateFormatIndex + dir + 3) % 3
                 2 -> showTime = !showTime
                 3 -> time24h = !time24h
+                4 -> {
+                    showSeconds = !showSeconds
+                    scheduleClock()
+                }
             }
             5 -> when(settingsControl) { 0 -> showTemp=!showTemp; 1 -> tempCelsius=!tempCelsius }
             6 -> when (settingsControl) {
