@@ -11,14 +11,39 @@ import java.io.InputStreamReader
 import java.util.LinkedHashMap
 
 object TakeoutLibrary {
-    fun load(context: Context, treeUri: Uri): List<PhotoItem> {
-        val root = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+    data class LoadResult(
+        val items: List<PhotoItem>,
+        val exactAlbums: Boolean,
+        val missingExactAlbumFolders: Int
+    )
+
+    fun load(context: Context, treeUri: Uri, exactMode: Boolean = true): LoadResult {
+        val root = DocumentFile.fromTreeUri(context, treeUri)
+            ?: return LoadResult(emptyList(), exactAlbums = false, missingExactAlbumFolders = 0)
+
         val raw = mutableListOf<PhotoItem>()
-        scanFolder(context, root, raw)
-        return mergeAlbumMemberships(context, raw)
+        val exactState = ExactState()
+        scanFolder(context, root, raw, exactMode, exactState)
+
+        return LoadResult(
+            items = mergeAlbumMemberships(context, raw),
+            exactAlbums = exactMode && exactState.foldersWithMedia > 0 && exactState.missingAlbumMetadata == 0,
+            missingExactAlbumFolders = exactState.missingAlbumMetadata
+        )
     }
 
-    private fun scanFolder(context: Context, dir: DocumentFile, out: MutableList<PhotoItem>) {
+    private data class ExactState(
+        var foldersWithMedia: Int = 0,
+        var missingAlbumMetadata: Int = 0
+    )
+
+    private fun scanFolder(
+        context: Context,
+        dir: DocumentFile,
+        out: MutableList<PhotoItem>,
+        exactMode: Boolean,
+        state: ExactState
+    ) {
         val children = runCatching { dir.listFiles().toList() }.getOrDefault(emptyList())
         val media = children.filter {
             it.isFile && (
@@ -27,7 +52,18 @@ object TakeoutLibrary {
             )
         }
         val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
-        val albumName = exactAlbumName(context, dir, jsons)
+
+        val exactName = if (exactMode) exactAlbumName(context, jsons) else null
+        val albumName = when {
+            exactName != null -> exactName
+            exactMode -> "Album indisponible — métadonnées Takeout absentes"
+            else -> dir.name?.trim().orEmpty().ifBlank { "Dossier local" }
+        }
+
+        if (media.isNotEmpty()) {
+            state.foldersWithMedia++
+            if (exactMode && exactName == null) state.missingAlbumMetadata++
+        }
 
         for (file in media) {
             val mediaName = file.name ?: continue
@@ -84,17 +120,19 @@ object TakeoutLibrary {
                 width = dims.first,
                 height = dims.second,
                 mediaType = when {
-                            mime.startsWith("video/") -> "video"
-                            mime.equals("image/gif", true) -> "gif"
-                            else -> "image"
-                        }
+                    mime.startsWith("video/") -> "video"
+                    mime.equals("image/gif", true) -> "gif"
+                    else -> "image"
+                }
             )
         }
 
-        children.filter { it.isDirectory }.forEach { scanFolder(context, it, out) }
+        children.filter { it.isDirectory }.forEach {
+            scanFolder(context, it, out, exactMode, state)
+        }
     }
 
-    private fun exactAlbumName(context: Context, dir: DocumentFile, jsons: List<DocumentFile>): String {
+    private fun exactAlbumName(context: Context, jsons: List<DocumentFile>): String? {
         val ordered = jsons.sortedBy { if (it.name.equals("metadata.json", true)) 0 else 1 }
         for (jsonFile in ordered) {
             val exact = runCatching {
@@ -109,7 +147,7 @@ object TakeoutLibrary {
             }.getOrDefault("")
             if (exact.isNotBlank()) return exact
         }
-        return dir.name ?: "Album"
+        return null
     }
 
     private fun mergeAlbumMemberships(context: Context, raw: List<PhotoItem>): List<PhotoItem> {
