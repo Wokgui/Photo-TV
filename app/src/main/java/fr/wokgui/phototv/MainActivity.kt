@@ -12,11 +12,6 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import androidx.documentfile.provider.DocumentFile
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.util.LinkedHashMap
 
 data class PhotoItem(
     val uri: Uri,
@@ -227,143 +222,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun importTree(uri: Uri, silent: Boolean) {
-        val root = DocumentFile.fromTreeUri(this, uri) ?: return
         if (!silent) ui.showLoading("Analyse de Google Photos / Takeout…")
-
         Thread {
-            val raw = mutableListOf<PhotoItem>()
-            scanFolder(root, raw)
-            val merged = mergeAlbumMemberships(raw)
+            val loaded = TakeoutLibrary.load(this, uri)
             runOnUiThread {
-                ui.setLibrary(merged, exactAlbums = true)
+                ui.setLibrary(loaded, exactAlbums = true)
             }
         }.start()
-    }
-
-    private fun scanFolder(dir: DocumentFile, out: MutableList<PhotoItem>) {
-        val children = runCatching { dir.listFiles().toList() }.getOrDefault(emptyList())
-        val media = children.filter {
-            it.isFile && (
-                it.type?.startsWith("image/") == true ||
-                    it.type?.startsWith("video/") == true
-                )
-        }
-        val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
-        val albumName = exactAlbumName(dir, jsons)
-
-        for (file in media) {
-            val mediaName = file.name ?: continue
-            val sidecar = jsons.firstOrNull { json ->
-                val n = json.name?.removeSuffix(".json").orEmpty()
-                n == mediaName || n.startsWith(mediaName)
-            }
-
-            var takenAt = file.lastModified()
-            var description = ""
-            var location = ""
-            var camera = ""
-
-            if (sidecar != null) {
-                runCatching {
-                    val text = contentResolver.openInputStream(sidecar.uri)!!.use {
-                        BufferedReader(InputStreamReader(it)).readText()
-                    }
-                    val rootJson = JSONObject(text)
-                    val stamp = rootJson
-                        .optJSONObject("photoTakenTime")
-                        ?.optString("timestamp")
-                        ?.toLongOrNull()
-                    if (stamp != null) takenAt = stamp * 1000L
-
-                    description = rootJson.optString("description").trim()
-
-                    val geo = rootJson.optJSONObject("geoDataExif")
-                        ?: rootJson.optJSONObject("geoData")
-                    if (geo != null) {
-                        val lat = geo.optDouble("latitude", 0.0)
-                        val lon = geo.optDouble("longitude", 0.0)
-                        if (lat != 0.0 || lon != 0.0) {
-                            location = String.format(java.util.Locale.US, "%.5f, %.5f", lat, lon)
-                        }
-                    }
-
-                    camera = listOf(
-                        rootJson.optString("cameraMake").trim(),
-                        rootJson.optString("cameraModel").trim()
-                    ).filter { it.isNotBlank() }.joinToString(" ")
-                }
-            }
-
-            val mime = file.type.orEmpty()
-            val dims = mediaDimensions(file.uri, mime)
-            out += PhotoItem(
-                uri = file.uri,
-                title = stripExtension(mediaName),
-                albums = linkedSetOf(albumName),
-                takenAt = takenAt,
-                description = description,
-                location = location,
-                camera = camera,
-                width = dims.first,
-                height = dims.second,
-                mediaType = if (mime.startsWith("video/")) "video" else "image"
-            )
-        }
-
-        children.filter { it.isDirectory }.forEach { scanFolder(it, out) }
-    }
-
-    private fun mergeAlbumMemberships(raw: List<PhotoItem>): List<PhotoItem> {
-        val merged = LinkedHashMap<String, PhotoItem>()
-        for (item in raw) {
-            val key = buildString {
-                append(item.title.lowercase())
-                append('|')
-                append(item.takenAt)
-                append('|')
-                append(item.width)
-                append('x')
-                append(item.height)
-                append('|')
-                append(item.mediaType)
-            }
-
-            val existing = merged[key]
-            if (existing == null) {
-                merged[key] = item
-            } else {
-                merged[key] = existing.copy(
-                    albums = LinkedHashSet<String>().apply {
-                        addAll(existing.albums)
-                        addAll(item.albums)
-                    },
-                    description = existing.description.ifBlank { item.description },
-                    location = existing.location.ifBlank { item.location },
-                    camera = existing.camera.ifBlank { item.camera },
-                    width = if (existing.width > 0) existing.width else item.width,
-                    height = if (existing.height > 0) existing.height else item.height
-                )
-            }
-        }
-        return merged.values.toList()
-    }
-
-    private fun exactAlbumName(dir: DocumentFile, jsons: List<DocumentFile>): String {
-        val ordered = jsons.sortedBy { if (it.name.equals("metadata.json", true)) 0 else 1 }
-        for (jsonFile in ordered) {
-            val exact = runCatching {
-                val text = contentResolver.openInputStream(jsonFile.uri)!!.use {
-                    BufferedReader(InputStreamReader(it)).readText()
-                }
-                JSONObject(text)
-                    .optJSONObject("albumData")
-                    ?.optString("title")
-                    ?.trim()
-                    .orEmpty()
-            }.getOrDefault("")
-            if (exact.isNotBlank()) return exact
-        }
-        return dir.name ?: "Album"
     }
 
     private fun mediaDimensions(uri: Uri, mime: String): Pair<Int, Int> {
