@@ -363,6 +363,9 @@ class PhotoTvView(
         root.put("startDirectly", startDirectly)
         root.put("favoritesOnly", favoritesOnly)
         root.put("layoutPreset", layoutPreset)
+        root.put("albumSearch", albumSearch)
+        root.put("albumSort", albumSort)
+        root.put("albumRules", albumRulesJson())
 
         fun strings(values: Collection<String>): JSONArray =
             JSONArray().apply { values.forEach { put(it) } }
@@ -416,6 +419,12 @@ class PhotoTvView(
             startDirectly = root.optBoolean("startDirectly", startDirectly)
             favoritesOnly = root.optBoolean("favoritesOnly", favoritesOnly)
             layoutPreset = root.optInt("layoutPreset", layoutPreset).coerceIn(0, 3)
+            albumSearch = root.optString("albumSearch", albumSearch)
+            albumSort = root.optInt("albumSort", albumSort).coerceIn(0, 1)
+            root.optJSONObject("albumRules")?.let {
+                albumRules.clear()
+                restoreAlbumRules(it.toString())
+            }
 
             fun restoreSet(name: String, target: MutableSet<String>) {
                 val arr = root.optJSONArray(name) ?: return
