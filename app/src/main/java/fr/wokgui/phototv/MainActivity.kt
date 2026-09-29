@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.widget.*
+import coil.load
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONObject
@@ -51,11 +52,11 @@ class MainActivity : AppCompatActivity() {
     private var loadingStyleControls = false
 
     private val overlayStyles = linkedMapOf(
-        "Titre de la photo" to OverlayStyle(34, 5, 70, font = "Sans"),
-        "Nom de l'album" to OverlayStyle(20, 5, 80, font = "Sans"),
-        "Date" to OverlayStyle(14, 5, 88, font = "Sans", color = Color.rgb(205, 214, 228)),
-        "Heure" to OverlayStyle(14, 32, 88, font = "Sans", color = Color.rgb(205, 214, 228), visible = false),
-        "Température" to OverlayStyle(14, 70, 88, font = "Sans", color = Color.rgb(205, 214, 228), visible = false)
+        "Titre de la photo" to OverlayStyle(34, 6, 72, font = "Sans"),
+        "Nom de l'album" to OverlayStyle(20, 6, 82, font = "Sans"),
+        "Date" to OverlayStyle(13, 70, 9, font = "Sans", color = Color.rgb(235, 240, 248), alignment = Gravity.END),
+        "Heure" to OverlayStyle(28, 80, 13, font = "Sans", color = Color.WHITE, alignment = Gravity.END),
+        "Température" to OverlayStyle(20, 80, 4, font = "Sans", color = Color.WHITE, alignment = Gravity.END)
     )
 
     private fun <T : View> view(id: Int): T = findViewById(id)
@@ -71,10 +72,21 @@ class MainActivity : AppCompatActivity() {
         setupSettings()
         setupEditor()
         setupSlideshow()
+        loadDemoVisuals()
         showPage(0)
         refreshMetadataText()
         applyAllOverlayStyles()
         view<Button>(R.id.tabPreview).requestFocus()
+    }
+
+    private fun loadDemoVisuals() {
+        val demoUrl = "https://commons.wikimedia.org/wiki/Special:Redirect/file/Oslo%20-%20Op%C3%A9ra%20-%20Ext%C3%A9rieur%2001.JPG?width=1800"
+        view<ImageView>(R.id.previewImage).load(demoUrl) {
+            crossfade(true)
+        }
+        view<ImageView>(R.id.editorImage).load(demoUrl) {
+            crossfade(true)
+        }
     }
 
     private fun setupTabs() {
@@ -580,13 +592,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshMetadataText() {
         val at = photos.firstOrNull()?.takenAt?.takeIf { it > 0L } ?: System.currentTimeMillis()
-        val parts = mutableListOf<String>()
-        if (view<CheckBox>(R.id.showTemp).isChecked) parts += "☀  " + temperaturePlaceholder()
-        if (view<CheckBox>(R.id.showDate).isChecked) parts += formatDate(at)
-        if (view<CheckBox>(R.id.showTime).isChecked) parts += formatTime(at)
+        view<TextView>(R.id.previewTemp).apply {
+            text = "☀  " + temperaturePlaceholder()
+            visibility = if (view<CheckBox>(R.id.showTemp).isChecked) View.VISIBLE else View.GONE
+        }
         view<TextView>(R.id.previewDate).apply {
-            text = parts.joinToString("\n")
-            gravity = Gravity.END
+            text = formatDate(at)
+            visibility = if (view<CheckBox>(R.id.showDate).isChecked) View.VISIBLE else View.GONE
+        }
+        view<TextView>(R.id.previewTime).apply {
+            text = formatTime(at)
+            visibility = if (view<CheckBox>(R.id.showTime).isChecked) View.VISIBLE else View.GONE
         }
         view<TextView>(R.id.editorDate).text=formatDate(at)
         view<TextView>(R.id.editorTime).text=formatTime(at)
