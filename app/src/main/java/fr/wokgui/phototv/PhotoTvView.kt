@@ -1297,8 +1297,68 @@ class PhotoTvView(
     }
 
     private fun drawBackgroundPhoto(c: Canvas, x: Float, y: Float, w: Float, h: Float, bmp: Bitmap?) {
-        fill(c, x, y, x + w, y + h, Color.rgb(22, 56, 85))
-        drawBitmapCenterCrop(c, bmp, x, y, w, h)
+        fill(c, x, y, x + w, y + h, Color.rgb(6, 12, 18))
+        when (imageMode) {
+            1 -> drawBitmapFit(c, bmp, x, y, w, h)
+            2 -> drawBitmapOriginal(c, bmp, x, y, w, h)
+            3 -> {
+                drawSoftBackground(c, bmp, x, y, w, h)
+                fill(c, x, y, x + w, y + h, Color.argb(75, 0, 0, 0))
+                drawBitmapFit(c, bmp, x, y, w, h)
+            }
+            else -> drawBitmapCenterCrop(c, bmp, x, y, w, h)
+        }
+    }
+
+    private fun drawBitmapFit(c: Canvas, bmp: Bitmap?, x: Float, y: Float, w: Float, h: Float) {
+        if (bmp == null || bmp.isRecycled) return
+        val scale = min(w / bmp.width.toFloat(), h / bmp.height.toFloat())
+        val sw = bmp.width * scale
+        val sh = bmp.height * scale
+        c.drawBitmap(
+            bmp,
+            null,
+            RectF(
+                x + (w - sw) / 2f,
+                y + (h - sh) / 2f,
+                x + (w + sw) / 2f,
+                y + (h + sh) / 2f
+            ),
+            imagePaint
+        )
+    }
+
+    private fun drawBitmapOriginal(c: Canvas, bmp: Bitmap?, x: Float, y: Float, w: Float, h: Float) {
+        if (bmp == null || bmp.isRecycled) return
+        val scale = min(1f, min(w / bmp.width.toFloat(), h / bmp.height.toFloat()))
+        val sw = bmp.width * scale
+        val sh = bmp.height * scale
+        c.drawBitmap(
+            bmp,
+            null,
+            RectF(
+                x + (w - sw) / 2f,
+                y + (h - sh) / 2f,
+                x + (w + sw) / 2f,
+                y + (h + sh) / 2f
+            ),
+            imagePaint
+        )
+    }
+
+    private fun drawSoftBackground(c: Canvas, bmp: Bitmap?, x: Float, y: Float, w: Float, h: Float) {
+        if (bmp == null || bmp.isRecycled) return
+        if (softSource !== bmp || softBitmap == null || softBitmap?.isRecycled == true) {
+            softBitmap?.recycle()
+            softSource = bmp
+            softBitmap = runCatching {
+                val tiny = Bitmap.createScaledBitmap(bmp, 48, 27, true)
+                Bitmap.createScaledBitmap(tiny, 480, 270, true).also {
+                    if (it !== tiny) tiny.recycle()
+                }
+            }.getOrNull()
+        }
+        drawBitmapCenterCrop(c, softBitmap ?: bmp, x, y, w, h)
     }
 
     private fun drawBitmapCenterCrop(c: Canvas, bmp: Bitmap?, x: Float, y: Float, w: Float, h: Float, radius: Float = 0f) {
