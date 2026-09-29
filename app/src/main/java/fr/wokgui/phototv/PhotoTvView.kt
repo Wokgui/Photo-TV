@@ -925,10 +925,10 @@ class PhotoTvView(
 
         val cats = listOf(
             "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-            "Heure et date", "Température", "Source des photos", "Avancés"
+            "Heure et date", "Température", "Source des photos", "Règles par album", "Avancés"
         )
         cats.forEachIndexed { i, name ->
-            val yy = sideY + 12f + i * 64f
+            val yy = sideY + 10f + i * 58f
             val active = settingsCategory == i
             if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 50f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
             if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 53f, 12f, Color.rgb(136, 197, 255), 2f)
@@ -951,6 +951,7 @@ class PhotoTvView(
             4 -> drawSettingsTime(c, panelX, panelY)
             5 -> drawSettingsTemp(c, panelX, panelY)
             6 -> drawSettingsSource(c, panelX, panelY, panelW)
+            7 -> drawSettingsRules(c, panelX, panelY, panelW)
             else -> drawSettingsAdvanced(c, panelX, panelY)
         }
     }
@@ -1547,6 +1548,7 @@ class PhotoTvView(
             4 -> { stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
             5 -> text(c, "♨", x, y + 7f, 18f, Color.WHITE, 0, 1)
             6 -> drawSourceIcon(c, x, y, 2)
+            7 -> text(c, "R", x, y + 7f, 18f, Color.WHITE, 1, 1)
             else -> drawGear(c, x, y, 9f)
         }
     }
@@ -1943,7 +1945,7 @@ class PhotoTvView(
             }
             3 -> {
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 7)
+                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
                     settingsControl = settingsControl.coerceIn(0, settingsControlMax())
                 } else {
                     settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
