@@ -150,6 +150,7 @@ class PhotoTvView(
     private var albumSort = 0
     private var videoSound = false
     private var ruleAlbumIndex = 0
+    private var advancedRulesOpen = false
     private val albumRules = linkedMapOf<String, AlbumRule>()
 
     private val transitions = listOf(
@@ -1043,7 +1044,7 @@ class PhotoTvView(
 
         val cats = listOf(
             "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-            "Heure et date", "Température", "Source des photos", "Règles par album", "Avancés"
+            "Heure et date", "Température", "Source des photos", "Avancés"
         )
         cats.forEachIndexed { i, name ->
             val yy = sideY + 8f + i * 55f
@@ -1069,8 +1070,7 @@ class PhotoTvView(
             4 -> drawSettingsTime(c, panelX, panelY)
             5 -> drawSettingsTemp(c, panelX, panelY)
             6 -> drawSettingsSource(c, panelX, panelY, panelW)
-            7 -> drawSettingsRules(c, panelX, panelY, panelW)
-            else -> drawSettingsAdvanced(c, panelX, panelY)
+            else -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
         }
     }
 
@@ -1232,6 +1232,7 @@ class PhotoTvView(
 
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
         text(c, "Règles par album", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        controlBox(c, x + w - 190f, y + 10f, 165f, 38f, "Retour avancés", settingsColumn == 1 && settingsControl == 8 && !navFocus)
         val albums = albumPairs()
         if (albums.isEmpty()) {
             text(c, "Chargez d'abord une photothèque.", x + 22f, y + 85f, 14f, Color.rgb(174, 188, 205))
@@ -1277,6 +1278,7 @@ class PhotoTvView(
 
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        controlBox(c, x + 665f, y + 8f, 190f, 38f, "Règles par album", settingsColumn == 1 && settingsControl == 11 && !navFocus)
         settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 50f, 0)
         settingsToggle(c, "Grille et magnétisme de l'éditeur", gridSnap, x, y + 103f, 1)
         settingsToggle(c, "Protection OLED (micro-déplacement)", oledProtection, x, y + 156f, 2)
@@ -1822,7 +1824,6 @@ class PhotoTvView(
             4 -> { stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
             5 -> text(c, "♨", x, y + 7f, 18f, Color.WHITE, 0, 1)
             6 -> drawSourceIcon(c, x, y, 2)
-            7 -> text(c, "R", x, y + 7f, 18f, Color.WHITE, 1, 1)
             else -> drawGear(c, x, y, 9f)
         }
     }
@@ -2136,7 +2137,12 @@ class PhotoTvView(
         }
 
         when (keyCode) {
-            KeyEvent.KEYCODE_BACK -> if (page != 0) {
+            KeyEvent.KEYCODE_BACK -> if (page == 3 && settingsCategory == 7 && advancedRulesOpen) {
+                advancedRulesOpen = false
+                settingsControl = 0
+                invalidate()
+                return true
+            } else if (page != 0) {
                 page = 0
                 navFocus = true
                 editorMoveMode = false
@@ -2219,7 +2225,7 @@ class PhotoTvView(
             }
             3 -> {
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
+                    settingsCategory = (settingsCategory + dir).coerceIn(0, 7)
                     settingsControl = settingsControl.coerceIn(0, settingsControlMax())
                 } else {
                     settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
@@ -2291,8 +2297,7 @@ class PhotoTvView(
         4 -> 4
         5 -> 2
         6 -> 4
-        7 -> 7
-        else -> 10
+        else -> if (advancedRulesOpen) 8 else 11
     }
 
     private fun adjustEditor(dir: Int) {
@@ -2316,6 +2321,11 @@ class PhotoTvView(
         val albums = albumPairs()
         if (albums.isEmpty()) return
 
+        if (settingsControl == 8) {
+            advancedRulesOpen = false
+            settingsControl = 0
+            return
+        }
         if (settingsControl == 0) {
             ruleAlbumIndex = (ruleAlbumIndex + dir + albums.size) % albums.size
             return
@@ -2380,8 +2390,9 @@ class PhotoTvView(
                 2 -> albumSort = (albumSort + dir + 2) % 2
                 4 -> toggleAllAlbums()
             }
-            7 -> adjustAlbumRule(dir)
-            8 -> when (settingsControl) {
+            7 -> if (advancedRulesOpen) {
+                adjustAlbumRule(dir)
+            } else when (settingsControl) {
                 0 -> imageMode = (imageMode + dir + 4) % 4
                 1 -> gridSnap = !gridSnap
                 2 -> oledProtection = !oledProtection
@@ -2393,6 +2404,10 @@ class PhotoTvView(
                 10 -> {
                     videoSound = !videoSound
                     syncVideoPlayback()
+                }
+                11 -> {
+                    advancedRulesOpen = true
+                    settingsControl = 0
                 }
             }
         }
@@ -2461,10 +2476,18 @@ class PhotoTvView(
                         3 -> onAlbumSearch()
                         4 -> toggleAllAlbums()
                     }
-                    7 -> adjustAlbumRule(1)
-                    8 -> when (settingsControl) {
+                    7 -> if (advancedRulesOpen) {
+                        if (settingsControl == 8) {
+                            advancedRulesOpen = false
+                            settingsControl = 0
+                        } else adjustAlbumRule(1)
+                    } else when (settingsControl) {
                         8 -> onExportSettings()
                         9 -> onImportSettings()
+                        11 -> {
+                            advancedRulesOpen = true
+                            settingsControl = 0
+                        }
                         else -> adjustSettings(1)
                     }
                 }
@@ -2754,7 +2777,7 @@ class PhotoTvView(
 
     private fun handleSettingsTap(x: Float, y: Float) {
         if (x in 32f..337f && y in 116f..616f) {
-            val i = ((y - 116f) / 55f).toInt().coerceIn(0, 8)
+            val i = ((y - 116f) / 55f).toInt().coerceIn(0, 7)
             settingsCategory = i
             settingsColumn = 0
             settingsControl = settingsControl.coerceIn(0, settingsControlMax())
@@ -2859,13 +2882,20 @@ class PhotoTvView(
                 y in 416f..474f -> { settingsControl = 4; toggleAllAlbums() }
             }
 
-            7 -> {
-                val control = (((y - 120f) / 58f).toInt()).coerceIn(0, 7)
-                settingsControl = control
-                adjustAlbumRule(1)
-            }
-
-            8 -> when {
+            7 -> if (advancedRulesOpen) {
+                if (x >= 1030f && y in 75f..125f) {
+                    advancedRulesOpen = false
+                    settingsControl = 0
+                } else {
+                    val control = (((y - 120f) / 58f).toInt()).coerceIn(0, 7)
+                    settingsControl = control
+                    adjustAlbumRule(1)
+                }
+            } else when {
+                x >= 1020f && y in 72f..122f -> {
+                    advancedRulesOpen = true
+                    settingsControl = 0
+                }
                 y in 112f..166f -> { settingsControl = 0; imageMode = (imageMode + 1) % 4 }
                 y in 168f..220f -> { settingsControl = 1; gridSnap = !gridSnap }
                 y in 221f..274f -> { settingsControl = 2; oledProtection = !oledProtection }
