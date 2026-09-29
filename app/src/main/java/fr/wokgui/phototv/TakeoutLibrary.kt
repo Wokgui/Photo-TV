@@ -52,8 +52,11 @@ object TakeoutLibrary {
             )
         }
         val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
+        val parsedJson = jsons.mapNotNull { file ->
+            readJson(context, file)?.let { file to it }
+        }
 
-        val exactName = if (exactMode) exactAlbumName(context, jsons) else null
+        val exactName = if (exactMode) exactAlbumName(parsedJson) else null
         val albumName = when {
             exactName != null -> exactName
             exactMode -> "Album indisponible — métadonnées Takeout absentes"
@@ -65,46 +68,48 @@ object TakeoutLibrary {
             if (exactMode && exactName == null) state.missingAlbumMetadata++
         }
 
+        val byDeclaredTitle = linkedMapOf<String, JSONObject>()
+        parsedJson.forEach { (_, root) ->
+            root.optString("title").trim().takeIf { it.isNotBlank() }?.let {
+                byDeclaredTitle[it] = root
+            }
+        }
+
         for (file in media) {
             val mediaName = file.name ?: continue
-            val sidecar = jsons.firstOrNull { json ->
+            val filenameRoot = parsedJson.firstOrNull { (json, _) ->
                 val n = json.name?.removeSuffix(".json").orEmpty()
                 n == mediaName || n.startsWith(mediaName)
-            }
+            }?.second
+            val rootJson = filenameRoot ?: byDeclaredTitle[mediaName]
 
             var takenAt = file.lastModified()
             var description = ""
             var location = ""
             var camera = ""
 
-            if (sidecar != null) {
-                runCatching {
-                    val text = context.contentResolver.openInputStream(sidecar.uri)!!.use {
-                        BufferedReader(InputStreamReader(it)).readText()
+            if (rootJson != null) {
+                rootJson.optJSONObject("photoTakenTime")
+                    ?.optString("timestamp")
+                    ?.toLongOrNull()
+                    ?.let { takenAt = it * 1000L }
+
+                description = rootJson.optString("description").trim()
+
+                val geo = rootJson.optJSONObject("geoDataExif")
+                    ?: rootJson.optJSONObject("geoData")
+                if (geo != null) {
+                    val lat = geo.optDouble("latitude", 0.0)
+                    val lon = geo.optDouble("longitude", 0.0)
+                    if (lat != 0.0 || lon != 0.0) {
+                        location = String.format(java.util.Locale.US, "%.5f, %.5f", lat, lon)
                     }
-                    val rootJson = JSONObject(text)
-                    rootJson.optJSONObject("photoTakenTime")
-                        ?.optString("timestamp")
-                        ?.toLongOrNull()
-                        ?.let { takenAt = it * 1000L }
-
-                    description = rootJson.optString("description").trim()
-
-                    val geo = rootJson.optJSONObject("geoDataExif")
-                        ?: rootJson.optJSONObject("geoData")
-                    if (geo != null) {
-                        val lat = geo.optDouble("latitude", 0.0)
-                        val lon = geo.optDouble("longitude", 0.0)
-                        if (lat != 0.0 || lon != 0.0) {
-                            location = String.format(java.util.Locale.US, "%.5f, %.5f", lat, lon)
-                        }
-                    }
-
-                    camera = listOf(
-                        rootJson.optString("cameraMake").trim(),
-                        rootJson.optString("cameraModel").trim()
-                    ).filter { it.isNotBlank() }.joinToString(" ")
                 }
+
+                camera = listOf(
+                    rootJson.optString("cameraMake").trim(),
+                    rootJson.optString("cameraModel").trim()
+                ).filter { it.isNotBlank() }.joinToString(" ")
             }
 
             val mime = file.type.orEmpty()
@@ -132,19 +137,25 @@ object TakeoutLibrary {
         }
     }
 
-    private fun exactAlbumName(context: Context, jsons: List<DocumentFile>): String? {
-        val ordered = jsons.sortedBy { if (it.name.equals("metadata.json", true)) 0 else 1 }
-        for (jsonFile in ordered) {
-            val exact = runCatching {
-                val text = context.contentResolver.openInputStream(jsonFile.uri)!!.use {
-                    BufferedReader(InputStreamReader(it)).readText()
-                }
-                JSONObject(text)
-                    .optJSONObject("albumData")
-                    ?.optString("title")
-                    ?.trim()
-                    .orEmpty()
-            }.getOrDefault("")
+    private fun readJson(context: Context, file: DocumentFile): JSONObject? {
+        return runCatching {
+            val text = context.contentResolver.openInputStream(file.uri)?.use {
+                BufferedReader(InputStreamReader(it)).readText()
+            } ?: return@runCatching null
+            JSONObject(text)
+        }.getOrNull()
+    }
+
+    private fun exactAlbumName(parsed: List<Pair<DocumentFile, JSONObject>>): String? {
+        val ordered = parsed.sortedBy { (file, _) ->
+            if (file.name.equals("metadata.json", true)) 0 else 1
+        }
+        for ((_, root) in ordered) {
+            val exact = root
+                .optJSONObject("albumData")
+                ?.optString("title")
+                ?.trim()
+                .orEmpty()
             if (exact.isNotBlank()) return exact
         }
         return null
