@@ -30,6 +30,7 @@ import kotlin.random.Random
 class PhotoTvView(
     context: Context,
     private val onExactSource: () -> Unit,
+    private val onFolderSource: () -> Unit = {},
     private val onPickPhotos: () -> Unit,
     private val onWeatherLocation: () -> Unit = {},
     private val onExportSettings: () -> Unit = {},
@@ -2418,7 +2419,8 @@ class PhotoTvView(
             }
             1 -> when (photosRow) {
                 0 -> when (sourceFocus) {
-                    0, 1 -> onExactSource()
+                    0 -> onExactSource()
+                    1 -> onFolderSource()
                     else -> onPickPhotos()
                 }
                 1 -> {
@@ -2653,7 +2655,7 @@ class PhotoTvView(
             y in 108f..210f -> {
                 when {
                     x in 47f..435f -> onExactSource()
-                    x in 450f..812f -> onExactSource()
+                    x in 450f..812f -> onFolderSource()
                     x in 828f..1238f -> onPickPhotos()
                 }
             }
