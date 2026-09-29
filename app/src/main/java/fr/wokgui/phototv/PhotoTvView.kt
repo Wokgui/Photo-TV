@@ -35,7 +35,8 @@ class PhotoTvView(
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
     private val onAlbumSearch: () -> Unit = {},
-    private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> }
+    private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> },
+    private val supportsVideoPlayback: Boolean = false
 ) : View(context) {
 
     private data class Style(
@@ -1274,7 +1275,7 @@ class PhotoTvView(
 
         val localTransition = ruleForItem(item)?.transitionIndex?.takeIf { it >= 0 } ?: transitionIndex
         val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
-        if (item?.mediaType == "video") {
+        if (item?.mediaType == "video" && supportsVideoPlayback) {
             c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         } else when {
             transitionProgress >= 1f || previous == null || current == null -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
@@ -2322,7 +2323,7 @@ class PhotoTvView(
 
     private fun syncVideoPlayback() {
         val item = if (slideshow) currentItem() else null
-        if (item?.mediaType == "video") onVideoPlayback(item.uri, videoSound)
+        if (item?.mediaType == "video" && supportsVideoPlayback) onVideoPlayback(item.uri, videoSound)
         else onVideoPlayback(null, videoSound)
     }
 
