@@ -1218,8 +1218,17 @@ class PhotoTvView(
             settingsColumn == 1 && settingsControl == 4 && !navFocus
         )
 
-        text(c, "Appui long OK sur un album : masquer / réafficher.", x + 22f, y + 450f, 11f, Color.rgb(130, 154, 181))
-        text(c, "Photos masquées session : ${sessionExcludedUris.size} • Albums masqués : ${hiddenAlbums.size}", x + 22f, y + 485f, 11f, Color.rgb(130, 154, 181))
+        text(c, "Appui long OK sur un album : masquer / réafficher.", x + 22f, y + 440f, 11f, Color.rgb(130, 154, 181))
+        text(c, "Masquées : ${excludedUris.size} permanentes • ${sessionExcludedUris.size} session • ${hiddenAlbums.size} albums", x + 22f, y + 470f, 11f, Color.rgb(130, 154, 181))
+        controlBox(
+            c,
+            x + 350f,
+            y + 480f,
+            380f,
+            39f,
+            "Tout réafficher",
+            settingsColumn == 1 && settingsControl == 5 && !navFocus
+        )
     }
 
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
@@ -1512,13 +1521,14 @@ class PhotoTvView(
         val labels = listOf(
             if (item != null && favorites.contains(item.uri.toString())) "★ Retirer des favoris" else "☆ Ajouter aux favoris",
             "Masquer pour cette session",
+            "Toujours masquer cette photo",
             "Informations",
             if (paused) "Reprendre" else "Pause"
         )
         val x = 855f
-        val y = 210f
+        val y = 185f
         val w = 370f
-        val h = 250f
+        val h = 310f
         round(c, x, y, x + w, y + h, 18f, Color.argb(238, 5, 17, 29))
         strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(51, 80, 111), 1.5f)
         text(c, "Photo courante", x + 22f, y + 35f, 16f, Color.WHITE, 1)
@@ -2083,12 +2093,12 @@ class PhotoTvView(
         if (quickMenuVisible) {
             return when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP -> {
-                    quickMenuIndex = (quickMenuIndex - 1 + 4) % 4
+                    quickMenuIndex = (quickMenuIndex - 1 + 5) % 5
                     invalidate()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    quickMenuIndex = (quickMenuIndex + 1) % 4
+                    quickMenuIndex = (quickMenuIndex + 1) % 5
                     invalidate()
                     true
                 }
@@ -2172,11 +2182,22 @@ class PhotoTvView(
                     scheduleSlideshow()
                 }
             }
-            2 -> {
+            2 -> item?.let {
+                excludedUris.add(it.uri.toString())
+                quickMenuVisible = false
+                paused = false
+                if (activePhotos().isEmpty()) stopSlideshow() else {
+                    currentPhoto = currentPhoto.coerceIn(0, activePhotos().lastIndex)
+                    slideStartedAt = System.currentTimeMillis()
+                    preloadAroundCurrent()
+                    scheduleSlideshow()
+                }
+            }
+            3 -> {
                 quickMenuVisible = false
                 infoPanelVisible = true
             }
-            3 -> {
+            4 -> {
                 quickMenuVisible = false
                 togglePause()
             }
@@ -2289,7 +2310,7 @@ class PhotoTvView(
         3 -> transitions.lastIndex
         4 -> 4
         5 -> 2
-        6 -> 4
+        6 -> 5
         else -> if (advancedRulesOpen) 8 else 11
     }
 
@@ -2382,6 +2403,7 @@ class PhotoTvView(
             6 -> when (settingsControl) {
                 2 -> albumSort = (albumSort + dir + 2) % 2
                 4 -> toggleAllAlbums()
+                5 -> clearAllMasks()
             }
             7 -> if (advancedRulesOpen) {
                 adjustAlbumRule(dir)
@@ -2467,6 +2489,7 @@ class PhotoTvView(
                         2 -> adjustSettings(1)
                         3 -> onAlbumSearch()
                         4 -> toggleAllAlbums()
+                        5 -> clearAllMasks()
                     }
                     7 -> if (advancedRulesOpen) {
                         if (settingsControl == 8) {
@@ -2487,6 +2510,13 @@ class PhotoTvView(
         }
         savePrefs()
         invalidate()
+    }
+
+    private fun clearAllMasks() {
+        excludedUris.clear()
+        sessionExcludedUris.clear()
+        hiddenAlbums.clear()
+        savePrefs()
     }
 
     private fun toggleAllAlbums() {
@@ -2867,6 +2897,7 @@ class PhotoTvView(
                 y in 300f..350f -> { settingsControl = 2; albumSort = (albumSort + 1) % 2 }
                 y in 356f..414f -> { settingsControl = 3; onAlbumSearch() }
                 y in 416f..474f -> { settingsControl = 4; toggleAllAlbums() }
+                y in 545f..610f -> { settingsControl = 5; clearAllMasks() }
             }
 
             7 -> if (advancedRulesOpen) {
@@ -2913,8 +2944,8 @@ class PhotoTvView(
         val y = event.y / (height / 720f)
 
         if (quickMenuVisible) {
-            if (x in 855f..1225f && y in 266f..454f) {
-                quickMenuIndex = (((y - 266f) / 47f).toInt()).coerceIn(0, 3)
+            if (x in 855f..1225f && y in 241f..476f) {
+                quickMenuIndex = (((y - 241f) / 47f).toInt()).coerceIn(0, 4)
                 activateQuickMenu()
             } else {
                 quickMenuVisible = false
