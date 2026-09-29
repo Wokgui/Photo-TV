@@ -92,14 +92,25 @@
                 </LinearLayout>
 
                 <Button
-                    android:id="@+id/startSlideshow"
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:layout_gravity="center"
-                    android:text="▶"
-                    android:textSize="24sp"
+                    android:layout_width="58dp"
+                    android:layout_height="58dp"
+                    android:layout_gravity="center_vertical|left"
+                    android:layout_marginLeft="28dp"
+                    android:text="‹"
+                    android:textSize="34sp"
                     android:textColor="#FFFFFF"
-                    android:background="@drawable/tv_button"
+                    android:background="@drawable/tv_focus_card"
+                    android:focusable="false"/>
+                <Button
+                    android:id="@+id/startSlideshow"
+                    android:layout_width="58dp"
+                    android:layout_height="58dp"
+                    android:layout_gravity="center_vertical|right"
+                    android:layout_marginRight="28dp"
+                    android:text="›"
+                    android:textSize="34sp"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/tv_focus_card"
                     android:contentDescription="Lancer le diaporama"/>
 
                 <LinearLayout
@@ -448,8 +459,8 @@
                             <CheckBox android:id="@+id/showTitle" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Titre de la photo" android:textColor="#FFFFFF" android:checked="true"/>
                             <CheckBox android:id="@+id/showAlbum" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Nom exact de l'album" android:textColor="#FFFFFF" android:checked="true"/>
                             <CheckBox android:id="@+id/showDate" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Date" android:textColor="#FFFFFF" android:checked="true"/>
-                            <CheckBox android:id="@+id/showTime" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Heure" android:textColor="#FFFFFF"/>
-                            <CheckBox android:id="@+id/showTemp" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Température" android:textColor="#FFFFFF"/>
+                            <CheckBox android:id="@+id/showTime" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Heure" android:textColor="#FFFFFF" android:checked="true"/>
+                            <CheckBox android:id="@+id/showTemp" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Température" android:textColor="#FFFFFF" android:checked="true"/>
 
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Formats" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
                             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Format de date" android:textColor="#AEB7C6"/>
