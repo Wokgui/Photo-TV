@@ -22,9 +22,9 @@
 <section id="preview" class="page active">
   <div class="hero"></div>
   <div class="pv-head brandline"><div class="cam">📷</div><div><b>Photo TV</b><div class="sub">DIAPORAMA</div></div></div>
-  <div class="weather"><div class="temp">☀️ 18 °C</div><div class="date">Samedi 27 septembre 2026</div><div class="time">15:42</div></div>
+  <div class="weather"><div class="temp">☀️ — °C</div><div class="date" id="webDate">—</div><div class="time" id="webTime">—</div></div>
   <button class="arrow left" id="prev">‹</button><button class="arrow right" id="next">›</button>
-  <div class="pvmeta"><h1>001. Opéra d'Oslo</h1><h2>Norvège 2026</h2></div><div class="count">3 / 142</div>
+  <div class="pvmeta"><h1>001. Opéra d'Oslo</h1><h2>Norvège 2026</h2></div><div class="count">0 / 0</div>
 </section>
 
 <section id="photos" class="page"><div class="content">
@@ -82,6 +82,7 @@
 </div>
 <script>
 const q=s=>document.querySelector(s),qa=s=>[...document.querySelectorAll(s)];
+function refreshClock(){const d=new Date();q('#webDate').textContent=d.toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}).replace(/^./,c=>c.toUpperCase());q('#webTime').textContent=d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}refreshClock();setInterval(refreshClock,30000);
 qa('.tab').forEach(b=>b.onclick=()=>{qa('.tab').forEach(x=>x.classList.remove('active'));qa('.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');q('#'+b.dataset.page).classList.add('active')});
 q('#takeout').onclick=()=>q('#folderInput').click();q('#folder').onclick=()=>q('#folderInput').click();q('#pick').onclick=()=>q('#photoInput').click();
 qa('.album').forEach(b=>b.onclick=()=>{qa('.album').forEach(x=>x.classList.remove('selected'));b.classList.add('selected')});
