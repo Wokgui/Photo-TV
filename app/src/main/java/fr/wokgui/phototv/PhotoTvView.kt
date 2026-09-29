@@ -300,6 +300,13 @@ class PhotoTvView(
         if (startDirectly && count > 0) postDelayed({ if (!slideshow) startSlideshow() }, 450)
     }
 
+    fun startAsDream(items: List<PhotoItem>) {
+        setLibrary(items, exactAlbums = true)
+        if (activePhotos().isNotEmpty()) {
+            postDelayed({ startSlideshow() }, 150)
+        }
+    }
+
     private fun preload(uris: List<Uri>) {
         uris.distinct().forEach { uri ->
             val key = uri.toString()
