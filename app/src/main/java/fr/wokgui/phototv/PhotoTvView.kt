@@ -1319,7 +1319,7 @@ class PhotoTvView(
 
         settingsToggle(c, "Son des vidéos", videoSound, x, y + 500f, 10)
         val albumCount = library.flatMap { it.albums }.distinct().size
-        val diag = "Diagnostic : ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués session"
+        val diag = "Photo TV ${BuildConfig.VERSION_NAME} • ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués session"
         text(c, diag, x + 22f, y + 545f, 10f, Color.rgb(135, 158, 184))
     }
 
