@@ -1,0 +1,5 @@
+const slides=[
+["https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=1600&q=85","Nyhavn au coucher du soleil","Copenhague 2026"],
+["https://images.unsplash.com/photo-1521295121783-8a321d551ad2?auto=format&fit=crop&w=1600&q=85","Souvenir de voyage","Mes voyages"],
+["https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1600&q=85","Au bord du lac","Vacances"]
+];let i=0;const p=document.querySelector("#photo"),t=document.querySelector("#title"),a=document.querySelector("#album");function show(){const s=slides[i%slides.length];p.src=s[0];t.textContent=s[1];a.textContent=s[2]}function next(){i=(i+1)%slides.length;show()}document.querySelector("#next").onclick=next;document.body.onclick=e=>{if(e.target.id!=="next")next()};show();setInterval(next,10000);
