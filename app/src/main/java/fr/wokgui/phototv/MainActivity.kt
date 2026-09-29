@@ -133,13 +133,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSettings() {
-        view<Button>(R.id.settingsNavSlideshow).setOnClickListener { view<SeekBar>(R.id.durationSeek).requestFocus() }
-        view<Button>(R.id.settingsNavElements).setOnClickListener { view<CheckBox>(R.id.showTitle).requestFocus() }
-        view<Button>(R.id.settingsNavStyle).setOnClickListener { showPage(2); view<Button>(R.id.metaTitleCard).requestFocus() }
-        view<Button>(R.id.settingsNavTransitions).setOnClickListener { view<Spinner>(R.id.transitionType).requestFocus() }
-        view<Button>(R.id.settingsNavTime).setOnClickListener { view<Spinner>(R.id.dateFormat).requestFocus() }
-        view<Button>(R.id.settingsNavTemp).setOnClickListener { view<Spinner>(R.id.tempUnit).requestFocus() }
-        view<Button>(R.id.settingsNavSource).setOnClickListener { showPage(1); view<Button>(R.id.pickFolder).requestFocus() }
+        fun selectSettingsNav(selectedId: Int) {
+            listOf(
+                R.id.settingsNavSlideshow, R.id.settingsNavElements, R.id.settingsNavStyle,
+                R.id.settingsNavTransitions, R.id.settingsNavTime, R.id.settingsNavTemp, R.id.settingsNavSource
+            ).forEach { id ->
+                view<Button>(id).setBackgroundResource(if (id == selectedId) R.drawable.tv_button else R.drawable.tv_focus_card)
+            }
+        }
+        view<Button>(R.id.settingsNavSlideshow).setOnClickListener { selectSettingsNav(R.id.settingsNavSlideshow); view<SeekBar>(R.id.durationSeek).requestFocus() }
+        view<Button>(R.id.settingsNavElements).setOnClickListener { selectSettingsNav(R.id.settingsNavElements); view<CheckBox>(R.id.showTitle).requestFocus() }
+        view<Button>(R.id.settingsNavStyle).setOnClickListener { selectSettingsNav(R.id.settingsNavStyle); showPage(2); view<Button>(R.id.metaTitleCard).requestFocus() }
+        view<Button>(R.id.settingsNavTransitions).setOnClickListener { selectSettingsNav(R.id.settingsNavTransitions); view<Spinner>(R.id.transitionType).requestFocus() }
+        view<Button>(R.id.settingsNavTime).setOnClickListener { selectSettingsNav(R.id.settingsNavTime); view<Spinner>(R.id.dateFormat).requestFocus() }
+        view<Button>(R.id.settingsNavTemp).setOnClickListener { selectSettingsNav(R.id.settingsNavTemp); view<Spinner>(R.id.tempUnit).requestFocus() }
+        view<Button>(R.id.settingsNavSource).setOnClickListener { selectSettingsNav(R.id.settingsNavSource); showPage(1); view<Button>(R.id.pickFolder).requestFocus() }
         view<SeekBar>(R.id.durationSeek).setOnSeekBarChangeListener(simpleSeek {
             val seconds = it + 2
             view<TextView>(R.id.durationLabel).text = "Durée : $seconds s"
@@ -247,6 +255,11 @@ class MainActivity : AppCompatActivity() {
     private fun selectedStyle() = overlayStyles[selectedKey()] ?: overlayStyles.getValue("Titre de la photo")
 
     private fun loadSelectedStyleIntoControls() {
+        val selectedPosition = view<Spinner>(R.id.editorElement).selectedItemPosition
+        listOf(R.id.metaTitleCard, R.id.metaAlbumCard, R.id.metaDateCard, R.id.metaTimeCard, R.id.metaTempCard)
+            .forEachIndexed { index, id ->
+                view<Button>(id).setBackgroundResource(if (index == selectedPosition) R.drawable.tv_button else R.drawable.tv_focus_card)
+            }
         val style = selectedStyle()
         loadingStyleControls = true
         view<SeekBar>(R.id.editorSize).progress = (style.sizeSp - 10).coerceIn(0,54)
@@ -341,6 +354,7 @@ class MainActivity : AppCompatActivity() {
         val item = list[currentIndex]
         animateImage(view(R.id.slideImage), item.uri, first)
         setMetadataForItem(item)
+        refreshPlaybackSummary()
         applyAllOverlayStyles()
     }
 
@@ -567,10 +581,13 @@ class MainActivity : AppCompatActivity() {
     private fun refreshMetadataText() {
         val at = photos.firstOrNull()?.takenAt?.takeIf { it > 0L } ?: System.currentTimeMillis()
         val parts = mutableListOf<String>()
+        if (view<CheckBox>(R.id.showTemp).isChecked) parts += "☀  " + temperaturePlaceholder()
         if (view<CheckBox>(R.id.showDate).isChecked) parts += formatDate(at)
         if (view<CheckBox>(R.id.showTime).isChecked) parts += formatTime(at)
-        if (view<CheckBox>(R.id.showTemp).isChecked) parts += temperaturePlaceholder()
-        view<TextView>(R.id.previewDate).text=parts.joinToString(" • ")
+        view<TextView>(R.id.previewDate).apply {
+            text = parts.joinToString("\n")
+            gravity = Gravity.END
+        }
         view<TextView>(R.id.editorDate).text=formatDate(at)
         view<TextView>(R.id.editorTime).text=formatTime(at)
         view<TextView>(R.id.editorTemp).text=temperaturePlaceholder()
@@ -586,11 +603,9 @@ class MainActivity : AppCompatActivity() {
     private fun temperaturePlaceholder() = if (view<Spinner>(R.id.tempUnit).selectedItemPosition==1) "— °F" else "— °C"
 
     private fun refreshPlaybackSummary() {
-        val duration=view<SeekBar>(R.id.durationSeek).progress+2
-        val mode=if(view<CheckBox>(R.id.fixedImage).isChecked) "Image fixe" else "$duration s"
-        val order=if(view<CheckBox>(R.id.shuffle).isChecked) "Aléatoire" else "Dans l'ordre"
-        val transition=view<Spinner>(R.id.transitionType).selectedItem?.toString()?:"Fondu enchaîné"
-        view<TextView>(R.id.previewPlayback).text="$order • $mode • $transition"
+        val count = activePhotos().size
+        view<TextView>(R.id.previewPlayback).text =
+            if (count > 0) "${currentIndex.coerceIn(0, count - 1) + 1} / $count" else "0 / 0"
     }
 
     private fun applySelectedStyle() {
