@@ -134,6 +134,7 @@ class PhotoTvView(
     private val favorites = linkedSetOf<String>()
     private val hiddenAlbums = linkedSetOf<String>()
     private val excludedUris = linkedSetOf<String>()
+    private val sessionExcludedUris = linkedSetOf<String>()
     private val history = mutableListOf<Int>()
     private val shuffleBag = mutableListOf<Int>()
     private var quickMenuVisible = false
@@ -697,6 +698,7 @@ class PhotoTvView(
         return library.filter { item ->
             item.albums.any { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) && albumAllowed(it) } &&
                 !excludedUris.contains(item.uri.toString()) &&
+                !sessionExcludedUris.contains(item.uri.toString()) &&
                 (!favoritesOnly || favorites.contains(item.uri.toString()))
         }
     }
@@ -1202,7 +1204,7 @@ class PhotoTvView(
         )
 
         text(c, "Appui long OK sur un album : masquer / réafficher.", x + 22f, y + 450f, 11f, Color.rgb(130, 154, 181))
-        text(c, "Photos masquées : ${excludedUris.size} • Albums masqués : ${hiddenAlbums.size}", x + 22f, y + 485f, 11f, Color.rgb(130, 154, 181))
+        text(c, "Photos masquées session : ${sessionExcludedUris.size} • Albums masqués : ${hiddenAlbums.size}", x + 22f, y + 485f, 11f, Color.rgb(130, 154, 181))
     }
 
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
@@ -1277,7 +1279,7 @@ class PhotoTvView(
 
         settingsToggle(c, "Son des vidéos", videoSound, x, y + 500f, 10)
         val albumCount = library.flatMap { it.albums }.distinct().size
-        val diag = "Diagnostic : ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${excludedUris.size} masqués"
+        val diag = "Diagnostic : ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués session"
         text(c, diag, x + 22f, y + 545f, 10f, Color.rgb(135, 158, 184))
     }
 
@@ -1401,7 +1403,7 @@ class PhotoTvView(
     private fun drawQuickMenu(c: Canvas, item: PhotoItem?) {
         val labels = listOf(
             if (item != null && favorites.contains(item.uri.toString())) "★ Retirer des favoris" else "☆ Ajouter aux favoris",
-            "Masquer cette photo",
+            "Masquer pour cette session",
             "Informations",
             if (paused) "Reprendre" else "Pause"
         )
@@ -2047,7 +2049,7 @@ class PhotoTvView(
                 if (favorites.contains(key)) favorites.remove(key) else favorites.add(key)
             }
             1 -> item?.let {
-                excludedUris.add(it.uri.toString())
+                sessionExcludedUris.add(it.uri.toString())
                 quickMenuVisible = false
                 paused = false
                 if (activePhotos().isEmpty()) stopSlideshow() else {
