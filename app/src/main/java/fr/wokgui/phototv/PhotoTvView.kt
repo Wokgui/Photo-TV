@@ -1096,8 +1096,16 @@ class PhotoTvView(
         else strokeRound(c, x, y, x + w, y + h, 12f, Color.rgb(37, 53, 71), 1f)
         if (focused) strokeRound(c, x - 3f, y - 3f, x + w + 3f, y + h + 3f, 14f, Color.WHITE, 2f)
         text(c, name, x + 8f, y + 117f, 13f, Color.WHITE, 1)
-        text(c, "$count photos", x + 8f, y + 138f, 11f, Color.rgb(190, 200, 214))
-        if (selected) {
+        val hidden = hiddenAlbums.contains(name)
+        text(
+            c,
+            if (hidden) "$count photos • MASQUÉ" else "$count photos",
+            x + 8f,
+            y + 138f,
+            11f,
+            if (hidden) Color.rgb(255, 176, 104) else Color.rgb(190, 200, 214)
+        )
+        if (selected && !hidden) {
             circle(c, x + w - 16f, y + 87f, 12f, Color.rgb(15, 124, 255))
             text(c, "✓", x + w - 16f, y + 92f, 13f, Color.WHITE, 1, 1)
         }
