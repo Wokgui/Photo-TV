@@ -83,7 +83,11 @@ object TakeoutLibrary {
                 camera = camera,
                 width = dims.first,
                 height = dims.second,
-                mediaType = if (mime.startsWith("video/")) "video" else "image"
+                mediaType = when {
+                            mime.startsWith("video/") -> "video"
+                            mime.equals("image/gif", true) -> "gif"
+                            else -> "image"
+                        }
             )
         }
 
