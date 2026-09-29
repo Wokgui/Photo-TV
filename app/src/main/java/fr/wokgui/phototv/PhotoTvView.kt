@@ -804,8 +804,6 @@ class PhotoTvView(
 
         val albums = albumPairs()
         text(c, "Mes albums Google Photos", 45f, 250f, 19f, Color.WHITE, 1)
-        val searchText = if (albumSearch.isBlank()) "Rechercher un album…" else "Recherche : $albumSearch"
-        controlBox(c, 865f, 226f, 255f, 35f, searchText, photosRow == 0 && sourceFocus == 3 && !navFocus)
         text(c, "${albums.size} albums", 1235f, 250f, 13f, Color.rgb(186, 196, 210), 0, 2)
 
         val albumY = 270f
@@ -828,11 +826,6 @@ class PhotoTvView(
             drawPhotoThumb(c, x, py, tw, 104f, item, focused)
         }
 
-        if (library.isEmpty()) {
-            text(c, "Démo visuelle — connectez votre photothèque pour afficher vos vrais albums", 45f, 638f, 11f, Color.rgb(135, 151, 171))
-        } else if (!exactAlbums) {
-            text(c, "Le nom exact de l'album nécessite le mode exact Google Photos / Takeout.", 45f, 638f, 11f, Color.rgb(255, 191, 100))
-        }
     }
 
     private fun albumPairs(): List<Pair<String, Int>> {
@@ -898,7 +891,7 @@ class PhotoTvView(
         val h = 78f
         val gap = 9f
         val values = metadataValues()
-        val visibleCount = 6
+        val visibleCount = 5
         val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
         for (slot in 0 until visibleCount) {
             val i = first + slot
@@ -1024,8 +1017,6 @@ class PhotoTvView(
 
         text(c, "Ombre", x + 16f, y + 478f, 12f, Color.WHITE)
         drawToggle(c, x + 205f, y + 464f, s.shadow, editorControl == 7 && editorColumn == 2 && !navFocus)
-        text(c, "Visible", x + 16f, y + 529f, 12f, Color.WHITE)
-        drawToggle(c, x + 205f, y + 515f, s.visible, editorControl == 8 && editorColumn == 2 && !navFocus)
     }
 
     private fun currentTextForElement(): String =
@@ -1117,7 +1108,7 @@ class PhotoTvView(
     private fun drawSettingsStyle(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
         text(c, "Style et position", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         text(c, "Chaque élément peut être déplacé, redimensionné et masqué indépendamment.", x + 22f, y + 67f, 13f, Color.rgb(184, 196, 212))
-        val visibleCount = 6
+        val visibleCount = 5
         val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
         for (slot in 0 until visibleCount) {
             val i = first + slot
@@ -2218,7 +2209,7 @@ class PhotoTvView(
                 } else if (editorColumn == 0) {
                     editorElement = (editorElement + dir).coerceIn(0, elementNames.lastIndex)
                 } else if (editorColumn == 2) {
-                    editorControl = (editorControl + dir).coerceIn(0, 8)
+                    editorControl = (editorControl + dir).coerceIn(0, 7)
                 } else if (dir > 0) {
                     navFocus = true
                 }
@@ -2246,7 +2237,7 @@ class PhotoTvView(
         when (page) {
             0 -> if (activePhotos().isNotEmpty()) previewNext(dir)
             1 -> when (photosRow) {
-                0 -> sourceFocus = (sourceFocus + dir).coerceIn(0, 3)
+                0 -> sourceFocus = (sourceFocus + dir).coerceIn(0, 2)
                 1 -> albumFocus = (albumFocus + dir).coerceIn(0, max(0, albumPairs().size.coerceAtMost(6) - 1))
                 2 -> photoFocus = (photoFocus + dir).coerceIn(0, max(0, currentAlbumPhotos().size.coerceAtMost(6) - 1))
                 else -> navFocus = true
@@ -2428,8 +2419,7 @@ class PhotoTvView(
             1 -> when (photosRow) {
                 0 -> when (sourceFocus) {
                     0, 1 -> onExactSource()
-                    2 -> onPickPhotos()
-                    else -> onAlbumSearch()
+                    else -> onPickPhotos()
                 }
                 1 -> {
                     val name = currentAlbumName()
@@ -2455,7 +2445,6 @@ class PhotoTvView(
                         val st = styles[editorElement]
                         when (editorControl) {
                             7 -> st.shadow = !st.shadow
-                            8 -> st.visible = !st.visible
                         }
                     }
                 }
@@ -2668,7 +2657,6 @@ class PhotoTvView(
                     x in 828f..1238f -> onPickPhotos()
                 }
             }
-            x in 865f..1120f && y in 220f..266f -> onAlbumSearch()
             y in 270f..468f -> {
                 val i = ((x - 47f) / 199f).toInt()
                 val albums = albumPairs()
@@ -2760,10 +2748,6 @@ class PhotoTvView(
             y in 516f..568f -> {
                 editorControl = 7
                 st.shadow = !st.shadow
-            }
-            y in 570f..620f -> {
-                editorControl = 8
-                st.visible = !st.visible
             }
         }
         savePrefs()
