@@ -48,6 +48,16 @@ class PhotoTvView(
         var visible: Boolean = true
     )
 
+    private data class AlbumRule(
+        var enabled: Boolean = false,
+        var daysMode: Int = 0,
+        var startHour: Int = 0,
+        var endHour: Int = 24,
+        var durationSeconds: Int = 0,
+        var transitionIndex: Int = -1,
+        var showMetadata: Boolean = true
+    )
+
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -130,6 +140,8 @@ class PhotoTvView(
     private var layoutPreset = 0
     private var albumSearch = ""
     private var albumSort = 0
+    private var ruleAlbumIndex = 0
+    private val albumRules = linkedMapOf<String, AlbumRule>()
 
     private val transitions = listOf(
         "Fondu", "Glissement", "Zoom", "Ken Burns", "Dissolution", "Cube 3D",
@@ -203,6 +215,7 @@ class PhotoTvView(
         layoutPreset = prefs.getInt("layout_preset", 0).coerceIn(0, 3)
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
+        restoreAlbumRules(prefs.getString("album_rules", null))
         favoritesOnly = prefs.getBoolean("favorites_only", false)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         hiddenAlbums.addAll(prefs.getStringSet("hidden_albums", emptySet()) ?: emptySet())
@@ -247,6 +260,7 @@ class PhotoTvView(
             putInt("layout_preset", layoutPreset)
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
+            putString("album_rules", albumRulesJson().toString())
             putBoolean("favorites_only", favoritesOnly)
             putStringSet("favorites", HashSet(favorites))
             putStringSet("hidden_albums", HashSet(hiddenAlbums))
@@ -438,6 +452,73 @@ class PhotoTvView(
         }.getOrDefault(false)
     }
 
+    private fun albumRulesJson(): JSONObject {
+        val root = JSONObject()
+        albumRules.forEach { (name, rule) ->
+            root.put(
+                name,
+                JSONObject()
+                    .put("enabled", rule.enabled)
+                    .put("daysMode", rule.daysMode)
+                    .put("startHour", rule.startHour)
+                    .put("endHour", rule.endHour)
+                    .put("durationSeconds", rule.durationSeconds)
+                    .put("transitionIndex", rule.transitionIndex)
+                    .put("showMetadata", rule.showMetadata)
+            )
+        }
+        return root
+    }
+
+    private fun restoreAlbumRules(raw: String?) {
+        if (raw.isNullOrBlank()) return
+        runCatching {
+            val root = JSONObject(raw)
+            val names = root.keys()
+            while (names.hasNext()) {
+                val name = names.next()
+                val o = root.optJSONObject(name) ?: continue
+                albumRules[name] = AlbumRule(
+                    enabled = o.optBoolean("enabled", false),
+                    daysMode = o.optInt("daysMode", 0).coerceIn(0, 2),
+                    startHour = o.optInt("startHour", 0).coerceIn(0, 23),
+                    endHour = o.optInt("endHour", 24).coerceIn(1, 24),
+                    durationSeconds = o.optInt("durationSeconds", 0).coerceIn(0, 120),
+                    transitionIndex = o.optInt("transitionIndex", -1).coerceIn(-1, transitions.lastIndex),
+                    showMetadata = o.optBoolean("showMetadata", true)
+                )
+            }
+        }
+    }
+
+    private fun albumAllowed(album: String, now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
+        val rule = albumRules[album] ?: return true
+        if (!rule.enabled) return true
+
+        val dow = now.get(java.util.Calendar.DAY_OF_WEEK)
+        val weekend = dow == java.util.Calendar.SATURDAY || dow == java.util.Calendar.SUNDAY
+        if (rule.daysMode == 1 && weekend) return false
+        if (rule.daysMode == 2 && !weekend) return false
+
+        val hour = now.get(java.util.Calendar.HOUR_OF_DAY)
+        val start = rule.startHour
+        val end = rule.endHour
+        return when {
+            start == 0 && end == 24 -> true
+            start < end -> hour in start until end
+            else -> hour >= start || hour < end
+        }
+    }
+
+    private fun ruleForItem(item: PhotoItem?): AlbumRule? {
+        if (item == null) return null
+        return item.albums
+            .asSequence()
+            .filter { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) }
+            .mapNotNull { albumRules[it] }
+            .firstOrNull { it.enabled }
+    }
+
     fun setAlbumSearch(value: String) {
         albumSearch = value.trim()
         albumFocus = 0
@@ -525,7 +606,7 @@ class PhotoTvView(
     private fun activePhotos(): List<PhotoItem> {
         if (library.isEmpty()) return emptyList()
         return library.filter { item ->
-            item.albums.any { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) } &&
+            item.albums.any { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) && albumAllowed(it) } &&
                 !excludedUris.contains(item.uri.toString()) &&
                 (!favoritesOnly || favorites.contains(item.uri.toString()))
         }
