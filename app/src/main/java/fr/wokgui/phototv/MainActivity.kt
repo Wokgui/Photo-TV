@@ -3,6 +3,9 @@ package fr.wokgui.phototv
 import android.app.Activity
 import android.app.AlertDialog
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.VideoView
+import android.view.WindowManager
 import android.text.InputType
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -51,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var ui: PhotoTvView
+    private lateinit var videoView: VideoView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +62,11 @@ class MainActivity : AppCompatActivity() {
             View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        videoView = VideoView(this).apply {
+            visibility = View.GONE
+        }
 
         ui = PhotoTvView(
             context = this,
@@ -66,13 +75,48 @@ class MainActivity : AppCompatActivity() {
             onWeatherLocation = { requestWeatherLocation() },
             onExportSettings = { exportSettings() },
             onImportSettings = { importSettings() },
-            onAlbumSearch = { requestAlbumSearch() }
+            onAlbumSearch = { requestAlbumSearch() },
+            onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) }
         )
-        setContentView(ui)
+
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            addView(
+                videoView,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(
+                ui,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        setContentView(root)
 
         getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TREE, null)?.let { saved ->
             val uri = runCatching { Uri.parse(saved) }.getOrNull()
             if (uri != null) importTree(uri, silent = true)
+        }
+    }
+
+    private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
+        if (uri == null) {
+            runCatching { videoView.stopPlayback() }
+            videoView.visibility = View.GONE
+            return
+        }
+
+        videoView.visibility = View.VISIBLE
+        videoView.setVideoURI(uri)
+        videoView.setOnPreparedListener { player ->
+            player.isLooping = true
+            if (sound) player.setVolume(1f, 1f) else player.setVolume(0f, 0f)
+            videoView.start()
         }
     }
 
