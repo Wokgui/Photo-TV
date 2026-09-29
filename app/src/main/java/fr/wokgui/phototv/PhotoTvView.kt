@@ -779,7 +779,7 @@ class PhotoTvView(
         drawSourceCard(c, x + 438f, y + 72f, 395f, 105f, "Sélectionner des photos", "Album non garanti", 2, settingsControl == 1 && settingsColumn == 1 && !navFocus, false)
         val status = when {
             library.isEmpty() -> "Aucune photothèque connectée."
-            exactAlbums -> "${library.size} photos • noms d'albums exacts disponibles"
+            exactAlbums -> "${library.size} médias • ${library.flatMap { it.albums }.distinct().size} albums exacts"
             else -> "${library.size} photos • noms d'albums non disponibles"
         }
         text(c, status, x + 22f, y + 220f, 14f, if (exactAlbums) Color.rgb(91, 213, 145) else Color.rgb(187, 198, 212))
@@ -1450,7 +1450,7 @@ class PhotoTvView(
                 if (photosRow == 3) navFocus = true
             }
             2 -> {
-                if (editorColumn == 0) editorElement = (editorElement + dir).coerceIn(0, 4)
+                if (editorColumn == 0) editorElement = (editorElement + dir).coerceIn(0, elementNames.lastIndex)
                 else if (editorColumn == 2) editorControl = (editorControl + dir).coerceIn(0, 8)
                 else if (dir > 0) navFocus = true
             }
@@ -1492,7 +1492,14 @@ class PhotoTvView(
     }
 
     private fun settingsControlMax(): Int = when(settingsCategory) {
-        0 -> 7; 1 -> 4; 2 -> 4; 3 -> transitions.lastIndex; 4 -> 3; 5 -> 1; 6 -> 1; else -> 0
+        0 -> 7
+        1 -> elementNames.lastIndex
+        2 -> elementNames.lastIndex
+        3 -> transitions.lastIndex
+        4 -> 3
+        5 -> 1
+        6 -> 1
+        else -> 7
     }
 
     private fun adjustEditor(dir: Int) {
@@ -1525,7 +1532,7 @@ class PhotoTvView(
                 7 -> zoomLevel = (zoomLevel + dir + 3) % 3
             }
             1 -> toggleElement(settingsControl)
-            2 -> editorElement = (editorElement + dir + 5) % 5
+            2 -> editorElement = (editorElement + dir + elementNames.size) % elementNames.size
             3 -> transitionIndex = (transitionIndex + dir + transitions.size) % transitions.size
             4 -> when(settingsControl) {
                 0 -> showDate = !showDate
@@ -1534,8 +1541,19 @@ class PhotoTvView(
                 3 -> time24h = !time24h
             }
             5 -> when(settingsControl) { 0 -> showTemp=!showTemp; 1 -> tempCelsius=!tempCelsius }
+            7 -> when (settingsControl) {
+                0 -> imageMode = (imageMode + dir + 4) % 4
+                1 -> gridSnap = !gridSnap
+                2 -> oledProtection = !oledProtection
+                3 -> overlaysAutoHide = !overlaysAutoHide
+                4 -> autoStartMinutes = (autoStartMinutes + dir).coerceIn(0, 60)
+                5 -> startDirectly = !startDirectly
+                6 -> favoritesOnly = !favoritesOnly
+                7 -> applyPreset((layoutPreset + dir + 4) % 4)
+            }
         }
         scheduleSlideshow()
+        scheduleInactivity()
     }
 
     private fun activate() {
@@ -1583,6 +1601,7 @@ class PhotoTvView(
                     4 -> adjustSettings(1)
                     5 -> adjustSettings(1)
                     6 -> if (settingsControl == 0) onExactSource() else onPickPhotos()
+                    7 -> adjustSettings(1)
                 }
             }
         }
@@ -1591,12 +1610,11 @@ class PhotoTvView(
     }
 
     private fun toggleElement(i: Int) {
-        when(i) {
-            0 -> styles[0].visible = !styles[0].visible
-            1 -> styles[1].visible = !styles[1].visible
+        when (i) {
             2 -> showDate = !showDate
             3 -> showTime = !showTime
             4 -> showTemp = !showTemp
+            else -> styles.getOrNull(i)?.let { it.visible = !it.visible }
         }
     }
 
