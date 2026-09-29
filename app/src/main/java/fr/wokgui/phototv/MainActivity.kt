@@ -50,8 +50,10 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_PHOTOS = 43
         private const val REQ_EXPORT_SETTINGS = 44
         private const val REQ_IMPORT_SETTINGS = 45
+        private const val REQ_LOCAL_FOLDER = 46
         private const val PREFS = "photo_tv"
         private const val KEY_TREE = "takeout_tree"
+        private const val KEY_TREE_EXACT = "takeout_tree_exact"
     }
 
     private lateinit var ui: PhotoTvView
@@ -72,6 +74,7 @@ class MainActivity : AppCompatActivity() {
         ui = PhotoTvView(
             context = this,
             onExactSource = { openExactSource() },
+            onFolderSource = { openLocalFolder() },
             onPickPhotos = { openPhotoPicker() },
             onWeatherLocation = { requestWeatherLocation() },
             onExportSettings = { exportSettings() },
@@ -100,9 +103,11 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
-        getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_TREE, null)?.let { saved ->
+        val sourcePrefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        sourcePrefs.getString(KEY_TREE, null)?.let { saved ->
             val uri = runCatching { Uri.parse(saved) }.getOrNull()
-            if (uri != null) importTree(uri, silent = true)
+            val exactMode = sourcePrefs.getBoolean(KEY_TREE_EXACT, true)
+            if (uri != null) importTree(uri, silent = true, exactMode = exactMode)
         }
     }
 
@@ -187,6 +192,16 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun openLocalFolder() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            ),
+            REQ_LOCAL_FOLDER
+        )
+    }
+
     private fun openPhotoPicker() {
         startActivityForResult(
             Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -219,8 +234,21 @@ class MainActivity : AppCompatActivity() {
                 getSharedPreferences(PREFS, MODE_PRIVATE)
                     .edit()
                     .putString(KEY_TREE, uri.toString())
+                    .putBoolean(KEY_TREE_EXACT, true)
                     .apply()
-                importTree(uri, silent = false)
+                importTree(uri, silent = false, exactMode = true)
+            }
+
+            REQ_LOCAL_FOLDER -> data.data?.let { uri ->
+                runCatching {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_TREE, uri.toString())
+                    .putBoolean(KEY_TREE_EXACT, false)
+                    .apply()
+                importTree(uri, silent = false, exactMode = false)
             }
 
             REQ_EXPORT_SETTINGS -> data.data?.let { uri ->
@@ -271,12 +299,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun importTree(uri: Uri, silent: Boolean) {
-        if (!silent) ui.showLoading("Analyse de Google Photos / Takeout…")
+    private fun importTree(uri: Uri, silent: Boolean, exactMode: Boolean) {
+        if (!silent) {
+            ui.showLoading(
+                if (exactMode) "Analyse de Google Photos / Takeout…"
+                else "Analyse du dossier local…"
+            )
+        }
         Thread {
-            val loaded = TakeoutLibrary.load(this, uri)
+            val loaded = TakeoutLibrary.load(this, uri, exactMode = exactMode)
             runOnUiThread {
-                ui.setLibrary(loaded, exactAlbums = true)
+                ui.setLibrary(loaded.items, exactAlbums = loaded.exactAlbums)
             }
         }.start()
     }
