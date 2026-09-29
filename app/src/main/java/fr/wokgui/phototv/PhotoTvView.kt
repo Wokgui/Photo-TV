@@ -10,7 +10,6 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
-import android.os.Build
 import android.media.MediaMetadataRetriever
 import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
@@ -25,7 +24,6 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.random.Random
 
 class PhotoTvView(
     context: Context,
@@ -1004,7 +1002,10 @@ class PhotoTvView(
 
     private fun drawEditorPanel(c: Canvas, x: Float, y: Float, w: Float) {
         val s = styles[editorElement]
-        text(c, "Paramètres du titre", x + 16f, y + 28f, 15f, Color.WHITE, 1)
+        val panelName = elementNames.getOrElse(editorElement) { "Élément" }
+            .replace(" de la photo", "")
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.FRANCE) else it.toString() }
+        text(c, "Paramètres : $panelName", x + 16f, y + 28f, 15f, Color.WHITE, 1)
         text(c, "Texte", x + 16f, y + 60f, 11f, Color.rgb(180, 191, 207))
         controlBox(c, x + 16f, y + 67f, w - 32f, 35f, currentTextForElement(), editorControl == 0 && editorColumn == 2 && !navFocus)
 
@@ -1319,9 +1320,14 @@ class PhotoTvView(
 
         settingsToggle(c, "Son des vidéos", videoSound, x, y + 500f, 10)
         val albumCount = library.flatMap { it.albums }.distinct().size
-        val diag = "Photo TV ${BuildConfig.VERSION_NAME} • ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués session"
+        val diag = "Photo TV ${appVersionName()} • ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués session"
         text(c, diag, x + 22f, y + 545f, 10f, Color.rgb(135, 158, 184))
     }
+
+    private fun appVersionName(): String = runCatching {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+    }.getOrDefault("?")
 
     private fun imageModeLabel(): String =
         listOf("Remplir", "Adapter", "Original", "Fond flouté")[imageMode.coerceIn(0, 3)]
