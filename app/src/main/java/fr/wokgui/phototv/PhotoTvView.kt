@@ -76,6 +76,15 @@ class PhotoTvView(
 
     private val demoUrl =
         "https://commons.wikimedia.org/wiki/Special:Redirect/file/Oslo%20-%20Op%C3%A9ra%20-%20Ext%C3%A9rieur%2001.JPG?width=1800"
+    private val mockAlbumUrls = listOf(
+        demoUrl,
+        "https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=800&q=80",
+        "https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?auto=format&fit=crop&w=800&q=80",
+        "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80",
+        "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=800&q=80",
+        "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80"
+    )
+    private val mockAlbumBitmaps = mutableMapOf<Int, Bitmap>()
     private var demoBitmap: Bitmap? = null
 
     private var library: List<PhotoItem> = emptyList()
@@ -367,17 +376,21 @@ class PhotoTvView(
     }
 
     private fun loadDemo() {
-        val req = ImageRequest.Builder(context)
-            .data(demoUrl)
-            .size(Size.ORIGINAL)
-            .target(
-                onSuccess = { d: Drawable ->
-                    demoBitmap = d.toBitmap()
-                    invalidate()
-                }
-            )
-            .build()
-        context.imageLoader.enqueue(req)
+        mockAlbumUrls.forEachIndexed { index, url ->
+            val req = ImageRequest.Builder(context)
+                .data(url)
+                .size(900, 650)
+                .target(
+                    onSuccess = { d: Drawable ->
+                        val bmp = d.toBitmap()
+                        mockAlbumBitmaps[index] = bmp
+                        if (index == 0) demoBitmap = bmp
+                        invalidate()
+                    }
+                )
+                .build()
+            context.imageLoader.enqueue(req)
+        }
     }
 
     fun exportSettingsJson(): String {
@@ -824,7 +837,7 @@ class PhotoTvView(
         thumbs.take(6).forEachIndexed { i, item ->
             val x = 47f + i * (tw + gap)
             val focused = photosRow == 2 && photoFocus == i && !navFocus
-            drawPhotoThumb(c, x, py, tw, 104f, item, focused)
+            drawPhotoThumb(c, x, py, tw, 104f, item, focused, i)
         }
 
     }
@@ -844,8 +857,9 @@ class PhotoTvView(
             base.filter { it.first.contains(albumSearch, ignoreCase = true) }
         }
 
-        return when (albumSort) {
-            1 -> filtered.sortedByDescending { it.second }
+        return when {
+            library.isEmpty() && albumSort == 0 -> filtered
+            albumSort == 1 -> filtered.sortedByDescending { it.second }
             else -> filtered.sortedBy { it.first.lowercase(Locale.FRANCE) }
         }
     }
@@ -1745,13 +1759,13 @@ class PhotoTvView(
     }
 
     private fun albumBitmap(name: String, index: Int): Bitmap? {
-        if (library.isEmpty()) return demoBitmap
+        if (library.isEmpty()) return mockAlbumBitmaps[index] ?: demoBitmap
         val item = library.firstOrNull { it.albums.contains(name) } ?: return demoBitmap
         return synchronized(bitmapCache) { bitmapCache[item.uri.toString()] } ?: demoBitmap
     }
 
-    private fun drawPhotoThumb(c: Canvas, x: Float, y: Float, w: Float, h: Float, item: PhotoItem?, focused: Boolean) {
-        val bmp = if (item == null) demoBitmap else synchronized(bitmapCache) { bitmapCache[item.uri.toString()] } ?: demoBitmap
+    private fun drawPhotoThumb(c: Canvas, x: Float, y: Float, w: Float, h: Float, item: PhotoItem?, focused: Boolean, demoIndex: Int = 0) {
+        val bmp = if (item == null) mockAlbumBitmaps[demoIndex] ?: demoBitmap else synchronized(bitmapCache) { bitmapCache[item.uri.toString()] } ?: demoBitmap
         round(c, x, y, x + w, y + h, 9f, Color.rgb(11, 22, 32))
         drawBitmapCenterCrop(c, bmp, x, y, w, h, 9f)
         strokeRound(c, x, y, x + w, y + h, 9f, if (focused) Color.WHITE else Color.rgb(39, 58, 77), if (focused) 2f else 1f)
