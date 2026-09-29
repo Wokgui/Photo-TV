@@ -19,19 +19,22 @@ class PhotoDreamService : DreamService() {
         val renderer = PhotoTvView(
             context = this,
             onExactSource = {},
+            onFolderSource = {},
             onPickPhotos = {}
         )
         ui = renderer
         setContentView(renderer)
 
-        val saved = getSharedPreferences("photo_tv", MODE_PRIVATE).getString("takeout_tree", null)
+        val prefs = getSharedPreferences("photo_tv", MODE_PRIVATE)
+        val saved = prefs.getString("takeout_tree", null)
+        val exactMode = prefs.getBoolean("takeout_tree_exact", true)
         if (saved != null) {
             val uri = runCatching { Uri.parse(saved) }.getOrNull()
             if (uri != null) {
                 Thread {
-                    val items = TakeoutLibrary.load(this, uri)
+                    val loaded = TakeoutLibrary.load(this, uri, exactMode = exactMode)
                     renderer.post {
-                        renderer.startAsDream(items)
+                        renderer.startAsDream(loaded.items)
                     }
                 }.start()
             }
