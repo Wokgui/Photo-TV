@@ -166,8 +166,6 @@ object TakeoutLibrary {
             buildString {
                 append(item.title.lowercase())
                 append('|')
-                append(item.takenAt)
-                append('|')
                 append(item.width)
                 append('x')
                 append(item.height)
