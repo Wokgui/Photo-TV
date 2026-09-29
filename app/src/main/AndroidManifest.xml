@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 <uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 <uses-feature android:name="android.software.leanback" android:required="false"/>
 <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
 <application android:theme="@style/Theme.PhotoTV" android:label="Photo TV" android:icon="@drawable/ic_photo_tv" android:banner="@drawable/tv_banner">
@@ -19,5 +20,13 @@
         <category android:name="android.intent.category.DEFAULT"/>
     </intent-filter>
 </service>
+<receiver
+    android:name=".BootReceiver"
+    android:enabled="true"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+    </intent-filter>
+</receiver>
 </application>
 </manifest>
