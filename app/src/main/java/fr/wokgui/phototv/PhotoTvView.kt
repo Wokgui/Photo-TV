@@ -2636,10 +2636,281 @@ class PhotoTvView(
         }
     }
 
+    private fun handlePhotosTap(x: Float, y: Float) {
+        when {
+            y in 108f..210f -> {
+                when {
+                    x in 45f..405f -> onExactSource()
+                    x in 420f..780f -> onExactSource()
+                    x in 795f..1235f -> onPickPhotos()
+                }
+            }
+            x in 865f..1120f && y in 220f..266f -> onAlbumSearch()
+            y in 270f..468f -> {
+                val i = ((x - 45f) / 177f).toInt()
+                val albums = albumPairs()
+                if (i in 0 until min(6, albums.size) && x >= 45f + i * 177f && x <= 210f + i * 177f) {
+                    albumFocus = i
+                    val name = albums[i].first
+                    if (library.isNotEmpty()) {
+                        if (selectedAlbums.contains(name)) selectedAlbums.remove(name) else selectedAlbums.add(name)
+                    }
+                }
+            }
+            y in 522f..626f -> {
+                val i = ((x - 45f) / 177f).toInt()
+                val photos = currentAlbumPhotos()
+                if (i in 0 until min(6, photos.size) && x >= 45f + i * 177f && x <= 210f + i * 177f) {
+                    photoFocus = i
+                    photos.getOrNull(i)?.let { item ->
+                        val active = activePhotos()
+                        val idx = active.indexOfFirst { it.uri == item.uri }
+                        if (idx >= 0) {
+                            currentPhoto = idx
+                            page = 0
+                            preloadAroundCurrent()
+                        }
+                    }
+                }
+            }
+        }
+        savePrefs()
+        invalidate()
+    }
+
+    private fun handleEditorTap(x: Float, y: Float) {
+        val visibleCount = 6
+        val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
+
+        if (x in 32f..352f && y in 120f..642f) {
+            val slot = ((y - 120f) / 87f).toInt()
+            val index = first + slot
+            if (slot in 0 until visibleCount && index in elementNames.indices) {
+                editorElement = index
+                editorColumn = 0
+                editorMoveMode = false
+            }
+            invalidate()
+            return
+        }
+
+        if (x in 370f..918f && y in 64f..638f) {
+            editorColumn = 1
+            editorMoveMode = !editorMoveMode
+            invalidate()
+            return
+        }
+
+        if (x !in 940f..1248f) return
+        val st = styles[editorElement]
+        editorColumn = 2
+
+        when {
+            y in 126f..171f -> editorControl = 0
+            y in 170f..218f -> {
+                editorControl = 1
+                st.font = (st.font + 1) % 4
+            }
+            y in 220f..268f -> {
+                editorControl = 2
+                val t = ((x - 1051f) / 126f).coerceIn(0f, 1f)
+                st.size = 12f + t * 68f
+            }
+            y in 280f..330f -> {
+                editorControl = 3
+                val colors = listOf(Color.WHITE, Color.rgb(173,196,255), Color.rgb(255,224,112), Color.rgb(255,126,126), Color.rgb(137,230,173))
+                val idx = colors.indexOf(st.color).coerceAtLeast(0)
+                st.color = colors[(idx + 1) % colors.size]
+            }
+            y in 326f..378f -> {
+                editorControl = 4
+                st.x = (((x - 1051f) / 126f) * 100f).coerceIn(0f, 100f)
+            }
+            y in 387f..439f -> {
+                editorControl = 5
+                st.y = (((x - 1051f) / 126f) * 100f).coerceIn(0f, 100f)
+            }
+            y in 454f..506f -> {
+                editorControl = 6
+                st.align = (((x - 1048f) / 42f).toInt()).coerceIn(0, 2)
+            }
+            y in 516f..568f -> {
+                editorControl = 7
+                st.shadow = !st.shadow
+            }
+            y in 570f..620f -> {
+                editorControl = 8
+                st.visible = !st.visible
+            }
+        }
+        savePrefs()
+        invalidate()
+    }
+
+    private fun setSliderFromTap(x: Float, minValue: Float, maxValue: Float): Float {
+        val t = ((x - 715f) / 375f).coerceIn(0f, 1f)
+        return minValue + (maxValue - minValue) * t
+    }
+
+    private fun handleSettingsTap(x: Float, y: Float) {
+        if (x in 32f..337f && y in 116f..616f) {
+            val i = ((y - 116f) / 55f).toInt().coerceIn(0, 8)
+            settingsCategory = i
+            settingsColumn = 0
+            settingsControl = settingsControl.coerceIn(0, settingsControlMax())
+            invalidate()
+            return
+        }
+
+        if (x !in 365f..1248f || y !in 72f..633f) return
+        settingsColumn = 1
+
+        when (settingsCategory) {
+            0 -> when {
+                y in 128f..178f -> {
+                    settingsControl = 0
+                    durationSeconds = setSliderFromTap(x, 2f, 120f).toInt().coerceIn(2, 120)
+                }
+                y in 185f..238f -> {
+                    settingsControl = 1
+                    fixedImage = x >= 905f
+                }
+                y in 240f..292f -> { settingsControl = 2; loop = !loop }
+                y in 294f..346f -> { settingsControl = 3; randomOrder = !randomOrder }
+                y in 382f..474f -> {
+                    val i = ((x - 387f) / 141f).toInt()
+                    if (i in 0..5) {
+                        settingsControl = 4
+                        transitionIndex = i
+                    }
+                }
+                y in 486f..542f -> {
+                    settingsControl = 5
+                    transitionSeconds = setSliderFromTap(x, .2f, 4f)
+                }
+                y in 544f..594f -> { settingsControl = 6; kenBurns = !kenBurns }
+                y in 592f..635f -> {
+                    settingsControl = 7
+                    zoomLevel = (((x - 715f) / (380f / 3f)).toInt()).coerceIn(0, 2)
+                }
+            }
+
+            1 -> {
+                val visibleCount = 6
+                val first = (settingsControl - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
+                val slot = ((y - 136f) / 70f).toInt()
+                val idx = first + slot
+                if (slot in 0 until visibleCount && idx in elementNames.indices) {
+                    settingsControl = idx
+                    toggleElement(idx)
+                }
+            }
+
+            2 -> {
+                val visibleCount = 6
+                val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
+                val slot = ((y - 164f) / 64f).toInt()
+                val idx = first + slot
+                if (slot in 0 until visibleCount && idx in elementNames.indices) {
+                    editorElement = idx
+                    settingsControl = idx
+                    page = 2
+                    editorColumn = 0
+                }
+            }
+
+            3 -> {
+                val col = ((x - 387f) / 211f).toInt()
+                val row = ((y - 142f) / 104f).toInt()
+                val idx = row * 4 + col
+                if (col in 0..3 && row in 0..3 && idx in transitions.indices) {
+                    settingsControl = idx
+                    transitionIndex = idx
+                }
+            }
+
+            4 -> when {
+                y in 130f..182f -> { settingsControl = 0; showDate = !showDate }
+                y in 184f..238f -> { settingsControl = 1; dateFormatIndex = (dateFormatIndex + 1) % 3 }
+                y in 240f..294f -> { settingsControl = 2; showTime = !showTime }
+                y in 296f..350f -> { settingsControl = 3; time24h = !time24h }
+                y in 352f..408f -> {
+                    settingsControl = 4
+                    showSeconds = !showSeconds
+                    scheduleClock()
+                }
+            }
+
+            5 -> when {
+                y in 136f..190f -> { settingsControl = 0; showTemp = !showTemp }
+                y in 192f..250f -> {
+                    settingsControl = 1
+                    tempCelsius = x < 905f
+                    loadWeather()
+                }
+                y in 252f..316f -> { settingsControl = 2; onWeatherLocation() }
+            }
+
+            6 -> when {
+                y in 138f..258f && x < 800f -> { settingsControl = 0; onExactSource() }
+                y in 138f..258f && x >= 800f -> { settingsControl = 1; onPickPhotos() }
+                y in 300f..350f -> { settingsControl = 2; albumSort = (albumSort + 1) % 2 }
+                y in 356f..414f -> { settingsControl = 3; onAlbumSearch() }
+                y in 416f..474f -> { settingsControl = 4; toggleAllAlbums() }
+            }
+
+            7 -> {
+                val control = (((y - 120f) / 58f).toInt()).coerceIn(0, 7)
+                settingsControl = control
+                adjustAlbumRule(1)
+            }
+
+            8 -> when {
+                y in 112f..166f -> { settingsControl = 0; imageMode = (imageMode + 1) % 4 }
+                y in 168f..220f -> { settingsControl = 1; gridSnap = !gridSnap }
+                y in 221f..274f -> { settingsControl = 2; oledProtection = !oledProtection }
+                y in 275f..327f -> { settingsControl = 3; overlaysAutoHide = !overlaysAutoHide }
+                y in 328f..380f -> {
+                    settingsControl = 4
+                    autoStartMinutes = setSliderFromTap(x, 0f, 60f).toInt().coerceIn(0, 60)
+                }
+                y in 381f..433f -> { settingsControl = 5; startDirectly = !startDirectly }
+                y in 434f..486f -> { settingsControl = 6; favoritesOnly = !favoritesOnly }
+                y in 487f..535f -> { settingsControl = 7; applyPreset((layoutPreset + 1) % 4) }
+                y in 536f..578f && x < 1000f -> { settingsControl = 8; onExportSettings() }
+                y in 536f..578f && x >= 1000f -> { settingsControl = 9; onImportSettings() }
+                y in 579f..626f -> { settingsControl = 10; videoSound = !videoSound; syncVideoPlayback() }
+            }
+        }
+
+        savePrefs()
+        scheduleInactivity()
+        invalidate()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_UP) return true
+        markInteraction()
+
         val x = event.x / (width / 1280f)
         val y = event.y / (height / 720f)
+
+        if (quickMenuVisible) {
+            if (x in 855f..1225f && y in 266f..454f) {
+                quickMenuIndex = (((y - 266f) / 47f).toInt()).coerceIn(0, 3)
+                activateQuickMenu()
+            } else {
+                quickMenuVisible = false
+                invalidate()
+            }
+            return true
+        }
+
+        if (infoPanelVisible) {
+            infoPanelVisible = false
+            invalidate()
+            return true
+        }
 
         if (slideshow) {
             if (x < 426f) slideshowNext(-1)
@@ -2648,20 +2919,25 @@ class PhotoTvView(
             return true
         }
 
-        if (y >= 640f && x >= 280f && x <= 1000f) {
-            page = ((x - 280f) / 180f).toInt().coerceIn(0, 3)
+        if (y >= 638f && x >= 218f && x <= 1090f) {
+            page = ((x - 218f) / 218f).toInt().coerceIn(0, 3)
             navFocus = false
+            editorMoveMode = false
             invalidate()
             return true
         }
 
-        if (page == 0) {
-            if (x < 160f) previewNext(-1)
-            else if (x > 1120f) previewNext(1)
-            else if (activePhotos().isNotEmpty()) startSlideshow()
-            else page = 1
-            invalidate()
-            return true
+        when (page) {
+            0 -> {
+                if (x < 180f) previewNext(-1)
+                else if (x > 1100f) previewNext(1)
+                else if (activePhotos().isNotEmpty()) startSlideshow()
+                else page = 1
+                invalidate()
+            }
+            1 -> handlePhotosTap(x, y)
+            2 -> handleEditorTap(x, y)
+            3 -> handleSettingsTap(x, y)
         }
 
         return true
