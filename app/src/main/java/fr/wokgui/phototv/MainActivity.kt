@@ -95,9 +95,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupPickers() {
-        view<Button>(R.id.pickFolder).setOnClickListener {
+        val openExactFolder = View.OnClickListener {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), REQ_FOLDER)
         }
+        view<Button>(R.id.pickFolder).setOnClickListener(openExactFolder)
+        view<Button>(R.id.pickFolder2).setOnClickListener(openExactFolder)
         view<Button>(R.id.pickPhotos).setOnClickListener {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 type = "image/*"
@@ -131,6 +133,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSettings() {
+        view<Button>(R.id.settingsNavSlideshow).setOnClickListener { view<SeekBar>(R.id.durationSeek).requestFocus() }
+        view<Button>(R.id.settingsNavElements).setOnClickListener { view<CheckBox>(R.id.showTitle).requestFocus() }
+        view<Button>(R.id.settingsNavStyle).setOnClickListener { showPage(2); view<Button>(R.id.metaTitleCard).requestFocus() }
+        view<Button>(R.id.settingsNavTransitions).setOnClickListener { view<Spinner>(R.id.transitionType).requestFocus() }
+        view<Button>(R.id.settingsNavTime).setOnClickListener { view<Spinner>(R.id.dateFormat).requestFocus() }
+        view<Button>(R.id.settingsNavTemp).setOnClickListener { view<Spinner>(R.id.tempUnit).requestFocus() }
+        view<Button>(R.id.settingsNavSource).setOnClickListener { showPage(1); view<Button>(R.id.pickFolder).requestFocus() }
         view<SeekBar>(R.id.durationSeek).setOnSeekBarChangeListener(simpleSeek {
             val seconds = it + 2
             view<TextView>(R.id.durationLabel).text = "Durée : $seconds s"
@@ -162,6 +171,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupEditor() {
+        listOf(
+            R.id.metaTitleCard to 0,
+            R.id.metaAlbumCard to 1,
+            R.id.metaDateCard to 2,
+            R.id.metaTimeCard to 3,
+            R.id.metaTempCard to 4
+        ).forEach { (id, position) ->
+            view<Button>(id).setOnClickListener {
+                view<Spinner>(R.id.editorElement).setSelection(position)
+                loadSelectedStyleIntoControls()
+            }
+        }
         view<Spinner>(R.id.editorElement).onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: View?, position: Int, itemId: Long) = loadSelectedStyleIntoControls()
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
@@ -383,6 +404,7 @@ class MainActivity : AppCompatActivity() {
         val children = try { dir.listFiles().toList() } catch (_: Exception) { emptyList() }
         val images = children.filter { it.isFile && it.type?.startsWith("image/") == true }
         val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
+        val albumName = exactAlbumName(dir, jsons)
         for (image in images) {
             val imageName = image.name ?: continue
             val sidecar = jsons.firstOrNull { json ->
@@ -397,7 +419,7 @@ class MainActivity : AppCompatActivity() {
                     if (stamp != null) takenAt = stamp * 1000L
                 } catch (_: Exception) {}
             }
-            out += PhotoItem(image.uri, stripExtension(imageName), exactAlbumName(dir, jsons), takenAt)
+            out += PhotoItem(image.uri, stripExtension(imageName), albumName, takenAt)
         }
         children.filter { it.isDirectory }.forEach { scanFolder(it, out) }
     }
@@ -422,26 +444,91 @@ class MainActivity : AppCompatActivity() {
         selectedAlbums.addAll(photos.map { it.album }.distinct())
         val row = view<LinearLayout>(R.id.albumRow)
         row.removeAllViews()
-        selectedAlbums.toList().forEach { albumName ->
-            val button = Button(this).apply {
-                text = "$albumName\n${photos.count { it.album == albumName }} photo(s)"
-                textSize = 15f
-                isAllCaps = false
+
+        val albumNames = selectedAlbums.toList()
+        albumNames.forEachIndexed { index, albumName ->
+            val albumPhotos = photos.filter { it.album == albumName }
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
                 isFocusable = true
-                setTextColor(Color.WHITE)
+                isClickable = true
+                setPadding(dp(6), dp(6), dp(6), dp(6))
                 setBackgroundResource(R.drawable.tv_tab)
                 isSelected = true
-                setPadding(dp(18),dp(10),dp(18),dp(10))
+                contentDescription = albumName
+            }
+            val thumb = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setImageURI(albumPhotos.firstOrNull()?.uri)
+                background = getDrawable(R.drawable.tv_focus_card)
+            }
+            val title = TextView(this).apply {
+                text = albumName
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                maxLines = 1
+                setPadding(dp(6), dp(6), dp(6), 0)
+            }
+            val count = TextView(this).apply {
+                text = "${albumPhotos.size} photo(s)"
+                setTextColor(Color.rgb(166, 177, 194))
+                textSize = 11f
+                setPadding(dp(6), 0, dp(6), dp(4))
+            }
+            card.addView(thumb, LinearLayout.LayoutParams(dp(168), dp(92)))
+            card.addView(title, LinearLayout.LayoutParams(dp(168), dp(28)))
+            card.addView(count, LinearLayout.LayoutParams(dp(168), dp(24)))
+
+            fun refreshCard() {
+                val selected = selectedAlbums.contains(albumName)
+                card.isSelected = selected
+                card.alpha = if (selected) 1f else .48f
+            }
+            card.setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) rebuildPhotoRow(albumName)
+            }
+            card.setOnClickListener {
+                if (selectedAlbums.contains(albumName)) selectedAlbums.remove(albumName) else selectedAlbums.add(albumName)
+                refreshCard()
+                rebuildPhotoRow(albumName)
+                view<TextView>(R.id.albumsStatus).text =
+                    "${selectedAlbums.size} album(s) sélectionné(s) • ${activePhotos().size} photo(s)"
+            }
+            refreshCard()
+            row.addView(card, LinearLayout.LayoutParams(dp(184), dp(154)).apply { rightMargin = dp(10) })
+            if (index == 0) rebuildPhotoRow(albumName)
+        }
+
+        view<TextView>(R.id.albumsStatus).text =
+            if (photos.isEmpty()) "Aucun album chargé"
+            else "${selectedAlbums.size} album(s) • ${photos.size} photo(s)"
+        view<TextView>(R.id.sourceStatus).text =
+            if (photos.isEmpty()) "Aucune photothèque sélectionnée"
+            else "${photos.size} photo(s) • ${selectedAlbums.size} album(s)"
+    }
+
+    private fun rebuildPhotoRow(albumName: String) {
+        val row = view<LinearLayout>(R.id.photoRow)
+        row.removeAllViews()
+        photos.filter { it.album == albumName }.take(40).forEach { item ->
+            val image = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setImageURI(item.uri)
+                isFocusable = true
+                isClickable = true
+                contentDescription = item.title
+                setBackgroundResource(R.drawable.tv_focus_card)
+                setPadding(dp(3), dp(3), dp(3), dp(3))
                 setOnClickListener {
-                    if (selectedAlbums.contains(albumName)) { selectedAlbums.remove(albumName); isSelected=false; alpha=.55f }
-                    else { selectedAlbums.add(albumName); isSelected=true; alpha=1f }
-                    view<TextView>(R.id.albumsStatus).text = "${selectedAlbums.size} album(s) sélectionné(s) • ${activePhotos().size} photo(s)"
+                    view<ImageView>(R.id.previewImage).setImageURI(item.uri)
+                    view<ImageView>(R.id.editorImage).setImageURI(item.uri)
+                    view<TextView>(R.id.previewTitle).text = item.title
+                    view<TextView>(R.id.previewAlbum).text = item.album
+                    showPage(0)
                 }
             }
-            row.addView(button, LinearLayout.LayoutParams(dp(230),dp(96)).apply { rightMargin=dp(12) })
+            row.addView(image, LinearLayout.LayoutParams(dp(190), dp(112)).apply { rightMargin = dp(10) })
         }
-        view<TextView>(R.id.albumsStatus).text = if (photos.isEmpty()) "Aucun album chargé" else "${selectedAlbums.size} album(s) • ${photos.size} photo(s)"
-        view<TextView>(R.id.sourceStatus).text = if (photos.isEmpty()) "Aucune photothèque sélectionnée" else "${photos.size} photo(s) • ${selectedAlbums.size} album(s)"
     }
 
     private fun refreshPreviewFromLibrary() {
