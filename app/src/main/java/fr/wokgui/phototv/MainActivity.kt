@@ -371,7 +371,7 @@ class MainActivity : AppCompatActivity() {
                 uris.distinct().forEach { uri ->
                     try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
                     val name = displayName(uri)
-                    photos += PhotoItem(uri, stripExtension(name), "Sélection Google Photos", 0L)
+                    photos += PhotoItem(uri, stripExtension(name), "Album indisponible — utilisez Google Takeout pour le nom exact", 0L)
                 }
                 rebuildAlbums()
                 refreshPreviewFromLibrary()
@@ -397,9 +397,24 @@ class MainActivity : AppCompatActivity() {
                     if (stamp != null) takenAt = stamp * 1000L
                 } catch (_: Exception) {}
             }
-            out += PhotoItem(image.uri, stripExtension(imageName), dir.name ?: "Album", takenAt)
+            out += PhotoItem(image.uri, stripExtension(imageName), exactAlbumName(dir, jsons), takenAt)
         }
         children.filter { it.isDirectory }.forEach { scanFolder(it, out) }
+    }
+
+    private fun exactAlbumName(dir: DocumentFile, jsons: List<DocumentFile>): String {
+        for (jsonFile in jsons) {
+            try {
+                val text = contentResolver.openInputStream(jsonFile.uri)!!.use {
+                    BufferedReader(InputStreamReader(it)).readText()
+                }
+                val root = JSONObject(text)
+                val albumData = root.optJSONObject("albumData")
+                val exact = albumData?.optString("title")?.trim().orEmpty()
+                if (exact.isNotBlank()) return exact
+            } catch (_: Exception) {}
+        }
+        return dir.name ?: "Album"
     }
 
     private fun rebuildAlbums() {
