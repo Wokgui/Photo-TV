@@ -15,6 +15,8 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.size.Size
 import java.text.SimpleDateFormat
+import java.net.URL
+import org.json.JSONObject
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -87,6 +89,9 @@ class PhotoTvView(
     private var showTime = true
     private var showTemp = true
     private var tempCelsius = true
+    private var dateFormatIndex = 0
+    private var time24h = true
+    private var temperatureC = 17f
 
     private val transitions = listOf(
         "Fondu", "Glissement", "Zoom", "Ken Burns", "Dissolution", "Cube 3D",
@@ -125,6 +130,7 @@ class PhotoTvView(
         loadPrefs()
         requestFocus()
         loadDemo()
+        loadWeather()
     }
 
     private fun loadPrefs() {
@@ -140,6 +146,8 @@ class PhotoTvView(
         showTime = prefs.getBoolean("time", true)
         showTemp = prefs.getBoolean("temp", true)
         tempCelsius = prefs.getBoolean("celsius", true)
+        dateFormatIndex = prefs.getInt("date_format", 0).coerceIn(0, 2)
+        time24h = prefs.getBoolean("time_24h", true)
         styles.forEachIndexed { i, s ->
             s.size = prefs.getFloat("s${i}_size", s.size)
             s.x = prefs.getFloat("s${i}_x", s.x)
@@ -166,6 +174,8 @@ class PhotoTvView(
             putBoolean("time", showTime)
             putBoolean("temp", showTemp)
             putBoolean("celsius", tempCelsius)
+            putInt("date_format", dateFormatIndex)
+            putBoolean("time_24h", time24h)
             styles.forEachIndexed { i, s ->
                 putFloat("s${i}_size", s.size)
                 putFloat("s${i}_x", s.x)
@@ -177,6 +187,25 @@ class PhotoTvView(
                 putBoolean("s${i}_visible", s.visible)
             }
         }.apply()
+    }
+
+    private fun loadWeather() {
+        executor.execute {
+            runCatching {
+                val connection = URL("https://wttr.in/?format=j1").openConnection().apply {
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                    setRequestProperty("User-Agent", "PhotoTV/0.3")
+                }
+                val json = connection.getInputStream().bufferedReader().use { it.readText() }
+                val current = JSONObject(json).optJSONArray("current_condition")?.optJSONObject(0)
+                val c = current?.optString("temp_C")?.toFloatOrNull()
+                if (c != null) {
+                    temperatureC = c
+                    postInvalidate()
+                }
+            }
+        }
     }
 
     private fun loadDemo() {
@@ -608,9 +637,9 @@ class PhotoTvView(
     private fun drawSettingsTime(c: Canvas, x: Float, y: Float) {
         text(c, "Heure et date", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         settingsToggle(c, "Afficher la date", showDate, x, y + 78f, 0)
-        settingsChoice(c, "Format de date", "Samedi 27 septembre 2025", x, y + 140f, 1)
+        settingsChoice(c, "Format de date", dateFormatLabel(), x, y + 140f, 1)
         settingsToggle(c, "Afficher l'heure", showTime, x, y + 205f, 2)
-        settingsChoice(c, "Format de l'heure", "24 h — 15:42", x, y + 267f, 3)
+        settingsChoice(c, "Format de l'heure", if (time24h) "24 h — 15:42" else "12 h — 3:42 PM", x, y + 267f, 3)
         text(c, "Aperçu", x + 22f, y + 345f, 13f, Color.rgb(177, 191, 209))
         text(c, mockDate(), x + 22f, y + 387f, 22f, Color.WHITE, 1)
         text(c, currentTime(), x + 22f, y + 433f, 34f, Color.WHITE, 1)
@@ -734,22 +763,35 @@ class PhotoTvView(
         if (showTime) text(c, currentTime(), xRight, y + 82f, 29f, Color.WHITE, 1, 2)
     }
 
-    private fun mockDate(): String {
-        val fmt = SimpleDateFormat("EEEE dd MMMM yyyy", Locale.FRANCE)
-        val s = fmt.format(Date())
-        return s.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.FRANCE) else it.toString() }
+    private fun datePattern(): String = when (dateFormatIndex) {
+        1 -> "dd/MM/yyyy"
+        2 -> "dd MMM yyyy"
+        else -> "EEEE dd MMMM yyyy"
     }
 
-    private fun itemDate(item: PhotoItem?): String {
-        val t = item?.takenAt?.takeIf { it > 0 } ?: System.currentTimeMillis()
-        val fmt = SimpleDateFormat("EEEE dd MMMM yyyy", Locale.FRANCE)
-        val s = fmt.format(Date(t))
-        return s.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.FRANCE) else it.toString() }
+    private fun dateFormatLabel(): String = when (dateFormatIndex) {
+        1 -> "27/09/2025"
+        2 -> "27 sept. 2025"
+        else -> "Samedi 27 septembre 2025"
     }
 
-    private fun currentTime(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+    private fun formattedDate(time: Long): String {
+        val raw = SimpleDateFormat(datePattern(), Locale.FRANCE).format(Date(time))
+        return if (dateFormatIndex == 0) raw.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.FRANCE) else it.toString() } else raw
+    }
 
-    private fun tempText(): String = if (tempCelsius) "17 °C" else "63 °F"
+    private fun mockDate(): String = formattedDate(System.currentTimeMillis())
+
+    private fun itemDate(item: PhotoItem?): String =
+        formattedDate(item?.takenAt?.takeIf { it > 0 } ?: System.currentTimeMillis())
+
+    private fun currentTime(): String =
+        SimpleDateFormat(if (time24h) "HH:mm" else "h:mm a", Locale.getDefault()).format(Date())
+
+    private fun tempText(): String {
+        val c = temperatureC
+        return if (tempCelsius) "${c.toInt()} °C" else "${(c * 9f / 5f + 32f).toInt()} °F"
+    }
 
     private fun drawSourceCard(c: Canvas, x: Float, y: Float, w: Float, h: Float, title: String, sub: String, icon: Int, focused: Boolean, primary: Boolean) {
         if (primary) gradientRound(c, x, y, x + w, y + h, 14f, Color.rgb(10, 137, 255), Color.rgb(7, 90, 235))
@@ -1180,7 +1222,12 @@ class PhotoTvView(
             1 -> toggleElement(settingsControl)
             2 -> editorElement = (editorElement + dir + 5) % 5
             3 -> transitionIndex = (transitionIndex + dir + transitions.size) % transitions.size
-            4 -> when(settingsControl) { 0 -> showDate=!showDate; 2 -> showTime=!showTime }
+            4 -> when(settingsControl) {
+                0 -> showDate = !showDate
+                1 -> dateFormatIndex = (dateFormatIndex + dir + 3) % 3
+                2 -> showTime = !showTime
+                3 -> time24h = !time24h
+            }
             5 -> when(settingsControl) { 0 -> showTemp=!showTemp; 1 -> tempCelsius=!tempCelsius }
         }
         scheduleSlideshow()
