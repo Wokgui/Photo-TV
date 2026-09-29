@@ -70,7 +70,8 @@ class MainActivity : AppCompatActivity() {
             onPickPhotos = { openPhotoPicker() },
             onWeatherLocation = { requestWeatherLocation() },
             onExportSettings = { exportSettings() },
-            onImportSettings = { importSettings() }
+            onImportSettings = { importSettings() },
+            onAlbumSearch = { requestAlbumSearch() }
         )
         setContentView(ui)
 
@@ -78,6 +79,23 @@ class MainActivity : AppCompatActivity() {
             val uri = runCatching { Uri.parse(saved) }.getOrNull()
             if (uri != null) importTree(uri, silent = true)
         }
+    }
+
+    private fun requestAlbumSearch() {
+        val input = EditText(this).apply {
+            hint = "Nom de l'album"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Rechercher un album")
+            .setView(input)
+            .setNeutralButton("Effacer") { _, _ -> ui.setAlbumSearch("") }
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Rechercher") { _, _ ->
+                ui.setAlbumSearch(input.text?.toString().orEmpty())
+            }
+            .show()
     }
 
     private fun exportSettings() {
