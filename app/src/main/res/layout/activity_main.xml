@@ -527,18 +527,11 @@
             android:layout_gravity="bottom"
             android:background="@drawable/tv_hero_overlay"/>
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|left"
-            android:orientation="vertical"
-            android:padding="44dp">
-            <TextView android:id="@+id/slideTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="34sp"/>
-            <TextView android:id="@+id/slideAlbum" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:textColor="#E4E8EF" android:textSize="20sp"/>
-            <TextView android:id="@+id/slideDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#BBC4D4" android:textSize="14sp"/>
-            <TextView android:id="@+id/slideTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
-            <TextView android:id="@+id/slideTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
-        </LinearLayout>
+        <TextView android:id="@+id/slideTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="34sp"/>
+        <TextView android:id="@+id/slideAlbum" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#E4E8EF" android:textSize="20sp"/>
+        <TextView android:id="@+id/slideDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#BBC4D4" android:textSize="14sp"/>
+        <TextView android:id="@+id/slideTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
+        <TextView android:id="@+id/slideTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
 
         <TextView
             android:id="@+id/slideHelp"
