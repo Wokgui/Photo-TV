@@ -33,7 +33,8 @@ class PhotoTvView(
     private val onPickPhotos: () -> Unit,
     private val onWeatherLocation: () -> Unit = {},
     private val onExportSettings: () -> Unit = {},
-    private val onImportSettings: () -> Unit = {}
+    private val onImportSettings: () -> Unit = {},
+    private val onAlbumSearch: () -> Unit = {}
 ) : View(context) {
 
     private data class Style(
@@ -127,6 +128,8 @@ class PhotoTvView(
     private var editorMoveMode = false
     private var longActionLatched = false
     private var layoutPreset = 0
+    private var albumSearch = ""
+    private var albumSort = 0
 
     private val transitions = listOf(
         "Fondu", "Glissement", "Zoom", "Ken Burns", "Dissolution", "Cube 3D",
@@ -198,6 +201,8 @@ class PhotoTvView(
         autoStartMinutes = prefs.getInt("auto_start", 5).coerceIn(0, 60)
         startDirectly = prefs.getBoolean("start_direct", false)
         layoutPreset = prefs.getInt("layout_preset", 0).coerceIn(0, 3)
+        albumSearch = prefs.getString("album_search", "") ?: ""
+        albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
         favoritesOnly = prefs.getBoolean("favorites_only", false)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         hiddenAlbums.addAll(prefs.getStringSet("hidden_albums", emptySet()) ?: emptySet())
@@ -240,6 +245,8 @@ class PhotoTvView(
             putInt("auto_start", autoStartMinutes)
             putBoolean("start_direct", startDirectly)
             putInt("layout_preset", layoutPreset)
+            putString("album_search", albumSearch)
+            putInt("album_sort", albumSort)
             putBoolean("favorites_only", favoritesOnly)
             putStringSet("favorites", HashSet(favorites))
             putStringSet("hidden_albums", HashSet(hiddenAlbums))
@@ -431,6 +438,14 @@ class PhotoTvView(
         }.getOrDefault(false)
     }
 
+    fun setAlbumSearch(value: String) {
+        albumSearch = value.trim()
+        albumFocus = 0
+        photoFocus = 0
+        savePrefs()
+        invalidate()
+    }
+
     fun showLoading(message: String) {
         loadingText = message
         invalidate()
@@ -597,6 +612,8 @@ class PhotoTvView(
 
         val albums = albumPairs()
         text(c, "Mes albums Google Photos", 45f, 240f, 19f, Color.WHITE, 1)
+        val searchText = if (albumSearch.isBlank()) "Rechercher un album…" else "Recherche : $albumSearch"
+        controlBox(c, 865f, 213f, 255f, 35f, searchText, photosRow == 0 && sourceFocus == 3 && !navFocus)
         text(c, "${albums.size} albums", 1235f, 240f, 13f, Color.rgb(186, 196, 210), 0, 2)
 
         val albumY = 262f
@@ -626,12 +643,24 @@ class PhotoTvView(
     }
 
     private fun albumPairs(): List<Pair<String, Int>> {
-        if (library.isEmpty()) return mockAlbums
-        val counts = linkedMapOf<String, Int>()
-        library.forEach { item ->
-            item.albums.forEach { album -> counts[album] = (counts[album] ?: 0) + 1 }
+        val base = if (library.isEmpty()) {
+            mockAlbums
+        } else {
+            val counts = linkedMapOf<String, Int>()
+            library.forEach { item ->
+                item.albums.forEach { album -> counts[album] = (counts[album] ?: 0) + 1 }
+            }
+            counts.entries.map { it.key to it.value }
         }
-        return counts.entries.sortedBy { it.key.lowercase(Locale.FRANCE) }.map { it.key to it.value }
+
+        val filtered = if (albumSearch.isBlank()) base else {
+            base.filter { it.first.contains(albumSearch, ignoreCase = true) }
+        }
+
+        return when (albumSort) {
+            1 -> filtered.sortedByDescending { it.second }
+            else -> filtered.sortedBy { it.first.lowercase(Locale.FRANCE) }
+        }
     }
 
     private fun currentAlbumName(): String {
@@ -1821,7 +1850,7 @@ class PhotoTvView(
         when (page) {
             0 -> if (activePhotos().isNotEmpty()) previewNext(dir)
             1 -> when (photosRow) {
-                0 -> sourceFocus = (sourceFocus + dir).coerceIn(0, 2)
+                0 -> sourceFocus = (sourceFocus + dir).coerceIn(0, 3)
                 1 -> albumFocus = (albumFocus + dir).coerceIn(0, max(0, albumPairs().size.coerceAtMost(6) - 1))
                 2 -> photoFocus = (photoFocus + dir).coerceIn(0, max(0, currentAlbumPhotos().size.coerceAtMost(6) - 1))
                 else -> navFocus = true
@@ -1940,7 +1969,11 @@ class PhotoTvView(
                 if (activePhotos().isNotEmpty()) startSlideshow() else { page = 1; photosRow = 0; sourceFocus = 0 }
             }
             1 -> when (photosRow) {
-                0 -> if (sourceFocus == 2) onPickPhotos() else onExactSource()
+                0 -> when (sourceFocus) {
+                    0, 1 -> onExactSource()
+                    2 -> onPickPhotos()
+                    else -> onAlbumSearch()
+                }
                 1 -> {
                     val name = currentAlbumName()
                     if (library.isNotEmpty()) {
