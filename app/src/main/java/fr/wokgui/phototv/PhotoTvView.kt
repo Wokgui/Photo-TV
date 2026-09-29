@@ -474,26 +474,44 @@ class PhotoTvView(
         return library.filter { it.albums.contains(name) }.map { it as PhotoItem? }
     }
 
+    private fun metadataValues(item: PhotoItem? = currentItem()): List<String> = listOf(
+        item?.title ?: "001. Opéra d'Oslo",
+        item?.album ?: "Norvège 2026",
+        itemDate(item),
+        currentTime(),
+        tempText(),
+        item?.description?.ifBlank { "—" } ?: "—",
+        item?.location?.ifBlank { "—" } ?: "—",
+        item?.camera?.ifBlank { "—" } ?: "—",
+        item?.dimensionsLabel?.ifBlank { "—" } ?: "—",
+        item?.orientationLabel?.ifBlank { "—" } ?: "—"
+    )
+
     private fun drawEditor(c: Canvas) {
         drawAppBackground(c)
         drawBrand(c, 34f, 20f, "ÉDITEUR")
 
         val leftX = 32f
         val leftW = 310f
-        val startY = 112f
-        val h = 75f
-        val gap = 10f
-        val values = listOf(
-            currentItem()?.title ?: "001. Opéra d'Oslo",
-            currentItem()?.album ?: "Norvège 2026",
-            mockDate(),
-            currentTime(),
-            tempText()
-        )
-        elementNames.forEachIndexed { i, name ->
-            val y = startY + i * (h + gap)
-            val selected = editorElement == i
-            drawMetaCard(c, leftX, y, leftW, h, name, values[i], selected, editorColumn == 0 && !navFocus && editorElement == i)
+        val startY = 86f
+        val h = 78f
+        val gap = 9f
+        val values = metadataValues()
+        val visibleCount = 6
+        val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
+        for (slot in 0 until visibleCount) {
+            val i = first + slot
+            if (i !in elementNames.indices) break
+            val y = startY + slot * (h + gap)
+            drawMetaCard(
+                c, leftX, y, leftW, h,
+                elementNames[i], values[i],
+                editorElement == i,
+                editorColumn == 0 && !navFocus && editorElement == i
+            )
+        }
+        if (elementNames.size > visibleCount) {
+            text(c, "${first + 1}–${min(first + visibleCount, elementNames.size)} / ${elementNames.size}", leftX + leftW, 623f, 10f, Color.rgb(128, 149, 173), 0, 2)
         }
 
         val canvasX = 366f
@@ -502,6 +520,7 @@ class PhotoTvView(
         val canvasH = 574f
         round(c, canvasX, canvasY, canvasX + canvasW, canvasY + canvasH, 5f, Color.rgb(10, 22, 32))
         drawBackgroundPhoto(c, canvasX, canvasY, canvasW, canvasH, currentBitmap())
+        if (gridSnap) drawEditorGrid(c, canvasX, canvasY, canvasW, canvasH)
         drawBottomGradient(c, canvasX, canvasY, canvasW, canvasH)
         drawEditorOverlays(c, canvasX, canvasY, canvasW, canvasH)
 
@@ -514,15 +533,25 @@ class PhotoTvView(
         drawEditorPanel(c, panelX, panelY, panelW)
     }
 
+    private fun drawEditorGrid(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
+        stroke.style = Paint.Style.STROKE
+        stroke.strokeWidth = 0.7f
+        stroke.color = Color.argb(65, 150, 200, 255)
+        for (i in 1 until 10) {
+            val gx = x + w * i / 10f
+            val gy = y + h * i / 10f
+            c.drawLine(gx, y, gx, y + h, stroke)
+            c.drawLine(x, gy, x + w, gy, stroke)
+        }
+        stroke.strokeWidth = 1.3f
+        stroke.color = Color.argb(110, 90, 170, 255)
+        c.drawLine(x + w / 2f, y, x + w / 2f, y + h, stroke)
+        c.drawLine(x, y + h / 2f, x + w, y + h / 2f, stroke)
+    }
+
     private fun drawEditorOverlays(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
         val item = currentItem()
-        val vals = listOf(
-            item?.title ?: "001. Opéra d'Oslo",
-            item?.album ?: "Norvège 2026",
-            mockDate(),
-            currentTime(),
-            tempText()
-        )
+        val vals = metadataValues(item)
         styles.forEachIndexed { i, s ->
             val global = when (i) {
                 2 -> showDate
@@ -598,13 +627,8 @@ class PhotoTvView(
         drawToggle(c, x + 205f, y + 515f, s.visible, editorControl == 8 && editorColumn == 2 && !navFocus)
     }
 
-    private fun currentTextForElement(): String = when (editorElement) {
-        0 -> currentItem()?.title ?: "001. Opéra d'Oslo"
-        1 -> currentItem()?.album ?: "Norvège 2026"
-        2 -> mockDate()
-        3 -> currentTime()
-        else -> tempText()
-    }
+    private fun currentTextForElement(): String =
+        metadataValues().getOrElse(editorElement) { "—" }
 
     private fun drawSettings(c: Canvas) {
         drawAppBackground(c)
@@ -666,26 +690,43 @@ class PhotoTvView(
 
     private fun drawSettingsElements(c: Canvas, x: Float, y: Float, w: Float) {
         text(c, "Éléments affichés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        val states = listOf(styles[0].visible, styles[1].visible, showDate, showTime, showTemp)
-        elementNames.forEachIndexed { i, n ->
-            val yy = y + 72f + i * 72f
-            round(c, x + 22f, yy, x + w - 22f, yy + 56f, 10f, Color.rgb(11, 25, 38))
-            if (settingsColumn == 1 && settingsControl == i && !navFocus) strokeRound(c, x + 19f, yy - 3f, x + w - 19f, yy + 59f, 11f, Color.rgb(31, 132, 255), 2f)
-            text(c, n, x + 42f, yy + 34f, 14f, Color.WHITE, 1)
-            drawToggle(c, x + w - 80f, yy + 16f, states[i], false)
+        val visibleCount = 6
+        val first = (settingsControl - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
+        for (slot in 0 until visibleCount) {
+            val i = first + slot
+            if (i !in elementNames.indices) break
+            val yy = y + 64f + slot * 70f
+            round(c, x + 22f, yy, x + w - 22f, yy + 54f, 10f, Color.rgb(11, 25, 38))
+            if (settingsColumn == 1 && settingsControl == i && !navFocus) {
+                strokeRound(c, x + 19f, yy - 3f, x + w - 19f, yy + 57f, 11f, Color.rgb(31, 132, 255), 2f)
+            }
+            text(c, elementNames[i], x + 42f, yy + 33f, 14f, Color.WHITE, 1)
+            drawToggle(c, x + w - 80f, yy + 13f, elementVisible(i), false)
         }
+        text(c, "${first + 1}–${min(first + visibleCount, elementNames.size)} / ${elementNames.size}", x + w - 24f, y + 515f, 11f, Color.rgb(128, 149, 173), 0, 2)
+    }
+
+    private fun elementVisible(i: Int): Boolean = when (i) {
+        2 -> showDate
+        3 -> showTime
+        4 -> showTemp
+        else -> styles.getOrNull(i)?.visible ?: false
     }
 
     private fun drawSettingsStyle(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
         text(c, "Style et position", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        text(c, "Sélectionnez un élément puis utilisez l'Éditeur pour le placer au pixel près.", x + 22f, y + 72f, 14f, Color.rgb(184, 196, 212))
-        elementNames.forEachIndexed { i, n ->
-            val yy = y + 112f + i * 66f
+        text(c, "Chaque élément peut être déplacé, redimensionné et masqué indépendamment.", x + 22f, y + 67f, 13f, Color.rgb(184, 196, 212))
+        val visibleCount = 6
+        val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
+        for (slot in 0 until visibleCount) {
+            val i = first + slot
+            if (i !in elementNames.indices) break
+            val yy = y + 92f + slot * 64f
             round(c, x + 22f, yy, x + 420f, yy + 50f, 10f, if (i == editorElement) Color.rgb(10, 101, 214) else Color.rgb(11, 25, 38))
-            text(c, n, x + 40f, yy + 31f, 14f, Color.WHITE)
+            text(c, elementNames[i], x + 40f, yy + 31f, 14f, Color.WHITE)
             text(c, "${styles[i].size.toInt()} px  •  X ${styles[i].x.toInt()}  •  Y ${styles[i].y.toInt()}", x + 445f, yy + 31f, 13f, Color.rgb(177, 191, 209))
         }
-        text(c, "OK ouvre directement l'Éditeur sur l'élément sélectionné.", x + 22f, y + h - 35f, 12f, Color.rgb(126, 151, 181))
+        text(c, "OK ouvre l'Éditeur sur l'élément sélectionné.", x + 22f, y + h - 27f, 12f, Color.rgb(126, 151, 181))
     }
 
     private fun drawSettingsTransitions(c: Canvas, x: Float, y: Float) {
@@ -773,26 +814,83 @@ class PhotoTvView(
 
         drawBottomGradient(c, 0f, 0f, 1280f, 720f)
         val item = currentItem()
-        val vals = listOf(
-            item?.title ?: "001. Opéra d'Oslo",
-            item?.album ?: "Norvège 2026",
-            itemDate(item),
-            currentTime(),
-            tempText()
-        )
-        styles.forEachIndexed { i, s ->
-            val global = when (i) { 2 -> showDate; 3 -> showTime; 4 -> showTemp; else -> true }
-            if (!s.visible || !global) return@forEachIndexed
-            applyStylePaint(s)
-            val x = 1280f * s.x / 100f
-            val y = 720f * s.y / 100f
-            p.textAlign = when (s.align) { 1 -> Paint.Align.CENTER; 2 -> Paint.Align.RIGHT; else -> Paint.Align.LEFT }
-            c.drawText(vals[i], x, y, p)
+        val vals = metadataValues(item)
+        val hideOverlays = overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L
+        val shift = oledShift()
+        if (!hideOverlays) {
+            styles.forEachIndexed { i, st ->
+                val global = when (i) { 2 -> showDate; 3 -> showTime; 4 -> showTemp; else -> true }
+                if (!st.visible || !global || vals.getOrElse(i) { "—" } == "—") return@forEachIndexed
+                applyStylePaint(st)
+                val x = 1280f * st.x / 100f + shift.first
+                val y = 720f * st.y / 100f + shift.second
+                p.textAlign = when (st.align) { 1 -> Paint.Align.CENTER; 2 -> Paint.Align.RIGHT; else -> Paint.Align.LEFT }
+                c.drawText(vals[i], x, y, p)
+            }
         }
 
         if (paused) {
             round(c, 535f, 320f, 745f, 398f, 16f, Color.argb(200, 8, 18, 29))
             text(c, "EN PAUSE", 640f, 367f, 21f, Color.WHITE, 1, 1)
+        }
+        if (infoPanelVisible) drawInfoPanel(c, item)
+        if (quickMenuVisible) drawQuickMenu(c, item)
+    }
+
+    private fun oledShift(): Pair<Float, Float> {
+        if (!oledProtection) return 0f to 0f
+        val step = ((System.currentTimeMillis() / 60_000L) % 9L).toInt()
+        val offsets = arrayOf(
+            -4f to -3f, 0f to -3f, 4f to -3f,
+            -4f to 0f, 0f to 0f, 4f to 0f,
+            -4f to 3f, 0f to 3f, 4f to 3f
+        )
+        return offsets[step]
+    }
+
+    private fun drawQuickMenu(c: Canvas, item: PhotoItem?) {
+        val labels = listOf(
+            if (item != null && favorites.contains(item.uri.toString())) "★ Retirer des favoris" else "☆ Ajouter aux favoris",
+            "Masquer cette photo",
+            "Informations",
+            if (paused) "Reprendre" else "Pause"
+        )
+        val x = 855f
+        val y = 210f
+        val w = 370f
+        val h = 250f
+        round(c, x, y, x + w, y + h, 18f, Color.argb(238, 5, 17, 29))
+        strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(51, 80, 111), 1.5f)
+        text(c, "Photo courante", x + 22f, y + 35f, 16f, Color.WHITE, 1)
+        labels.forEachIndexed { i, label ->
+            val yy = y + 56f + i * 47f
+            if (quickMenuIndex == i) gradientRound(c, x + 14f, yy, x + w - 14f, yy + 39f, 10f, Color.rgb(14, 119, 243), Color.rgb(8, 85, 207))
+            text(c, label, x + 31f, yy + 26f, 13f, Color.WHITE)
+        }
+    }
+
+    private fun drawInfoPanel(c: Canvas, item: PhotoItem?) {
+        val x = 35f
+        val y = 112f
+        val w = 470f
+        val h = 355f
+        round(c, x, y, x + w, y + h, 16f, Color.argb(232, 5, 17, 29))
+        strokeRound(c, x, y, x + w, y + h, 16f, Color.rgb(50, 82, 114), 1.3f)
+        text(c, "Informations", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        val rows = listOf(
+            "Titre" to (item?.title ?: "—"),
+            "Album(s)" to (item?.albums?.joinToString(" • ") ?: "—"),
+            "Date" to itemDate(item),
+            "Lieu" to (item?.location?.ifBlank { "—" } ?: "—"),
+            "Appareil" to (item?.camera?.ifBlank { "—" } ?: "—"),
+            "Dimensions" to (item?.dimensionsLabel?.ifBlank { "—" } ?: "—"),
+            "Orientation" to (item?.orientationLabel?.ifBlank { "—" } ?: "—"),
+            "Type" to (item?.mediaType ?: "—")
+        )
+        rows.forEachIndexed { i, row ->
+            val yy = y + 72f + i * 33f
+            text(c, row.first, x + 22f, yy, 11f, Color.rgb(148, 167, 190))
+            text(c, row.second.take(44), x + 145f, yy, 12f, Color.WHITE)
         }
     }
 
