@@ -1780,10 +1780,16 @@ class PhotoTvView(
                 }
             }
             2 -> {
-                if (editorColumn == 0) editorColumn = 2
-                else if (editorColumn == 2) {
-                    val s = styles[editorElement]
-                    when (editorControl) { 7 -> s.shadow = !s.shadow; 8 -> s.visible = !s.visible }
+                when (editorColumn) {
+                    0 -> editorColumn = 1
+                    1 -> editorMoveMode = !editorMoveMode
+                    2 -> {
+                        val st = styles[editorElement]
+                        when (editorControl) {
+                            7 -> st.shadow = !st.shadow
+                            8 -> st.visible = !st.visible
+                        }
+                    }
                 }
             }
             3 -> {
@@ -1817,14 +1823,26 @@ class PhotoTvView(
         val items = activePhotos()
         if (items.isEmpty()) return
         currentPhoto = (currentPhoto + dir + items.size) % items.size
-        preload(listOf(items[currentPhoto].uri))
+        slideStartedAt = System.currentTimeMillis()
+        preloadAroundCurrent()
+        savePrefs()
         invalidate()
     }
 
     private fun startSlideshow() {
+        val items = activePhotos()
+        if (items.isEmpty()) return
+        currentPhoto = currentPhoto.coerceIn(0, items.lastIndex)
         slideshow = true
         paused = false
+        quickMenuVisible = false
+        infoPanelVisible = false
+        history.clear()
+        rebuildShuffleBag()
         transitionProgress = 1f
+        slideStartedAt = System.currentTimeMillis()
+        preloadAroundCurrent()
+        inactivityHandler.removeCallbacksAndMessages(null)
         invalidate()
         scheduleSlideshow()
     }
@@ -1832,8 +1850,12 @@ class PhotoTvView(
     private fun stopSlideshow() {
         slideshow = false
         paused = false
+        quickMenuVisible = false
+        infoPanelVisible = false
         handler.removeCallbacksAndMessages(null)
         transitionAnimator?.cancel()
+        savePrefs()
+        scheduleInactivity()
         invalidate()
     }
 
@@ -1845,26 +1867,73 @@ class PhotoTvView(
 
     private fun scheduleSlideshow() {
         handler.removeCallbacksAndMessages(null)
-        if (!slideshow || paused || fixedImage) return
+        if (!slideshow || paused || fixedImage || quickMenuVisible || infoPanelVisible) return
         handler.postDelayed({ slideshowNext(1) }, durationSeconds * 1000L)
+    }
+
+    private fun rebuildShuffleBag() {
+        shuffleBag.clear()
+        val items = activePhotos()
+        if (items.size <= 1) return
+        shuffleBag.addAll(items.indices.filter { it != currentPhoto })
+        shuffleBag.shuffle()
+    }
+
+    private fun preloadAroundCurrent() {
+        val items = activePhotos()
+        if (items.isEmpty()) return
+        val uris = mutableListOf<Uri>()
+        for (offset in 0..5) {
+            val idx = if (items.isEmpty()) 0 else (currentPhoto + offset) % items.size
+            items.getOrNull(idx)?.let { uris += it.uri }
+        }
+        preload(uris)
     }
 
     private fun slideshowNext(dir: Int) {
         val items = activePhotos()
-        if (items.isEmpty()) return
-
-        previousPhoto = currentPhoto
-        currentPhoto = if (randomOrder && items.size > 1) {
-            Random.nextInt(items.size)
-        } else {
-            var next = currentPhoto + dir
-            if (next >= items.size) {
-                if (loop) next = 0 else { stopSlideshow(); return }
-            }
-            if (next < 0) next = items.lastIndex
-            next
+        if (items.isEmpty()) {
+            stopSlideshow()
+            return
         }
-        preload(listOf(items[currentPhoto].uri))
+
+        currentPhoto = currentPhoto.coerceIn(0, items.lastIndex)
+        previousPhoto = currentPhoto
+
+        if (randomOrder && items.size > 1) {
+            if (dir < 0) {
+                if (history.isNotEmpty()) {
+                    currentPhoto = history.removeAt(history.lastIndex).coerceIn(0, items.lastIndex)
+                } else {
+                    currentPhoto = (currentPhoto - 1 + items.size) % items.size
+                }
+            } else {
+                history += currentPhoto
+                if (history.size > 100) history.removeAt(0)
+                if (shuffleBag.isEmpty()) rebuildShuffleBag()
+                currentPhoto = if (shuffleBag.isNotEmpty()) shuffleBag.removeAt(0) else currentPhoto
+            }
+        } else {
+            if (dir > 0) {
+                history += currentPhoto
+                var next = currentPhoto + 1
+                if (next >= items.size) {
+                    if (loop) next = 0 else {
+                        stopSlideshow()
+                        return
+                    }
+                }
+                currentPhoto = next
+            } else {
+                currentPhoto = if (currentPhoto <= 0) {
+                    if (loop) items.lastIndex else 0
+                } else currentPhoto - 1
+            }
+        }
+
+        slideStartedAt = System.currentTimeMillis()
+        savePrefs()
+        preloadAroundCurrent()
         startTransition()
         scheduleSlideshow()
     }
