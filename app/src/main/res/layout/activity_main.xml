@@ -405,16 +405,9 @@
                         android:text="Nom exact de l'album"
                         android:textColor="#E3E7EF"
                         android:textSize="18sp"/>
-                    <TextView
-                        android:id="@+id/editorMeta"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="bottom|left"
-                        android:layout_marginLeft="34dp"
-                        android:layout_marginBottom="30dp"
-                        android:text="29/09/2026 • 15:42 • 18 °C"
-                        android:textColor="#BCC5D5"
-                        android:textSize="13sp"/>
+                    <TextView android:id="@+id/editorDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="29/09/2026" android:textColor="#BCC5D5" android:textSize="14sp"/>
+                    <TextView android:id="@+id/editorTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="15:42" android:textColor="#BCC5D5" android:textSize="14sp" android:visibility="gone"/>
+                    <TextView android:id="@+id/editorTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="— °C" android:textColor="#BCC5D5" android:textSize="14sp" android:visibility="gone"/>
                 </FrameLayout>
 
                 <ScrollView
@@ -432,6 +425,8 @@
                         <Spinner android:id="@+id/editorElement" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Police" android:textColor="#9FA8B8"/>
                         <Spinner android:id="@+id/editorFont" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Couleur" android:textColor="#9FA8B8"/>
+                        <Spinner android:id="@+id/editorColor" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
                         <TextView android:id="@+id/sizeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Taille : 34" android:textColor="#FFFFFF"/>
                         <SeekBar android:id="@+id/editorSize" android:layout_width="match_parent" android:layout_height="44dp" android:max="54" android:progress="24"/>
                         <TextView android:id="@+id/xLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Position X : 5 %" android:textColor="#FFFFFF"/>
@@ -540,7 +535,9 @@
             android:padding="44dp">
             <TextView android:id="@+id/slideTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="34sp"/>
             <TextView android:id="@+id/slideAlbum" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:textColor="#E4E8EF" android:textSize="20sp"/>
-            <TextView android:id="@+id/slideMeta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textColor="#BBC4D4" android:textSize="14sp"/>
+            <TextView android:id="@+id/slideDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#BBC4D4" android:textSize="14sp"/>
+            <TextView android:id="@+id/slideTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
+            <TextView android:id="@+id/slideTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
         </LinearLayout>
 
         <TextView
