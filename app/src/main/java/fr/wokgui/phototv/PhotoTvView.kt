@@ -34,7 +34,8 @@ class PhotoTvView(
     private val onWeatherLocation: () -> Unit = {},
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
-    private val onAlbumSearch: () -> Unit = {}
+    private val onAlbumSearch: () -> Unit = {},
+    private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> }
 ) : View(context) {
 
     private data class Style(
@@ -142,6 +143,7 @@ class PhotoTvView(
     private var layoutPreset = 0
     private var albumSearch = ""
     private var albumSort = 0
+    private var videoSound = false
     private var ruleAlbumIndex = 0
     private val albumRules = linkedMapOf<String, AlbumRule>()
 
@@ -219,6 +221,7 @@ class PhotoTvView(
         layoutPreset = prefs.getInt("layout_preset", 0).coerceIn(0, 3)
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
+        videoSound = prefs.getBoolean("video_sound", false)
         restoreAlbumRules(prefs.getString("album_rules", null))
         favoritesOnly = prefs.getBoolean("favorites_only", false)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
@@ -265,6 +268,7 @@ class PhotoTvView(
             putInt("layout_preset", layoutPreset)
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
+            putBoolean("video_sound", videoSound)
             putString("album_rules", albumRulesJson().toString())
             putBoolean("favorites_only", favoritesOnly)
             putStringSet("favorites", HashSet(favorites))
@@ -380,6 +384,7 @@ class PhotoTvView(
         root.put("layoutPreset", layoutPreset)
         root.put("albumSearch", albumSearch)
         root.put("albumSort", albumSort)
+        root.put("videoSound", videoSound)
         root.put("albumRules", albumRulesJson())
 
         fun strings(values: Collection<String>): JSONArray =
@@ -437,6 +442,7 @@ class PhotoTvView(
             layoutPreset = root.optInt("layoutPreset", layoutPreset).coerceIn(0, 3)
             albumSearch = root.optString("albumSearch", albumSearch)
             albumSort = root.optInt("albumSort", albumSort).coerceIn(0, 1)
+            videoSound = root.optBoolean("videoSound", videoSound)
             root.optJSONObject("albumRules")?.let {
                 albumRules.clear()
                 restoreAlbumRules(it.toString())
@@ -1204,9 +1210,10 @@ class PhotoTvView(
         controlBox(c, x + 350f, y + 468f, 180f, 38f, "Exporter", settingsColumn == 1 && settingsControl == 8 && !navFocus)
         controlBox(c, x + 545f, y + 468f, 180f, 38f, "Importer", settingsColumn == 1 && settingsControl == 9 && !navFocus)
 
+        settingsToggle(c, "Son des vidéos", videoSound, x, y + 500f, 10)
         val albumCount = library.flatMap { it.albums }.distinct().size
-        val diag = "Diagnostic : ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${excludedUris.size} masqués • cache ${bitmapCache.size}"
-        text(c, diag, x + 22f, y + 532f, 10.5f, Color.rgb(135, 158, 184))
+        val diag = "Diagnostic : ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${excludedUris.size} masqués"
+        text(c, diag, x + 22f, y + 545f, 10f, Color.rgb(135, 158, 184))
     }
 
     private fun imageModeLabel(): String =
@@ -2098,7 +2105,7 @@ class PhotoTvView(
         5 -> 2
         6 -> 4
         7 -> 7
-        else -> 9
+        else -> 10
     }
 
     private fun adjustEditor(dir: Int) {
@@ -2196,6 +2203,10 @@ class PhotoTvView(
                 5 -> startDirectly = !startDirectly
                 6 -> favoritesOnly = !favoritesOnly
                 7 -> applyPreset((layoutPreset + dir + 4) % 4)
+                10 -> {
+                    videoSound = !videoSound
+                    syncVideoPlayback()
+                }
             }
         }
         scheduleSlideshow()
@@ -2307,6 +2318,12 @@ class PhotoTvView(
         invalidate()
     }
 
+    private fun syncVideoPlayback() {
+        val item = if (slideshow) currentItem() else null
+        if (item?.mediaType == "video") onVideoPlayback(item.uri, videoSound)
+        else onVideoPlayback(null, videoSound)
+    }
+
     private fun startSlideshow() {
         val items = activePhotos()
         if (items.isEmpty()) return
@@ -2320,6 +2337,7 @@ class PhotoTvView(
         transitionProgress = 1f
         slideStartedAt = System.currentTimeMillis()
         preloadAroundCurrent()
+        syncVideoPlayback()
         inactivityHandler.removeCallbacksAndMessages(null)
         invalidate()
         scheduleSlideshow()
@@ -2332,6 +2350,7 @@ class PhotoTvView(
         infoPanelVisible = false
         handler.removeCallbacksAndMessages(null)
         transitionAnimator?.cancel()
+        onVideoPlayback(null, videoSound)
         savePrefs()
         scheduleInactivity()
         invalidate()
@@ -2413,6 +2432,7 @@ class PhotoTvView(
         slideStartedAt = System.currentTimeMillis()
         savePrefs()
         preloadAroundCurrent()
+        syncVideoPlayback()
         startTransition()
         scheduleSlideshow()
     }
