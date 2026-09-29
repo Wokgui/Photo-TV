@@ -3,340 +3,302 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0C0F14">
+    android:background="#071019">
 
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/mainShell"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:paddingLeft="28dp"
-        android:paddingRight="28dp"
-        android:paddingTop="18dp"
-        android:paddingBottom="18dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:src="@drawable/ic_photo_tv"
-                android:contentDescription="Photo TV"/>
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:orientation="vertical"
-                android:layout_marginLeft="12dp">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Photo TV"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold"
-                    android:textSize="24sp"/>
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="DIAPORAMA GOOGLE PHOTOS • TV"
-                    android:textColor="#8790A1"
-                    android:textSize="10sp"
-                    android:letterSpacing="0.12"/>
-            </LinearLayout>
-
-            <Space
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1"/>
-
-            <Button
-                android:id="@+id/startSlideshow"
-                android:layout_width="190dp"
-                android:layout_height="48dp"
-                android:text="▶  Diaporama"
-                android:textAllCaps="false"
-                android:textStyle="bold"
-                android:textColor="#FFFFFF"
-                android:background="@drawable/tv_button"/>
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp">
-
-            <Button
-                android:id="@+id/tabPreview"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:text="Aperçu"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:background="@drawable/tv_tab"/>
-            <Button
-                android:id="@+id/tabPhotos"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:layout_marginLeft="8dp"
-                android:text="Photos"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:background="@drawable/tv_tab"/>
-            <Button
-                android:id="@+id/tabEditor"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:layout_marginLeft="8dp"
-                android:text="Éditeur"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:background="@drawable/tv_tab"/>
-            <Button
-                android:id="@+id/tabSettings"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:layout_marginLeft="8dp"
-                android:text="Réglages"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:background="@drawable/tv_tab"/>
-        </LinearLayout>
+        android:layout_height="match_parent">
 
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1">
+            android:layout_height="match_parent"
+            android:paddingBottom="76dp">
 
-            <LinearLayout
+            <FrameLayout
                 android:id="@+id/pagePreview"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical">
+                android:layout_height="match_parent">
 
-                <FrameLayout
+                <ImageView
+                    android:id="@+id/previewImage"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/tv_focus_card"
-                    android:padding="4dp">
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:background="#123D68"/>
 
-                    <ImageView
-                        android:id="@+id/previewImage"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:scaleType="centerCrop"
-                        android:background="#202633"/>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:layout_gravity="bottom"
-                        android:background="@drawable/tv_hero_overlay"/>
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="bottom|left"
-                        android:orientation="vertical"
-                        android:padding="34dp">
-                        <TextView
-                            android:id="@+id/previewTitle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="001. Opéra d'Oslo"
-                            android:textColor="#FFFFFF"
-                            android:textStyle="bold"
-                            android:textSize="34sp"/>
-                        <TextView
-                            android:id="@+id/previewAlbum"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:text="Nom exact de l'album Google Photos"
-                            android:textColor="#E8ECF4"
-                            android:textSize="19sp"/>
-                        <TextView
-                            android:id="@+id/previewDate"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="5dp"
-                            android:text="29 septembre 2026 • 15:42 • 18 °C"
-                            android:textColor="#BFC7D6"
-                            android:textSize="14sp"/>
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/previewHint"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="top|right"
-                        android:layout_margin="22dp"
-                        android:paddingLeft="12dp"
-                        android:paddingRight="12dp"
-                        android:paddingTop="8dp"
-                        android:paddingBottom="8dp"
-                        android:background="#AA10141B"
-                        android:text="Aperçu TV  •  16:9"
-                        android:textColor="#D7DEEA"
-                        android:textSize="12sp"/>
-                </FrameLayout>
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/tv_hero_overlay"/>
 
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="150dp"
-                    android:layout_marginTop="14dp"
-                    android:orientation="horizontal">
-
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|left"
+                    android:layout_marginLeft="34dp"
+                    android:layout_marginTop="26dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:src="@drawable/ic_photo_tv"
+                        android:contentDescription="Photo TV"/>
                     <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:padding="18dp"
-                        android:background="@drawable/tv_focus_card"
-                        android:focusable="true">
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="12dp"
+                        android:orientation="vertical">
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="SOURCE DES PHOTOS"
-                            android:textColor="#7E95FF"
-                            android:textStyle="bold"
-                            android:textSize="11sp"/>
-                        <TextView
-                            android:id="@+id/sourceStatus"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="Aucune photothèque sélectionnée"
+                            android:text="Photo TV"
                             android:textColor="#FFFFFF"
-                            android:textSize="18sp"/>
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:text="Google Photos ou Google Takeout avec titres et albums."
-                            android:textColor="#9FA8B8"
-                            android:textSize="13sp"/>
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_weight="1"
-                        android:layout_marginLeft="14dp"
-                        android:orientation="vertical"
-                        android:padding="18dp"
-                        android:background="@drawable/tv_focus_card"
-                        android:focusable="true">
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="LECTURE"
-                            android:textColor="#7E95FF"
                             android:textStyle="bold"
-                            android:textSize="11sp"/>
-                        <TextView
-                            android:id="@+id/previewPlayback"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="Aléatoire • 10 s • Fondu enchaîné"
-                            android:textColor="#FFFFFF"
-                            android:textSize="18sp"/>
+                            android:textSize="25sp"/>
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:text="Toutes les commandes sont utilisables à la télécommande."
-                            android:textColor="#9FA8B8"
-                            android:textSize="13sp"/>
+                            android:text="DIAPORAMA"
+                            android:textColor="#D8E4FF"
+                            android:textSize="11sp"
+                            android:letterSpacing="0.12"/>
                     </LinearLayout>
                 </LinearLayout>
-            </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|right"
+                    android:layout_marginRight="34dp"
+                    android:layout_marginTop="24dp"
+                    android:orientation="vertical"
+                    android:gravity="right">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="☀  18 °C"
+                        android:textColor="#FFFFFF"
+                        android:textSize="22sp"/>
+                    <TextView
+                        android:id="@+id/previewDate"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="29 septembre 2026 • 15:42"
+                        android:textColor="#F3F6FB"
+                        android:textSize="13sp"/>
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/startSlideshow"
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:layout_gravity="center"
+                    android:text="▶"
+                    android:textSize="24sp"
+                    android:textColor="#FFFFFF"
+                    android:background="@drawable/tv_button"
+                    android:contentDescription="Lancer le diaporama"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|left"
+                    android:layout_marginLeft="34dp"
+                    android:layout_marginBottom="24dp"
+                    android:orientation="vertical">
+                    <TextView
+                        android:id="@+id/previewTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="001. Opéra d'Oslo"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="31sp"/>
+                    <TextView
+                        android:id="@+id/previewAlbum"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="5dp"
+                        android:text="Norvège 2026"
+                        android:textColor="#FFFFFF"
+                        android:textSize="19sp"/>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/previewPlayback"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|right"
+                    android:layout_marginRight="34dp"
+                    android:layout_marginBottom="28dp"
+                    android:text="3 / 142"
+                    android:textColor="#F3F6FB"
+                    android:textSize="14sp"/>
+                <TextView
+                    android:id="@+id/sourceStatus"
+                    android:layout_width="1dp"
+                    android:layout_height="1dp"
+                    android:visibility="invisible"/>
+            </FrameLayout>
 
             <LinearLayout
                 android:id="@+id/pagePhotos"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:orientation="vertical"
+                android:paddingLeft="28dp"
+                android:paddingRight="28dp"
+                android:paddingTop="18dp"
                 android:visibility="gone">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Photos et albums"
-                    android:textColor="#FFFFFF"
-                    android:textStyle="bold"
-                    android:textSize="28sp"/>
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Choisissez une source, puis les albums à afficher sur la télévision."
-                    android:textColor="#9CA5B5"
-                    android:textSize="14sp"/>
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="220dp"
-                    android:layout_marginTop="18dp"
+                    android:layout_height="56dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:src="@drawable/ic_photo_tv"
+                        android:contentDescription="Photo TV"/>
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:layout_marginLeft="12dp"
+                        android:gravity="center_vertical"
+                        android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Photo TV" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="24sp"/>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="PHOTOS ET ALBUMS" android:textColor="#93A4BC" android:textSize="10sp" android:letterSpacing="0.12"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="98dp"
+                    android:layout_marginTop="8dp"
                     android:orientation="horizontal">
 
-                    <LinearLayout
+                    <Button
+                        android:id="@+id/pickFolder"
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_weight="1"
-                        android:orientation="vertical"
-                        android:padding="22dp"
-                        android:background="@drawable/tv_focus_card"
-                        android:focusable="true">
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GOOGLE PHOTOS" android:textColor="#7E95FF" android:textStyle="bold" android:textSize="11sp"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Sélection en ligne" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="22sp"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Sélectionnez des images avec le sélecteur Android. Le nom d'album exact n'est garanti que via les métadonnées disponibles." android:textColor="#9FA8B8" android:textSize="13sp"/>
-                        <Button
-                            android:id="@+id/pickPhotos"
-                            android:layout_width="220dp"
-                            android:layout_height="48dp"
-                            android:layout_marginTop="14dp"
-                            android:text="Sélectionner des photos"
-                            android:textAllCaps="false"
-                            android:textColor="#FFFFFF"
-                            android:background="@drawable/tv_button"/>
-                    </LinearLayout>
+                        android:text="Google Photos\nMode exact via Takeout"
+                        android:textAllCaps="false"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="15sp"
+                        android:background="@drawable/tv_button"/>
 
-                    <LinearLayout
+                    <Button
+                        android:id="@+id/pickFolder2"
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_weight="1"
-                        android:layout_marginLeft="16dp"
-                        android:orientation="vertical"
-                        android:padding="22dp"
-                        android:background="@drawable/tv_focus_card"
-                        android:focusable="true">
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GOOGLE TAKEOUT / DOSSIER" android:textColor="#7E95FF" android:textStyle="bold" android:textSize="11sp"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Photothèque avec métadonnées" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="22sp"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Récupère le titre depuis le nom du fichier et le nom exact de l'album depuis le dossier Takeout." android:textColor="#9FA8B8" android:textSize="13sp"/>
-                        <Button
-                            android:id="@+id/pickFolder"
-                            android:layout_width="190dp"
-                            android:layout_height="48dp"
-                            android:layout_marginTop="14dp"
-                            android:text="Choisir un dossier"
-                            android:textAllCaps="false"
-                            android:textColor="#FFFFFF"
-                            android:background="@drawable/tv_button"/>
+                        android:layout_marginLeft="12dp"
+                        android:text="Choisir un dossier\nStockage local"
+                        android:textAllCaps="false"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp"
+                        android:background="@drawable/tv_focus_card"/>
+
+                    <Button
+                        android:id="@+id/pickPhotos"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="12dp"
+                        android:text="Sélectionner des photos\nAlbum non garanti"
+                        android:textAllCaps="false"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp"
+                        android:background="@drawable/tv_focus_card"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Mes albums Google Photos"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="20sp"/>
+                    <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+                    <TextView
+                        android:id="@+id/albumsStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Aucun album chargé"
+                        android:textColor="#AEB7C6"
+                        android:textSize="13sp"/>
+                </LinearLayout>
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="165dp"
+                    android:layout_marginTop="10dp"
+                    android:fillViewport="true"
+                    android:scrollbars="none">
+                    <LinearLayout
+                        android:id="@+id/albumRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"/>
+                </HorizontalScrollView>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Photos de l'album sélectionné"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:textSize="20sp"/>
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginTop="10dp"
+                    android:fillViewport="true"
+                    android:scrollbars="none">
+                    <LinearLayout
+                        android:id="@+id/photoRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="top"
+                        android:orientation="horizontal"/>
+                </HorizontalScrollView>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/pageEditor"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingLeft="18dp"
+                android:paddingRight="18dp"
+                android:paddingTop="14dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <ImageView android:layout_width="34dp" android:layout_height="34dp" android:src="@drawable/ic_photo_tv" android:contentDescription="Photo TV"/>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="10dp" android:gravity="center_vertical" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Photo TV" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="22sp"/>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ÉDITEUR" android:textColor="#93A4BC" android:textSize="10sp" android:letterSpacing="0.12"/>
                     </LinearLayout>
                 </LinearLayout>
 
@@ -344,168 +306,180 @@
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_weight="1"
-                    android:layout_marginTop="16dp"
-                    android:orientation="vertical"
-                    android:padding="20dp"
-                    android:background="@drawable/tv_focus_card">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Albums détectés" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
-                    <TextView android:id="@+id/albumsStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Aucun album chargé" android:textColor="#9FA8B8" android:textSize="14sp"/>
-                    <HorizontalScrollView
-                        android:layout_width="match_parent"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="210dp"
                         android:layout_height="match_parent"
-                        android:layout_marginTop="14dp"
-                        android:fillViewport="true">
-                        <LinearLayout
-                            android:id="@+id/albumRow"
-                            android:layout_width="wrap_content"
+                        android:orientation="vertical">
+                        <Button android:id="@+id/metaTitleCard" android:layout_width="match_parent" android:layout_height="72dp" android:text="✓  Titre de la photo\n001. Opéra d'Oslo" android:textAllCaps="false" android:textColor="#FFFFFF" android:gravity="left|center_vertical" android:background="@drawable/tv_button"/>
+                        <Button android:id="@+id/metaAlbumCard" android:layout_width="match_parent" android:layout_height="72dp" android:layout_marginTop="8dp" android:text="✓  Nom de l'album\nNorvège 2026" android:textAllCaps="false" android:textColor="#FFFFFF" android:gravity="left|center_vertical" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/metaDateCard" android:layout_width="match_parent" android:layout_height="72dp" android:layout_marginTop="8dp" android:text="✓  Date\n29 septembre 2026" android:textAllCaps="false" android:textColor="#FFFFFF" android:gravity="left|center_vertical" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/metaTimeCard" android:layout_width="match_parent" android:layout_height="72dp" android:layout_marginTop="8dp" android:text="✓  Heure\n15:42" android:textAllCaps="false" android:textColor="#FFFFFF" android:gravity="left|center_vertical" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/metaTempCard" android:layout_width="match_parent" android:layout_height="72dp" android:layout_marginTop="8dp" android:text="✓  Température\n18 °C" android:textAllCaps="false" android:textColor="#FFFFFF" android:gravity="left|center_vertical" android:background="@drawable/tv_focus_card"/>
+                    </LinearLayout>
+
+                    <FrameLayout
+                        android:id="@+id/editorCanvas"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="14dp"
+                        android:background="@drawable/tv_focus_card"
+                        android:padding="4dp">
+
+                        <ImageView
+                            android:id="@+id/editorImage"
+                            android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:orientation="horizontal"/>
-                    </HorizontalScrollView>
+                            android:scaleType="centerCrop"
+                            android:background="#153E64"/>
+                        <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/tv_hero_overlay"/>
+                        <TextView android:id="@+id/editorTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="001. Opéra d'Oslo" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="34sp"/>
+                        <TextView android:id="@+id/editorAlbum" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="Norvège 2026" android:textColor="#FFFFFF" android:textSize="19sp"/>
+                        <TextView android:id="@+id/editorDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="29/09/2026" android:textColor="#D2DAE6" android:textSize="14sp"/>
+                        <TextView android:id="@+id/editorTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="15:42" android:textColor="#D2DAE6" android:textSize="14sp" android:visibility="gone"/>
+                        <TextView android:id="@+id/editorTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="— °C" android:textColor="#D2DAE6" android:textSize="14sp" android:visibility="gone"/>
+                    </FrameLayout>
+
+                    <ScrollView
+                        android:layout_width="310dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginLeft="14dp"
+                        android:background="@drawable/tv_focus_card">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="16dp">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Paramètres de l'élément" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="18sp"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Élément" android:textColor="#AEB7C6"/>
+                            <Spinner android:id="@+id/editorElement" android:layout_width="match_parent" android:layout_height="42dp"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Police" android:textColor="#AEB7C6"/>
+                            <Spinner android:id="@+id/editorFont" android:layout_width="match_parent" android:layout_height="42dp"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Couleur" android:textColor="#AEB7C6"/>
+                            <Spinner android:id="@+id/editorColor" android:layout_width="match_parent" android:layout_height="42dp"/>
+                            <TextView android:id="@+id/sizeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Taille : 34" android:textColor="#FFFFFF"/>
+                            <SeekBar android:id="@+id/editorSize" android:layout_width="match_parent" android:layout_height="38dp" android:max="54" android:progress="24"/>
+                            <TextView android:id="@+id/xLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Position X : 5 %" android:textColor="#FFFFFF"/>
+                            <SeekBar android:id="@+id/editorX" android:layout_width="match_parent" android:layout_height="38dp" android:max="90" android:progress="5"/>
+                            <TextView android:id="@+id/yLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Position Y : 70 %" android:textColor="#FFFFFF"/>
+                            <SeekBar android:id="@+id/editorY" android:layout_width="match_parent" android:layout_height="38dp" android:max="90" android:progress="70"/>
+                            <TextView android:id="@+id/opacityLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Opacité : 100 %" android:textColor="#FFFFFF"/>
+                            <SeekBar android:id="@+id/editorOpacity" android:layout_width="match_parent" android:layout_height="38dp" android:max="100" android:progress="100"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Alignement" android:textColor="#AEB7C6"/>
+                            <Spinner android:id="@+id/editorAlign" android:layout_width="match_parent" android:layout_height="42dp"/>
+                            <CheckBox android:id="@+id/editorVisible" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Afficher cet élément" android:textColor="#FFFFFF" android:checked="true"/>
+                        </LinearLayout>
+                    </ScrollView>
                 </LinearLayout>
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/pageEditor"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="horizontal"
-                android:visibility="gone">
-
-                <FrameLayout
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1.7"
-                    android:background="@drawable/tv_focus_card"
-                    android:padding="4dp">
-                    <ImageView
-                        android:id="@+id/editorImage"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:scaleType="centerCrop"
-                        android:background="#202633"/>
-                    <View android:layout_width="match_parent" android:layout_height="match_parent" android:layout_gravity="bottom" android:background="@drawable/tv_hero_overlay"/>
-                    <TextView
-                        android:id="@+id/editorTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="bottom|left"
-                        android:layout_marginLeft="34dp"
-                        android:layout_marginBottom="92dp"
-                        android:text="001. Opéra d'Oslo"
-                        android:textColor="#FFFFFF"
-                        android:textStyle="bold"
-                        android:textSize="34sp"/>
-                    <TextView
-                        android:id="@+id/editorAlbum"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="bottom|left"
-                        android:layout_marginLeft="34dp"
-                        android:layout_marginBottom="58dp"
-                        android:text="Nom exact de l'album"
-                        android:textColor="#E3E7EF"
-                        android:textSize="18sp"/>
-                    <TextView android:id="@+id/editorDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="29/09/2026" android:textColor="#BCC5D5" android:textSize="14sp"/>
-                    <TextView android:id="@+id/editorTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="15:42" android:textColor="#BCC5D5" android:textSize="14sp" android:visibility="gone"/>
-                    <TextView android:id="@+id/editorTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:text="— °C" android:textColor="#BCC5D5" android:textSize="14sp" android:visibility="gone"/>
-                </FrameLayout>
-
-                <ScrollView
-                    android:layout_width="360dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginLeft="16dp"
-                    android:background="@drawable/tv_focus_card">
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:padding="20dp">
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Éditeur d'affichage" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="22sp"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Élément" android:textColor="#9FA8B8"/>
-                        <Spinner android:id="@+id/editorElement" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Police" android:textColor="#9FA8B8"/>
-                        <Spinner android:id="@+id/editorFont" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Couleur" android:textColor="#9FA8B8"/>
-                        <Spinner android:id="@+id/editorColor" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
-                        <TextView android:id="@+id/sizeLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Taille : 34" android:textColor="#FFFFFF"/>
-                        <SeekBar android:id="@+id/editorSize" android:layout_width="match_parent" android:layout_height="44dp" android:max="54" android:progress="24"/>
-                        <TextView android:id="@+id/xLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Position X : 5 %" android:textColor="#FFFFFF"/>
-                        <SeekBar android:id="@+id/editorX" android:layout_width="match_parent" android:layout_height="44dp" android:max="90" android:progress="5"/>
-                        <TextView android:id="@+id/yLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Position Y : 78 %" android:textColor="#FFFFFF"/>
-                        <SeekBar android:id="@+id/editorY" android:layout_width="match_parent" android:layout_height="44dp" android:max="90" android:progress="78"/>
-                        <TextView android:id="@+id/opacityLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Opacité : 100 %" android:textColor="#FFFFFF"/>
-                        <SeekBar android:id="@+id/editorOpacity" android:layout_width="match_parent" android:layout_height="44dp" android:max="100" android:progress="100"/>
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Alignement" android:textColor="#9FA8B8"/>
-                        <Spinner android:id="@+id/editorAlign" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
-                        <CheckBox android:id="@+id/editorVisible" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Afficher cet élément" android:textColor="#FFFFFF" android:checked="true"/>
-                    </LinearLayout>
-                </ScrollView>
-            </LinearLayout>
-
-            <ScrollView
                 android:id="@+id/pageSettings"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingLeft="18dp"
+                android:paddingRight="18dp"
+                android:paddingTop="14dp"
                 android:visibility="gone">
+
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Réglages du diaporama" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="28sp"/>
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Tous les réglages sont conçus pour être manipulés à la télécommande." android:textColor="#9CA5B5" android:textSize="14sp"/>
+                    android:layout_height="46dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <ImageView android:layout_width="34dp" android:layout_height="34dp" android:src="@drawable/ic_photo_tv" android:contentDescription="Photo TV"/>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="10dp" android:gravity="center_vertical" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Photo TV" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="22sp"/>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RÉGLAGES" android:textColor="#93A4BC" android:textSize="10sp" android:letterSpacing="0.12"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
 
                     <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="18dp"
-                        android:orientation="horizontal">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="260dp" android:layout_weight="1" android:orientation="vertical" android:padding="20dp" android:background="@drawable/tv_focus_card">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Informations" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
+                        android:layout_width="190dp"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:background="@drawable/tv_focus_card"
+                        android:padding="8dp">
+                        <Button android:id="@+id/settingsNavSlideshow" android:layout_width="match_parent" android:layout_height="50dp" android:text="▶  Diaporama" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_button"/>
+                        <Button android:id="@+id/settingsNavElements" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="6dp" android:text="T  Éléments affichés" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/settingsNavStyle" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="6dp" android:text="▣  Style et position" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/settingsNavTransitions" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="6dp" android:text="▣  Transitions" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/settingsNavTime" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="6dp" android:text="◷  Heure et date" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/settingsNavTemp" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="6dp" android:text="♨  Température" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_focus_card"/>
+                        <Button android:id="@+id/settingsNavSource" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="6dp" android:text="▣  Source des photos" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_focus_card"/>
+                    </LinearLayout>
+
+                    <ScrollView
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="14dp"
+                        android:background="@drawable/tv_focus_card">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="18dp">
+
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Diaporama" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
+                            <TextView android:id="@+id/durationLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="Durée d'affichage par photo : 10 secondes" android:textColor="#FFFFFF"/>
+                            <SeekBar android:id="@+id/durationSeek" android:layout_width="match_parent" android:layout_height="40dp" android:max="118" android:progress="8"/>
+                            <CheckBox android:id="@+id/fixedImage" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Image fixe" android:textColor="#FFFFFF"/>
+                            <CheckBox android:id="@+id/loop" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Lecture en boucle" android:textColor="#FFFFFF" android:checked="true"/>
+                            <CheckBox android:id="@+id/shuffle" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Ordre aléatoire" android:textColor="#FFFFFF" android:checked="true"/>
+
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Transition entre les photos" android:textColor="#FFFFFF" android:textStyle="bold"/>
+                            <Spinner android:id="@+id/transitionType" android:layout_width="match_parent" android:layout_height="48dp"/>
+                            <TextView android:id="@+id/transitionDurationLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Durée transition : 1,0 s" android:textColor="#FFFFFF"/>
+                            <SeekBar android:id="@+id/transitionDuration" android:layout_width="match_parent" android:layout_height="40dp" android:max="40" android:progress="10"/>
+
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Éléments affichés" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
                             <CheckBox android:id="@+id/showTitle" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Titre de la photo" android:textColor="#FFFFFF" android:checked="true"/>
                             <CheckBox android:id="@+id/showAlbum" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Nom exact de l'album" android:textColor="#FFFFFF" android:checked="true"/>
                             <CheckBox android:id="@+id/showDate" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Date" android:textColor="#FFFFFF" android:checked="true"/>
                             <CheckBox android:id="@+id/showTime" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Heure" android:textColor="#FFFFFF"/>
                             <CheckBox android:id="@+id/showTemp" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Température" android:textColor="#FFFFFF"/>
-                        </LinearLayout>
 
-                        <LinearLayout android:layout_width="0dp" android:layout_height="260dp" android:layout_weight="1" android:layout_marginLeft="14dp" android:orientation="vertical" android:padding="20dp" android:background="@drawable/tv_focus_card">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Date, heure et température" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Format de date" android:textColor="#9FA8B8"/>
-                            <Spinner android:id="@+id/dateFormat" android:layout_width="match_parent" android:layout_height="44dp" android:focusable="true"/>
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Format d'heure" android:textColor="#9FA8B8"/>
-                            <Spinner android:id="@+id/timeFormat" android:layout_width="match_parent" android:layout_height="44dp" android:focusable="true"/>
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Unité de température" android:textColor="#9FA8B8"/>
-                            <Spinner android:id="@+id/tempUnit" android:layout_width="match_parent" android:layout_height="44dp" android:focusable="true"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="Formats" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Format de date" android:textColor="#AEB7C6"/>
+                            <Spinner android:id="@+id/dateFormat" android:layout_width="match_parent" android:layout_height="44dp"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Format d'heure" android:textColor="#AEB7C6"/>
+                            <Spinner android:id="@+id/timeFormat" android:layout_width="match_parent" android:layout_height="44dp"/>
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Unité de température" android:textColor="#AEB7C6"/>
+                            <Spinner android:id="@+id/tempUnit" android:layout_width="match_parent" android:layout_height="44dp"/>
                         </LinearLayout>
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:orientation="horizontal">
-                        <LinearLayout android:layout_width="0dp" android:layout_height="250dp" android:layout_weight="1" android:orientation="vertical" android:padding="20dp" android:background="@drawable/tv_focus_card">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Temporisation" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
-                            <CheckBox android:id="@+id/fixedImage" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Image fixe" android:textColor="#FFFFFF"/>
-                            <TextView android:id="@+id/durationLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Durée : 10 s" android:textColor="#FFFFFF"/>
-                            <SeekBar android:id="@+id/durationSeek" android:layout_width="match_parent" android:layout_height="46dp" android:max="118" android:progress="8"/>
-                            <CheckBox android:id="@+id/shuffle" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Ordre aléatoire" android:textColor="#FFFFFF" android:checked="true"/>
-                            <CheckBox android:id="@+id/loop" android:layout_width="wrap_content" android:layout_height="42dp" android:text="Boucle continue" android:textColor="#FFFFFF" android:checked="true"/>
-                        </LinearLayout>
-
-                        <LinearLayout android:layout_width="0dp" android:layout_height="250dp" android:layout_weight="1" android:layout_marginLeft="14dp" android:orientation="vertical" android:padding="20dp" android:background="@drawable/tv_focus_card">
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Transitions" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="20sp"/>
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Type" android:textColor="#9FA8B8"/>
-                            <Spinner android:id="@+id/transitionType" android:layout_width="match_parent" android:layout_height="48dp" android:focusable="true"/>
-                            <TextView android:id="@+id/transitionDurationLabel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:text="Durée transition : 1,0 s" android:textColor="#FFFFFF"/>
-                            <SeekBar android:id="@+id/transitionDuration" android:layout_width="match_parent" android:layout_height="46dp" android:max="40" android:progress="10"/>
-                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Fondu enchaîné, noir, blanc, glissements, zooms, Ken Burns, flou, dissolution, balayage, cube 3D, rotation…" android:textColor="#9FA8B8" android:textSize="12sp"/>
-                        </LinearLayout>
-                    </LinearLayout>
+                    </ScrollView>
                 </LinearLayout>
-            </ScrollView>
+            </LinearLayout>
         </FrameLayout>
-    </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/bottomNav"
+            android:layout_width="560dp"
+            android:layout_height="60dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:padding="5dp"
+            android:orientation="horizontal"
+            android:background="@drawable/tv_focus_card">
+
+            <Button android:id="@+id/tabPreview" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1" android:text="▣  Aperçu" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_tab"/>
+            <Button android:id="@+id/tabPhotos" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1" android:layout_marginLeft="6dp" android:text="▣  Photos" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_tab"/>
+            <Button android:id="@+id/tabEditor" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1" android:layout_marginLeft="6dp" android:text="◉  Éditeur" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_tab"/>
+            <Button android:id="@+id/tabSettings" android:layout_width="0dp" android:layout_height="50dp" android:layout_weight="1" android:layout_marginLeft="6dp" android:text="⚙  Réglages" android:textAllCaps="false" android:textColor="#FFFFFF" android:background="@drawable/tv_tab"/>
+        </LinearLayout>
+    </FrameLayout>
 
     <FrameLayout
         android:id="@+id/slideshowLayer"
@@ -518,27 +492,40 @@
             android:id="@+id/slideImage"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="fitCenter"
+            android:scaleType="centerCrop"
             android:background="#000000"/>
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_gravity="bottom"
-            android:background="@drawable/tv_hero_overlay"/>
+        <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/tv_hero_overlay"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|left"
+            android:layout_marginLeft="32dp"
+            android:layout_marginTop="22dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <ImageView android:layout_width="38dp" android:layout_height="38dp" android:src="@drawable/ic_photo_tv" android:contentDescription="Photo TV"/>
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="10dp" android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Photo TV" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="23sp"/>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DIAPORAMA" android:textColor="#D8E4FF" android:textSize="10sp"/>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView android:id="@+id/slideTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|right" android:layout_marginRight="30dp" android:layout_marginTop="22dp" android:text="— °C" android:textColor="#FFFFFF" android:textSize="22sp" android:visibility="gone"/>
+        <TextView android:id="@+id/slideDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|right" android:textColor="#FFFFFF" android:textSize="12sp"/>
+        <TextView android:id="@+id/slideTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|right" android:textColor="#FFFFFF" android:textSize="28sp" android:visibility="gone"/>
 
         <TextView android:id="@+id/slideTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#FFFFFF" android:textStyle="bold" android:textSize="34sp"/>
-        <TextView android:id="@+id/slideAlbum" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#E4E8EF" android:textSize="20sp"/>
-        <TextView android:id="@+id/slideDate" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#BBC4D4" android:textSize="14sp"/>
-        <TextView android:id="@+id/slideTime" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
-        <TextView android:id="@+id/slideTemp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#BBC4D4" android:textSize="14sp" android:visibility="gone"/>
+        <TextView android:id="@+id/slideAlbum" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|left" android:textColor="#FFFFFF" android:textSize="20sp"/>
 
         <TextView
             android:id="@+id/slideHelp"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="top|right"
-            android:layout_margin="24dp"
+            android:layout_gravity="bottom|right"
+            android:layout_marginRight="24dp"
+            android:layout_marginBottom="22dp"
             android:padding="10dp"
             android:background="#9910141B"
             android:text="← → photo  •  OK pause  •  Retour"
