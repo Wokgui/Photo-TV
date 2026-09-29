@@ -806,11 +806,25 @@ class PhotoTvView(
 
     private fun drawSettingsTemp(c: Canvas, x: Float, y: Float) {
         text(c, "Température", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        settingsToggle(c, "Afficher la température", showTemp, x, y + 80f, 0)
-        settingsSegment(c, "Unité", listOf("°C", "°F"), if (tempCelsius) 0 else 1, x, y + 145f, 1)
-        text(c, "Aperçu", x + 22f, y + 238f, 13f, Color.rgb(177, 191, 209))
-        text(c, "☀  ${tempText()}", x + 22f, y + 292f, 31f, Color.WHITE, 1)
-        text(c, "La météo réelle sera affichée lorsqu'une source météo est configurée.", x + 22f, y + 345f, 13f, Color.rgb(144, 160, 180))
+        settingsToggle(c, "Afficher la température", showTemp, x, y + 72f, 0)
+        settingsSegment(c, "Unité", listOf("°C", "°F"), if (tempCelsius) 0 else 1, x, y + 132f, 1)
+        settingsChoice(
+            c,
+            "Ville météo",
+            if (weatherLocation.isBlank()) "Automatique" else weatherLocation,
+            x,
+            y + 192f,
+            2
+        )
+
+        text(c, "Aperçu météo", x + 22f, y + 285f, 13f, Color.rgb(177, 191, 209))
+        text(c, "☀  ${tempText()}", x + 22f, y + 335f, 31f, Color.WHITE, 1)
+        text(c, weatherSummary.take(48), x + 22f, y + 370f, 14f, Color.WHITE)
+        val feels = if (tempCelsius) "${feelsLikeC.toInt()} °C" else "${(feelsLikeC * 9f / 5f + 32f).toInt()} °F"
+        val minT = if (tempCelsius) "${forecastMinC.toInt()}°" else "${(forecastMinC * 9f / 5f + 32f).toInt()}°"
+        val maxT = if (tempCelsius) "${forecastMaxC.toInt()}°" else "${(forecastMaxC * 9f / 5f + 32f).toInt()}°"
+        text(c, "Ressenti $feels • Aujourd'hui $minT / $maxT", x + 22f, y + 401f, 12f, Color.rgb(169, 184, 203))
+        text(c, "OK sur « Ville météo » pour choisir une ville.", x + 22f, y + 458f, 11f, Color.rgb(129, 153, 181))
     }
 
     private fun drawSettingsSource(c: Canvas, x: Float, y: Float, w: Float) {
@@ -1731,7 +1745,7 @@ class PhotoTvView(
         2 -> elementNames.lastIndex
         3 -> transitions.lastIndex
         4 -> 3
-        5 -> 1
+        5 -> 2
         6 -> 1
         else -> 7
     }
@@ -1839,7 +1853,7 @@ class PhotoTvView(
                     2 -> { page = 2; editorColumn = 0 }
                     3 -> transitionIndex = settingsControl.coerceIn(0, transitions.lastIndex)
                     4 -> adjustSettings(1)
-                    5 -> adjustSettings(1)
+                    5 -> if (settingsControl == 2) onWeatherLocation() else adjustSettings(1)
                     6 -> if (settingsControl == 0) onExactSource() else onPickPhotos()
                     7 -> adjustSettings(1)
                 }
