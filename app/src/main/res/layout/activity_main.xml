@@ -141,7 +141,7 @@
 
                     <View
                         android:layout_width="match_parent"
-                        android:layout_height="52%"
+                        android:layout_height="match_parent"
                         android:layout_gravity="bottom"
                         android:background="@drawable/tv_hero_overlay"/>
 
@@ -383,7 +383,7 @@
                         android:layout_height="match_parent"
                         android:scaleType="centerCrop"
                         android:background="#202633"/>
-                    <View android:layout_width="match_parent" android:layout_height="52%" android:layout_gravity="bottom" android:background="@drawable/tv_hero_overlay"/>
+                    <View android:layout_width="match_parent" android:layout_height="match_parent" android:layout_gravity="bottom" android:background="@drawable/tv_hero_overlay"/>
                     <TextView
                         android:id="@+id/editorTitle"
                         android:layout_width="wrap_content"
@@ -523,7 +523,7 @@
 
         <View
             android:layout_width="match_parent"
-            android:layout_height="45%"
+            android:layout_height="match_parent"
             android:layout_gravity="bottom"
             android:background="@drawable/tv_hero_overlay"/>
 
