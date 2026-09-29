@@ -1593,10 +1593,16 @@ class PhotoTvView(
         if (navFocus) {
             if (dir < 0) {
                 navFocus = false
-                when (page) { 1 -> photosRow = 2; 2 -> editorColumn = 1; 3 -> settingsColumn = 1 }
+                when (page) {
+                    1 -> photosRow = 2
+                    2 -> editorColumn = 1
+                    3 -> settingsColumn = 1
+                }
             }
-            invalidate(); return
+            invalidate()
+            return
         }
+
         when (page) {
             0 -> if (dir > 0) navFocus = true
             1 -> {
@@ -1604,23 +1610,36 @@ class PhotoTvView(
                 if (photosRow == 3) navFocus = true
             }
             2 -> {
-                if (editorColumn == 0) editorElement = (editorElement + dir).coerceIn(0, elementNames.lastIndex)
-                else if (editorColumn == 2) editorControl = (editorControl + dir).coerceIn(0, 8)
-                else if (dir > 0) navFocus = true
+                if (editorColumn == 1 && editorMoveMode) {
+                    moveEditorByPixels(0, dir)
+                } else if (editorColumn == 0) {
+                    editorElement = (editorElement + dir).coerceIn(0, elementNames.lastIndex)
+                } else if (editorColumn == 2) {
+                    editorControl = (editorControl + dir).coerceIn(0, 8)
+                } else if (dir > 0) {
+                    navFocus = true
+                }
             }
             3 -> {
-                if (settingsColumn == 0) settingsCategory = (settingsCategory + dir).coerceIn(0, 7)
-                else settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
+                if (settingsColumn == 0) {
+                    settingsCategory = (settingsCategory + dir).coerceIn(0, 7)
+                    settingsControl = settingsControl.coerceIn(0, settingsControlMax())
+                } else {
+                    settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
+                }
             }
         }
+        savePrefs()
         invalidate()
     }
 
     private fun moveHorizontal(dir: Int) {
         if (navFocus) {
             page = (page + dir + 4) % 4
-            invalidate(); return
+            invalidate()
+            return
         }
+
         when (page) {
             0 -> if (activePhotos().isNotEmpty()) previewNext(dir)
             1 -> when (photosRow) {
@@ -1630,10 +1649,13 @@ class PhotoTvView(
                 else -> navFocus = true
             }
             2 -> {
-                if (editorColumn == 1) editorColumn = if (dir < 0) 0 else 2
-                else if (editorColumn == 0 && dir > 0) editorColumn = 1
-                else if (editorColumn == 2 && dir < 0) editorColumn = 1
-                else if (editorColumn == 2) adjustEditor(dir)
+                when {
+                    editorColumn == 1 && editorMoveMode -> moveEditorByPixels(dir, 0)
+                    editorColumn == 1 -> editorColumn = if (dir < 0) 0 else 2
+                    editorColumn == 0 && dir > 0 -> editorColumn = 1
+                    editorColumn == 2 && dir < 0 -> editorColumn = 1
+                    editorColumn == 2 -> adjustEditor(dir)
+                }
             }
             3 -> {
                 if (settingsColumn == 0 && dir > 0) settingsColumn = 1
@@ -1643,6 +1665,25 @@ class PhotoTvView(
         }
         savePrefs()
         invalidate()
+    }
+
+    private fun moveEditorByPixels(dx: Int, dy: Int) {
+        val st = styles[editorElement]
+        if (dx != 0) {
+            st.x = (st.x + dx * (100f / 1280f)).coerceIn(0f, 100f)
+            if (gridSnap) st.x = snapPercent(st.x)
+        }
+        if (dy != 0) {
+            st.y = (st.y + dy * (100f / 720f)).coerceIn(0f, 100f)
+            if (gridSnap) st.y = snapPercent(st.y)
+        }
+    }
+
+    private fun snapPercent(v: Float): Float {
+        val nearest = (v / 5f).toInt() * 5f
+        val upper = nearest + 5f
+        val candidate = if (kotlin.math.abs(v - nearest) < kotlin.math.abs(v - upper)) nearest else upper
+        return if (kotlin.math.abs(v - candidate) <= 0.45f) candidate.coerceIn(0f, 100f) else v
     }
 
     private fun settingsControlMax(): Int = when(settingsCategory) {
