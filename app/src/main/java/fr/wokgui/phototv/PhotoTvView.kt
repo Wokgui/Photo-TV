@@ -1370,13 +1370,81 @@ class PhotoTvView(
                 drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
             }
         } else when {
-            transitionProgress >= 1f || previous == null || current == null -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
-            name.startsWith("Glissement") -> {
-                val dir = if (name.contains("droite", true)) -1f else 1f
+            transitionProgress >= 1f || previous == null || current == null -> {
+                if (kenBurns || name == "Ken Burns") drawKenBurns(c, current, item)
+                else drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
+            }
+
+            name == "Glissement" || name == "Glissement droite" -> {
+                val dir = if (name == "Glissement droite") -1f else 1f
                 drawBitmapCenterCrop(c, previous, -dir * transitionProgress * 1280f, 0f, 1280f, 720f)
                 drawBitmapCenterCrop(c, current, dir * (1f - transitionProgress) * 1280f, 0f, 1280f, 720f)
             }
+
+            name == "Glissement haut" || name == "Glissement bas" -> {
+                val dir = if (name == "Glissement haut") 1f else -1f
+                drawBitmapCenterCrop(c, previous, 0f, -dir * transitionProgress * 720f, 1280f, 720f)
+                drawBitmapCenterCrop(c, current, 0f, dir * (1f - transitionProgress) * 720f, 1280f, 720f)
+            }
+
+            name == "Zoom" || name == "Zoom arrière" -> {
+                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                val t = transitionProgress
+                val scale = if (name == "Zoom") .82f + .18f * t else 1.18f - .18f * t
+                c.save()
+                c.translate(640f, 360f)
+                c.scale(scale, scale)
+                c.translate(-640f, -360f)
+                imagePaint.alpha = (255 * t).toInt().coerceIn(0, 255)
+                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                imagePaint.alpha = 255
+                c.restore()
+            }
+
+            name == "Rotation douce" -> {
+                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                c.save()
+                c.rotate((1f - transitionProgress) * 4f, 640f, 360f)
+                imagePaint.alpha = (255 * transitionProgress).toInt().coerceIn(0, 255)
+                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                imagePaint.alpha = 255
+                c.restore()
+            }
+
+            name == "Balayage" -> {
+                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                c.save()
+                c.clipRect(0f, 0f, 1280f * transitionProgress, 720f)
+                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                c.restore()
+            }
+
+            name == "Cube 3D" -> {
+                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                c.save()
+                val scaleX = (.12f + .88f * transitionProgress).coerceIn(.12f, 1f)
+                c.translate(640f, 0f)
+                c.scale(scaleX, 1f)
+                c.translate(-640f, 0f)
+                imagePaint.alpha = (255 * transitionProgress).toInt().coerceIn(0, 255)
+                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                imagePaint.alpha = 255
+                c.restore()
+            }
+
+            name == "Fondu au noir" || name == "Fondu au blanc" -> {
+                val bg = if (name == "Fondu au blanc") Color.WHITE else Color.BLACK
+                if (transitionProgress < .5f) {
+                    drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                    fill(c, 0f, 0f, 1280f, 720f, Color.argb((transitionProgress * 2f * 255f).toInt(), Color.red(bg), Color.green(bg), Color.blue(bg)))
+                } else {
+                    drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                    fill(c, 0f, 0f, 1280f, 720f, Color.argb(((1f - transitionProgress) * 2f * 255f).toInt(), Color.red(bg), Color.green(bg), Color.blue(bg)))
+                }
+            }
+
             name == "Aucune" -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
+
             else -> {
                 imagePaint.alpha = ((1f - transitionProgress) * 255).toInt().coerceIn(0, 255)
                 drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
@@ -1409,6 +1477,29 @@ class PhotoTvView(
         }
         if (infoPanelVisible) drawInfoPanel(c, item)
         if (quickMenuVisible) drawQuickMenu(c, item)
+    }
+
+    private fun drawKenBurns(c: Canvas, bmp: Bitmap?, item: PhotoItem?) {
+        if (bmp == null || bmp.isRecycled) return
+        val localDuration = ruleForItem(item)?.durationSeconds?.takeIf { it > 0 } ?: durationSeconds
+        val elapsed = (System.currentTimeMillis() - slideStartedAt).coerceAtLeast(0L)
+        val t = (elapsed.toFloat() / (localDuration * 1000f)).coerceIn(0f, 1f)
+        val strength = when (zoomLevel) {
+            2 -> .12f
+            1 -> .08f
+            else -> .045f
+        }
+        val scale = 1f + strength * t
+        val panX = (t - .5f) * 18f * (zoomLevel + 1)
+        val panY = (.5f - t) * 10f * (zoomLevel + 1)
+
+        c.save()
+        c.translate(640f + panX, 360f + panY)
+        c.scale(scale, scale)
+        c.translate(-640f, -360f)
+        drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, bmp)
+        c.restore()
+        postInvalidateDelayed(40L)
     }
 
     private fun oledShift(): Pair<Float, Float> {
