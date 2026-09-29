@@ -127,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         spinner(R.id.editorFont, listOf("Sans", "Sans Light", "Sans Condensed", "Serif", "Monospace"))
         spinner(R.id.editorColor, listOf("Blanc", "Bleu clair", "Jaune", "Rouge", "Vert", "Gris clair"))
         spinner(R.id.editorAlign, listOf("Gauche", "Centre", "Droite"))
-        spinner(R.id.dateFormat, listOf("29/09/2026", "29 septembre 2026", "29 sept. 2026"))
+        spinner(R.id.dateFormat, listOf("Mardi 29 septembre 2026", "29 septembre 2026", "29/09/2026", "29 sept. 2026"))
         spinner(R.id.timeFormat, listOf("24 h — 15:42", "12 h — 3:42 PM"))
         spinner(R.id.tempUnit, listOf("°C", "°F"))
         spinner(R.id.transitionType, listOf(
@@ -451,7 +451,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exactAlbumName(dir: DocumentFile, jsons: List<DocumentFile>): String {
-        for (jsonFile in jsons) {
+        val ordered = jsons.sortedBy { if (it.name.equals("metadata.json", true)) 0 else 1 }
+        for (jsonFile in ordered) {
             try {
                 val text = contentResolver.openInputStream(jsonFile.uri)!!.use {
                     BufferedReader(InputStreamReader(it)).readText()
@@ -611,8 +612,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formatDate(time: Long): String {
-        val pattern = when(view<Spinner>(R.id.dateFormat).selectedItemPosition) { 1->"dd MMMM yyyy"; 2->"dd MMM yyyy"; else->"dd/MM/yyyy" }
-        return SimpleDateFormat(pattern,Locale.FRANCE).format(Date(time))
+        val pattern = when(view<Spinner>(R.id.dateFormat).selectedItemPosition) { 0->"EEEE dd MMMM yyyy"; 1->"dd MMMM yyyy"; 2->"dd/MM/yyyy"; else->"dd MMM yyyy" }
+        val value = SimpleDateFormat(pattern,Locale.FRANCE).format(Date(time))
+        return if (view<Spinner>(R.id.dateFormat).selectedItemPosition == 0) value.replaceFirstChar { it.uppercase(Locale.FRANCE) } else value
     }
     private fun formatTime(time: Long): String =
         SimpleDateFormat(if (view<Spinner>(R.id.timeFormat).selectedItemPosition==1) "h:mm a" else "HH:mm", Locale.getDefault()).format(Date(time))
