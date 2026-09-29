@@ -773,13 +773,13 @@ class PhotoTvView(
     private fun drawPreview(c: Canvas) {
         drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, currentBitmap())
         drawBottomGradient(c, 0f, 0f, 1280f, 720f)
-        drawBrand(c, 42f, 30f, "DIAPORAMA")
-        drawClock(c, 1215f, 32f)
+        drawBrand(c, 60f, 20f, "DIAPORAMA")
+        drawClock(c, 1218f, 34f)
 
-        circle(c, 82f, 352f, 30f, Color.argb(190, 7, 15, 24))
-        text(c, "‹", 82f, 363f, 40f, Color.WHITE, 0, 1)
-        circle(c, 1198f, 352f, 30f, Color.argb(190, 7, 15, 24))
-        text(c, "›", 1198f, 363f, 40f, Color.WHITE, 0, 1)
+        circle(c, 95f, 352f, 30f, Color.argb(190, 7, 15, 24))
+        text(c, "‹", 95f, 363f, 40f, Color.WHITE, 0, 1)
+        circle(c, 1183f, 352f, 30f, Color.argb(190, 7, 15, 24))
+        text(c, "›", 1183f, 363f, 40f, Color.WHITE, 0, 1)
 
         val item = currentItem()
         val title = item?.title ?: "001. Opéra d'Oslo"
@@ -794,42 +794,43 @@ class PhotoTvView(
 
     private fun drawPhotos(c: Canvas) {
         drawAppBackground(c)
-        drawBrand(c, 39f, 23f, "PHOTOS ET ALBUMS")
+        drawBrand(c, 58f, 20f, "PHOTOS ET ALBUMS")
 
-        val sourceY = 102f
+        val sourceY = 108f
         drawSourceCard(c, 45f, sourceY, 360f, 102f, "Google Photos", "Se connecter", 0, sourceFocus == 0 && !navFocus, true)
         drawSourceCard(c, 420f, sourceY, 360f, 102f, "Choisir un dossier", "Stockage local", 1, sourceFocus == 1 && !navFocus, false)
         drawSourceCard(c, 795f, sourceY, 440f, 102f, "Sélectionner des photos", "Choisir plusieurs fichiers", 2, sourceFocus == 2 && !navFocus, false)
 
         val albums = albumPairs()
-        text(c, "Mes albums Google Photos", 45f, 240f, 19f, Color.WHITE, 1)
+        text(c, "Mes albums Google Photos", 45f, 250f, 19f, Color.WHITE, 1)
         val searchText = if (albumSearch.isBlank()) "Rechercher un album…" else "Recherche : $albumSearch"
-        controlBox(c, 865f, 213f, 255f, 35f, searchText, photosRow == 0 && sourceFocus == 3 && !navFocus)
-        text(c, "${albums.size} albums", 1235f, 240f, 13f, Color.rgb(186, 196, 210), 0, 2)
+        controlBox(c, 865f, 226f, 255f, 35f, searchText, photosRow == 0 && sourceFocus == 3 && !navFocus)
+        text(c, "${albums.size} albums", 1235f, 250f, 13f, Color.rgb(186, 196, 210), 0, 2)
 
-        val albumY = 262f
+        val albumY = 270f
         val cardW = 165f
+        val cardH = 198f
         val gap = 12f
         albums.take(6).forEachIndexed { i, pair ->
             val x = 45f + i * (cardW + gap)
             val focused = photosRow == 1 && albumFocus == i && !navFocus
-            drawAlbumCard(c, x, albumY, cardW, 150f, pair.first, pair.second, i, focused)
+            drawAlbumCard(c, x, albumY, cardW, cardH, pair.first, pair.second, i, focused)
         }
 
-        text(c, "Photos de l'album sélectionné", 45f, 442f, 19f, Color.WHITE, 1)
+        text(c, "Photos de l'album sélectionné", 45f, 500f, 19f, Color.WHITE, 1)
         val thumbs = currentAlbumPhotos()
-        val py = 463f
+        val py = 522f
         val tw = 165f
         thumbs.take(6).forEachIndexed { i, item ->
             val x = 45f + i * (tw + gap)
             val focused = photosRow == 2 && photoFocus == i && !navFocus
-            drawPhotoThumb(c, x, py, tw, 95f, item, focused)
+            drawPhotoThumb(c, x, py, tw, 104f, item, focused)
         }
 
         if (library.isEmpty()) {
-            text(c, "Démo visuelle — connectez votre photothèque pour afficher vos vrais albums", 45f, 585f, 12f, Color.rgb(135, 151, 171))
+            text(c, "Démo visuelle — connectez votre photothèque pour afficher vos vrais albums", 45f, 638f, 11f, Color.rgb(135, 151, 171))
         } else if (!exactAlbums) {
-            text(c, "Le nom exact de l'album nécessite le mode exact Google Photos / Takeout.", 45f, 585f, 12f, Color.rgb(255, 191, 100))
+            text(c, "Le nom exact de l'album nécessite le mode exact Google Photos / Takeout.", 45f, 638f, 11f, Color.rgb(255, 191, 100))
         }
     }
 
@@ -891,8 +892,8 @@ class PhotoTvView(
         drawBrand(c, 34f, 20f, "ÉDITEUR")
 
         val leftX = 32f
-        val leftW = 310f
-        val startY = 86f
+        val leftW = 320f
+        val startY = 120f
         val h = 78f
         val gap = 9f
         val values = metadataValues()
@@ -913,9 +914,9 @@ class PhotoTvView(
             text(c, "${first + 1}–${min(first + visibleCount, elementNames.size)} / ${elementNames.size}", leftX + leftW, 623f, 10f, Color.rgb(128, 149, 173), 0, 2)
         }
 
-        val canvasX = 366f
+        val canvasX = 370f
         val canvasY = 64f
-        val canvasW = 566f
+        val canvasW = 548f
         val canvasH = 574f
         round(c, canvasX, canvasY, canvasX + canvasW, canvasY + canvasH, 5f, Color.rgb(10, 22, 32))
         drawBackgroundPhoto(c, canvasX, canvasY, canvasW, canvasH, currentBitmap())
@@ -923,9 +924,9 @@ class PhotoTvView(
         drawBottomGradient(c, canvasX, canvasY, canvasW, canvasH)
         drawEditorOverlays(c, canvasX, canvasY, canvasW, canvasH)
 
-        val panelX = 955f
+        val panelX = 940f
         val panelY = 64f
-        val panelW = 293f
+        val panelW = 308f
         val panelH = 574f
         round(c, panelX, panelY, panelX + panelW, panelY + panelH, 12f, Color.rgb(17, 29, 43))
         strokeRound(c, panelX, panelY, panelX + panelW, panelY + panelH, 12f, Color.rgb(38, 55, 74), 1f)
@@ -1034,9 +1035,9 @@ class PhotoTvView(
         drawBrand(c, 34f, 20f, "RÉGLAGES")
 
         val sideX = 32f
-        val sideY = 92f
-        val sideW = 290f
-        val sideH = 548f
+        val sideY = 108f
+        val sideW = 305f
+        val sideH = 525f
         round(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(6, 18, 29))
         strokeRound(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(22, 45, 69), 1f)
 
@@ -1045,7 +1046,7 @@ class PhotoTvView(
             "Heure et date", "Température", "Source des photos", "Règles par album", "Avancés"
         )
         cats.forEachIndexed { i, name ->
-            val yy = sideY + 10f + i * 58f
+            val yy = sideY + 8f + i * 55f
             val active = settingsCategory == i
             if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 50f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
             if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 53f, 12f, Color.rgb(136, 197, 255), 2f)
@@ -1053,10 +1054,10 @@ class PhotoTvView(
             text(c, name, sideX + 58f, yy + 31f, 14f, Color.WHITE)
         }
 
-        val panelX = 345f
-        val panelY = 92f
-        val panelW = 903f
-        val panelH = 548f
+        val panelX = 365f
+        val panelY = 72f
+        val panelW = 883f
+        val panelH = 561f
         round(c, panelX, panelY, panelX + panelW, panelY + panelH, 13f, Color.rgb(17, 30, 44))
         strokeRound(c, panelX, panelY, panelX + panelW, panelY + panelH, 13f, Color.rgb(38, 56, 76), 1f)
 
@@ -1560,21 +1561,21 @@ class PhotoTvView(
     }
 
     private fun drawBottomNav(c: Canvas) {
-        val x = 280f
-        val y = 646f
-        val w = 720f
-        val h = 62f
+        val x = 218f
+        val y = 644f
+        val w = 872f
+        val h = 60f
         round(c, x, y, x + w, y + h, 18f, Color.argb(235, 3, 15, 28))
         strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(22, 49, 77), 1f)
 
         val labels = listOf("Aperçu", "Photos", "Éditeur", "Réglages")
         for (i in 0..3) {
-            val tx = x + i * 180f
+            val tx = x + i * 218f
             val active = page == i
-            if (active) gradientRound(c, tx + 3f, y + 4f, tx + 177f, y + h - 4f, 16f, Color.rgb(12, 128, 255), Color.rgb(7, 91, 237))
-            if (navFocus && active) strokeRound(c, tx, y + 1f, tx + 180f, y + h - 1f, 18f, Color.rgb(154, 211, 255), 2f)
-            drawBottomIcon(c, tx + 49f, y + 31f, i)
-            text(c, labels[i], tx + 72f, y + 38f, 13.5f, Color.WHITE)
+            if (active) gradientRound(c, tx + 3f, y + 4f, tx + 215f, y + h - 4f, 16f, Color.rgb(12, 128, 255), Color.rgb(7, 91, 237))
+            if (navFocus && active) strokeRound(c, tx, y + 1f, tx + 218f, y + h - 1f, 18f, Color.rgb(154, 211, 255), 2f)
+            drawBottomIcon(c, tx + 60f, y + 30f, i)
+            text(c, labels[i], tx + 86f, y + 37f, 13.5f, Color.WHITE)
         }
     }
 
@@ -1687,23 +1688,23 @@ class PhotoTvView(
     private fun drawAlbumCard(c: Canvas, x: Float, y: Float, w: Float, h: Float, name: String, count: Int, index: Int, focused: Boolean) {
         val selected = if (library.isEmpty()) index == 0 else selectedAlbums.contains(name)
         round(c, x, y, x + w, y + h, 12f, Color.rgb(8, 18, 27))
-        drawBitmapCenterCrop(c, albumBitmap(name, index), x + 5f, y + 5f, w - 10f, 92f, 9f)
+        drawBitmapCenterCrop(c, albumBitmap(name, index), x + 5f, y + 5f, w - 10f, 128f, 9f)
         if (selected) strokeRound(c, x, y, x + w, y + h, 12f, Color.rgb(49, 177, 255), 2f)
         else strokeRound(c, x, y, x + w, y + h, 12f, Color.rgb(37, 53, 71), 1f)
         if (focused) strokeRound(c, x - 3f, y - 3f, x + w + 3f, y + h + 3f, 14f, Color.WHITE, 2f)
-        text(c, name, x + 8f, y + 117f, 13f, Color.WHITE, 1)
+        text(c, name, x + 8f, y + 154f, 13f, Color.WHITE, 1)
         val hidden = hiddenAlbums.contains(name)
         text(
             c,
             if (hidden) "$count photos • MASQUÉ" else "$count photos",
             x + 8f,
-            y + 138f,
+            y + 177f,
             11f,
             if (hidden) Color.rgb(255, 176, 104) else Color.rgb(190, 200, 214)
         )
         if (selected && !hidden) {
-            circle(c, x + w - 16f, y + 87f, 12f, Color.rgb(15, 124, 255))
-            text(c, "✓", x + w - 16f, y + 92f, 13f, Color.WHITE, 1, 1)
+            circle(c, x + w - 16f, y + 122f, 12f, Color.rgb(15, 124, 255))
+            text(c, "✓", x + w - 16f, y + 127f, 13f, Color.WHITE, 1, 1)
         }
     }
 
