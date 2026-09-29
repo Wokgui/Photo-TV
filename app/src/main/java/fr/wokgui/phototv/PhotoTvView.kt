@@ -985,12 +985,45 @@ class PhotoTvView(
         text(c, "Source des photos", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         drawSourceCard(c, x + 22f, y + 72f, 395f, 105f, "Google Photos", "Se connecter — mode exact", 0, settingsControl == 0 && settingsColumn == 1 && !navFocus, true)
         drawSourceCard(c, x + 438f, y + 72f, 395f, 105f, "Sélectionner des photos", "Album non garanti", 2, settingsControl == 1 && settingsColumn == 1 && !navFocus, false)
+
         val status = when {
             library.isEmpty() -> "Aucune photothèque connectée."
             exactAlbums -> "${library.size} médias • ${library.flatMap { it.albums }.distinct().size} albums exacts"
-            else -> "${library.size} photos • noms d'albums non disponibles"
+            else -> "${library.size} médias • noms d'albums non disponibles"
         }
-        text(c, status, x + 22f, y + 220f, 14f, if (exactAlbums) Color.rgb(91, 213, 145) else Color.rgb(187, 198, 212))
+        text(c, status, x + 22f, y + 215f, 14f, if (exactAlbums) Color.rgb(91, 213, 145) else Color.rgb(187, 198, 212))
+
+        settingsChoice(
+            c,
+            "Tri des albums",
+            if (albumSort == 0) "Alphabétique" else "Nombre de photos",
+            x,
+            y + 245f,
+            2
+        )
+        settingsChoice(
+            c,
+            "Recherche d'album",
+            if (albumSearch.isBlank()) "Aucune" else albumSearch,
+            x,
+            y + 305f,
+            3
+        )
+
+        val allAlbums = library.flatMap { it.albums }.distinct()
+        val allSelected = allAlbums.isNotEmpty() && selectedAlbums.containsAll(allAlbums)
+        controlBox(
+            c,
+            x + 350f,
+            y + 365f,
+            380f,
+            39f,
+            if (allSelected) "Désélectionner tous les albums" else "Sélectionner tous les albums",
+            settingsColumn == 1 && settingsControl == 4 && !navFocus
+        )
+
+        text(c, "Appui long OK sur un album : masquer / réafficher.", x + 22f, y + 450f, 11f, Color.rgb(130, 154, 181))
+        text(c, "Photos masquées : ${excludedUris.size} • Albums masqués : ${hiddenAlbums.size}", x + 22f, y + 485f, 11f, Color.rgb(130, 154, 181))
     }
 
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
@@ -1900,7 +1933,7 @@ class PhotoTvView(
         3 -> transitions.lastIndex
         4 -> 3
         5 -> 2
-        6 -> 1
+        6 -> 4
         else -> 9
     }
 
@@ -1943,6 +1976,10 @@ class PhotoTvView(
                 3 -> time24h = !time24h
             }
             5 -> when(settingsControl) { 0 -> showTemp=!showTemp; 1 -> tempCelsius=!tempCelsius }
+            6 -> when (settingsControl) {
+                2 -> albumSort = (albumSort + dir + 2) % 2
+                4 -> toggleAllAlbums()
+            }
             7 -> when (settingsControl) {
                 0 -> imageMode = (imageMode + dir + 4) % 4
                 1 -> gridSnap = !gridSnap
@@ -2012,7 +2049,13 @@ class PhotoTvView(
                     3 -> transitionIndex = settingsControl.coerceIn(0, transitions.lastIndex)
                     4 -> adjustSettings(1)
                     5 -> if (settingsControl == 2) onWeatherLocation() else adjustSettings(1)
-                    6 -> if (settingsControl == 0) onExactSource() else onPickPhotos()
+                    6 -> when (settingsControl) {
+                        0 -> onExactSource()
+                        1 -> onPickPhotos()
+                        2 -> adjustSettings(1)
+                        3 -> onAlbumSearch()
+                        4 -> toggleAllAlbums()
+                    }
                     7 -> when (settingsControl) {
                         8 -> onExportSettings()
                         9 -> onImportSettings()
@@ -2023,6 +2066,18 @@ class PhotoTvView(
         }
         savePrefs()
         invalidate()
+    }
+
+    private fun toggleAllAlbums() {
+        val all = library.flatMap { it.albums }.distinct()
+        if (all.isEmpty()) return
+        if (selectedAlbums.containsAll(all)) selectedAlbums.clear()
+        else {
+            selectedAlbums.clear()
+            selectedAlbums.addAll(all)
+        }
+        currentPhoto = 0
+        savePrefs()
     }
 
     private fun toggleElement(i: Int) {
