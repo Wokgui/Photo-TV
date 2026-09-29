@@ -966,10 +966,10 @@ class PhotoTvView(
 
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 55f, 0)
-        settingsToggle(c, "Grille et magnétisme de l'éditeur", gridSnap, x, y + 113f, 1)
-        settingsToggle(c, "Protection OLED (micro-déplacement)", oledProtection, x, y + 171f, 2)
-        settingsToggle(c, "Masquer les informations après 10 s", overlaysAutoHide, x, y + 229f, 3)
+        settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 50f, 0)
+        settingsToggle(c, "Grille et magnétisme de l'éditeur", gridSnap, x, y + 103f, 1)
+        settingsToggle(c, "Protection OLED (micro-déplacement)", oledProtection, x, y + 156f, 2)
+        settingsToggle(c, "Masquer les informations après 10 s", overlaysAutoHide, x, y + 209f, 3)
         settingsSlider(
             c,
             "Démarrage automatique après inactivité",
@@ -978,20 +978,20 @@ class PhotoTvView(
             60f,
             if (autoStartMinutes == 0) "Désactivé" else "$autoStartMinutes min",
             x,
-            y + 287f,
+            y + 262f,
             4
         )
-        settingsToggle(c, "Démarrer directement le diaporama", startDirectly, x, y + 345f, 5)
-        settingsToggle(c, "Afficher uniquement les favoris", favoritesOnly, x, y + 403f, 6)
-        settingsChoice(c, "Disposition des informations", presetName(layoutPreset), x, y + 459f, 7)
+        settingsToggle(c, "Démarrer directement le diaporama", startDirectly, x, y + 315f, 5)
+        settingsToggle(c, "Afficher uniquement les favoris", favoritesOnly, x, y + 368f, 6)
+        settingsChoice(c, "Disposition des informations", presetName(layoutPreset), x, y + 421f, 7)
+
+        text(c, "Sauvegarde", x + 22f, y + 487f, 12f, Color.WHITE)
+        controlBox(c, x + 350f, y + 468f, 180f, 38f, "Exporter", settingsColumn == 1 && settingsControl == 8 && !navFocus)
+        controlBox(c, x + 545f, y + 468f, 180f, 38f, "Importer", settingsColumn == 1 && settingsControl == 9 && !navFocus)
 
         val albumCount = library.flatMap { it.albums }.distinct().size
-        val mediaTypes = library.groupingBy { it.mediaType }.eachCount()
         val diag = "Diagnostic : ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${excludedUris.size} masqués • cache ${bitmapCache.size}"
-        text(c, diag, x + 22f, y + 531f, 11f, Color.rgb(135, 158, 184))
-        if ((mediaTypes["video"] ?: 0) > 0) {
-            text(c, "Vidéos : aperçu de la première image dans cette version.", x + 22f, y + 548f, 10f, Color.rgb(255, 190, 105))
-        }
+        text(c, diag, x + 22f, y + 532f, 10.5f, Color.rgb(135, 158, 184))
     }
 
     private fun imageModeLabel(): String =
@@ -1872,7 +1872,7 @@ class PhotoTvView(
         4 -> 3
         5 -> 2
         6 -> 1
-        else -> 7
+        else -> 9
     }
 
     private fun adjustEditor(dir: Int) {
@@ -1980,7 +1980,11 @@ class PhotoTvView(
                     4 -> adjustSettings(1)
                     5 -> if (settingsControl == 2) onWeatherLocation() else adjustSettings(1)
                     6 -> if (settingsControl == 0) onExactSource() else onPickPhotos()
-                    7 -> adjustSettings(1)
+                    7 -> when (settingsControl) {
+                        8 -> onExportSettings()
+                        9 -> onImportSettings()
+                        else -> adjustSettings(1)
+                    }
                 }
             }
         }
