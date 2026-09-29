@@ -787,10 +787,79 @@ class PhotoTvView(
 
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        text(c, "Navigation télécommande", x + 22f, y + 85f, 14f, Color.WHITE, 1)
-        text(c, "Flèches : déplacer le focus • OK : valider • Retour : revenir à l'aperçu", x + 22f, y + 116f, 13f, Color.rgb(177, 191, 209))
-        text(c, "Rendu TV", x + 22f, y + 171f, 14f, Color.WHITE, 1)
-        text(c, "Interface dessinée sur mesure en 16:9, sans composants Android standards visibles.", x + 22f, y + 202f, 13f, Color.rgb(177, 191, 209))
+        settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 55f, 0)
+        settingsToggle(c, "Grille et magnétisme de l'éditeur", gridSnap, x, y + 113f, 1)
+        settingsToggle(c, "Protection OLED (micro-déplacement)", oledProtection, x, y + 171f, 2)
+        settingsToggle(c, "Masquer les informations après 10 s", overlaysAutoHide, x, y + 229f, 3)
+        settingsSlider(
+            c,
+            "Démarrage automatique après inactivité",
+            autoStartMinutes.toFloat(),
+            0f,
+            60f,
+            if (autoStartMinutes == 0) "Désactivé" else "$autoStartMinutes min",
+            x,
+            y + 287f,
+            4
+        )
+        settingsToggle(c, "Démarrer directement le diaporama", startDirectly, x, y + 345f, 5)
+        settingsToggle(c, "Afficher uniquement les favoris", favoritesOnly, x, y + 403f, 6)
+        settingsChoice(c, "Disposition des informations", presetName(layoutPreset), x, y + 459f, 7)
+
+        val albumCount = library.flatMap { it.albums }.distinct().size
+        val mediaTypes = library.groupingBy { it.mediaType }.eachCount()
+        val diag = "Diagnostic : ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${excludedUris.size} masqués • cache ${bitmapCache.size}"
+        text(c, diag, x + 22f, y + 531f, 11f, Color.rgb(135, 158, 184))
+        if ((mediaTypes["video"] ?: 0) > 0) {
+            text(c, "Vidéos : aperçu de la première image dans cette version.", x + 22f, y + 548f, 10f, Color.rgb(255, 190, 105))
+        }
+    }
+
+    private fun imageModeLabel(): String =
+        listOf("Remplir", "Adapter", "Original", "Fond flouté")[imageMode.coerceIn(0, 3)]
+
+    private fun presetName(i: Int): String =
+        listOf("Standard", "Minimal", "Cinéma", "Horloge")[i.coerceIn(0, 3)]
+
+    private fun applyPreset(index: Int) {
+        layoutPreset = index.coerceIn(0, 3)
+        when (layoutPreset) {
+            1 -> {
+                styles[0].apply { size = 27f; x = 6f; y = 89f; visible = true }
+                styles[1].visible = false
+                showDate = false
+                showTime = false
+                showTemp = false
+            }
+            2 -> {
+                styles[0].apply { size = 34f; x = 7f; y = 79f; visible = true }
+                styles[1].apply { size = 18f; x = 7f; y = 86f; visible = true }
+                styles[2].apply { size = 11f; x = 93f; y = 91f; align = 2 }
+                showDate = true
+                showTime = false
+                showTemp = false
+            }
+            3 -> {
+                styles[0].visible = false
+                styles[1].visible = false
+                styles[2].apply { x = 94f; y = 11f; align = 2; size = 13f }
+                styles[3].apply { x = 94f; y = 18f; align = 2; size = 31f }
+                styles[4].apply { x = 94f; y = 5f; align = 2; size = 19f }
+                showDate = true
+                showTime = true
+                showTemp = true
+            }
+            else -> {
+                styles[0].apply { size = 31f; x = 7f; y = 76f; visible = true }
+                styles[1].apply { size = 19f; x = 7f; y = 84f; visible = true }
+                styles[2].apply { size = 11f; x = 73f; y = 10f; align = 2 }
+                styles[3].apply { size = 26f; x = 80f; y = 15f; align = 2 }
+                styles[4].apply { size = 18f; x = 80f; y = 5f; align = 2 }
+                showDate = true
+                showTime = true
+                showTemp = true
+            }
+        }
     }
 
     private fun drawSlideshow(c: Canvas) {
