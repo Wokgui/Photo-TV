@@ -1447,6 +1447,38 @@ class PhotoTvView(
                 }
             }
 
+            name == "Dissolution" -> {
+                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                val cols = 12
+                val rows = 7
+                val total = cols * rows
+                val reveal = (transitionProgress * total).toInt().coerceIn(0, total)
+                val tilePath = Path()
+                for (step in 0 until reveal) {
+                    val index = (step * 37) % total
+                    val col = index % cols
+                    val row = index / cols
+                    val l = 1280f * col / cols
+                    val t = 720f * row / rows
+                    val r = 1280f * (col + 1) / cols
+                    val b = 720f * (row + 1) / rows
+                    tilePath.addRect(l, t, r, b, Path.Direction.CW)
+                }
+                c.save()
+                c.clipPath(tilePath)
+                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                c.restore()
+            }
+
+            name == "Flou progressif" -> {
+                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                imagePaint.alpha = (220f * transitionProgress).toInt().coerceIn(0, 220)
+                drawSoftBackground(c, current, 0f, 0f, 1280f, 720f)
+                imagePaint.alpha = (255f * transitionProgress * transitionProgress).toInt().coerceIn(0, 255)
+                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                imagePaint.alpha = 255
+            }
+
             name == "Aucune" -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
 
             else -> {
