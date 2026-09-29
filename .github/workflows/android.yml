@@ -28,6 +28,32 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Verify web preview
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path("docs/index.html").read_text(encoding="utf-8")
+          m = re.search(r"<script>([\s\S]*?)</script>", html)
+          if not m:
+              raise SystemExit("Inline script not found")
+          js = m.group(1)
+          required = [
+              "function preview()", "function photos()", "function editor()",
+              "function settings()", "function mouse(e)",
+              'cv.addEventListener("click",mouse)'
+          ]
+          missing = [item for item in required if item not in js]
+          if missing:
+              raise SystemExit("Missing web interactions: " + ", ".join(missing))
+          Path("/tmp/photo-tv-preview.js").write_text(js, encoding="utf-8")
+          PY
+          node --check /tmp/photo-tv-preview.js
+
+      - name: Run JVM tests
+        run: gradle --no-daemon --stacktrace testDebugUnitTest
+
       - name: Build debug APK
         run: gradle --no-daemon --stacktrace assembleDebug
 
