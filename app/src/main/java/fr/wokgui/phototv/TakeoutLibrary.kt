@@ -15,7 +15,7 @@ object TakeoutLibrary {
         val root = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
         val raw = mutableListOf<PhotoItem>()
         scanFolder(context, root, raw)
-        return mergeAlbumMemberships(raw)
+        return mergeAlbumMemberships(context, raw)
     }
 
     private fun scanFolder(context: Context, dir: DocumentFile, out: MutableList<PhotoItem>) {
@@ -112,10 +112,9 @@ object TakeoutLibrary {
         return dir.name ?: "Album"
     }
 
-    private fun mergeAlbumMemberships(raw: List<PhotoItem>): List<PhotoItem> {
-        val merged = LinkedHashMap<String, PhotoItem>()
-        for (item in raw) {
-            val key = buildString {
+    private fun mergeAlbumMemberships(context: Context, raw: List<PhotoItem>): List<PhotoItem> {
+        val roughGroups = raw.groupBy { item ->
+            buildString {
                 append(item.title.lowercase())
                 append('|')
                 append(item.takenAt)
@@ -126,25 +125,53 @@ object TakeoutLibrary {
                 append('|')
                 append(item.mediaType)
             }
+        }
 
-            val existing = merged[key]
-            if (existing == null) {
-                merged[key] = item
+        val merged = mutableListOf<PhotoItem>()
+        roughGroups.values.forEach { group ->
+            if (group.size == 1) {
+                merged += group.first()
             } else {
-                merged[key] = existing.copy(
-                    albums = LinkedHashSet<String>().apply {
-                        addAll(existing.albums)
-                        addAll(item.albums)
-                    },
-                    description = existing.description.ifBlank { item.description },
-                    location = existing.location.ifBlank { item.location },
-                    camera = existing.camera.ifBlank { item.camera },
-                    width = if (existing.width > 0) existing.width else item.width,
-                    height = if (existing.height > 0) existing.height else item.height
-                )
+                val byFingerprint = LinkedHashMap<String, PhotoItem>()
+                group.forEachIndexed { index, item ->
+                    val fingerprint = mediaFingerprint(context, item.uri)
+                        ?: "unhashed:${item.uri}:$index"
+                    val existing = byFingerprint[fingerprint]
+                    if (existing == null) {
+                        byFingerprint[fingerprint] = item
+                    } else {
+                        byFingerprint[fingerprint] = existing.copy(
+                            albums = LinkedHashSet<String>().apply {
+                                addAll(existing.albums)
+                                addAll(item.albums)
+                            },
+                            description = existing.description.ifBlank { item.description },
+                            location = existing.location.ifBlank { item.location },
+                            camera = existing.camera.ifBlank { item.camera },
+                            width = if (existing.width > 0) existing.width else item.width,
+                            height = if (existing.height > 0) existing.height else item.height
+                        )
+                    }
+                }
+                merged += byFingerprint.values
             }
         }
-        return merged.values.toList()
+        return merged
+    }
+
+    private fun mediaFingerprint(context: Context, uri: Uri): String? {
+        return runCatching {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    digest.update(buffer, 0, read)
+                }
+            } ?: return@runCatching null
+            digest.digest().joinToString("") { "%02x".format(it) }
+        }.getOrNull()
     }
 
     private fun mediaDimensions(context: Context, uri: Uri, mime: String): Pair<Int, Int> {
