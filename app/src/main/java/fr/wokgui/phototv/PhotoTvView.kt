@@ -19,6 +19,7 @@ import coil.size.Size
 import java.text.SimpleDateFormat
 import java.net.URL
 import org.json.JSONObject
+import org.json.JSONArray
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -30,7 +31,9 @@ class PhotoTvView(
     context: Context,
     private val onExactSource: () -> Unit,
     private val onPickPhotos: () -> Unit,
-    private val onWeatherLocation: () -> Unit = {}
+    private val onWeatherLocation: () -> Unit = {},
+    private val onExportSettings: () -> Unit = {},
+    private val onImportSettings: () -> Unit = {}
 ) : View(context) {
 
     private data class Style(
@@ -74,6 +77,7 @@ class PhotoTvView(
     private var photoFocus = 0
     private var photosRow = 0
     private val selectedAlbums = linkedSetOf<String>()
+    private val savedSelectedAlbums = linkedSetOf<String>()
 
     private var editorElement = 0
     private var editorControl = 0
@@ -198,6 +202,7 @@ class PhotoTvView(
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         hiddenAlbums.addAll(prefs.getStringSet("hidden_albums", emptySet()) ?: emptySet())
         excludedUris.addAll(prefs.getStringSet("excluded_uris", emptySet()) ?: emptySet())
+        savedSelectedAlbums.addAll(prefs.getStringSet("selected_albums", emptySet()) ?: emptySet())
         currentPhoto = prefs.getInt("resume_index", 0)
         styles.forEachIndexed { i, s ->
             s.size = prefs.getFloat("s${i}_size", s.size)
@@ -239,6 +244,7 @@ class PhotoTvView(
             putStringSet("favorites", HashSet(favorites))
             putStringSet("hidden_albums", HashSet(hiddenAlbums))
             putStringSet("excluded_uris", HashSet(excludedUris))
+            putStringSet("selected_albums", HashSet(selectedAlbums))
             putInt("resume_index", currentPhoto)
             styles.forEachIndexed { i, s ->
                 putFloat("s${i}_size", s.size)
@@ -310,6 +316,121 @@ class PhotoTvView(
         context.imageLoader.enqueue(req)
     }
 
+    fun exportSettingsJson(): String {
+        val root = JSONObject()
+        root.put("version", 1)
+        root.put("durationSeconds", durationSeconds)
+        root.put("fixedImage", fixedImage)
+        root.put("loop", loop)
+        root.put("randomOrder", randomOrder)
+        root.put("transitionIndex", transitionIndex)
+        root.put("transitionSeconds", transitionSeconds.toDouble())
+        root.put("kenBurns", kenBurns)
+        root.put("zoomLevel", zoomLevel)
+        root.put("showDate", showDate)
+        root.put("showTime", showTime)
+        root.put("showTemp", showTemp)
+        root.put("tempCelsius", tempCelsius)
+        root.put("dateFormatIndex", dateFormatIndex)
+        root.put("time24h", time24h)
+        root.put("weatherLocation", weatherLocation)
+        root.put("imageMode", imageMode)
+        root.put("gridSnap", gridSnap)
+        root.put("oledProtection", oledProtection)
+        root.put("overlaysAutoHide", overlaysAutoHide)
+        root.put("autoStartMinutes", autoStartMinutes)
+        root.put("startDirectly", startDirectly)
+        root.put("favoritesOnly", favoritesOnly)
+        root.put("layoutPreset", layoutPreset)
+
+        fun strings(values: Collection<String>): JSONArray =
+            JSONArray().apply { values.forEach { put(it) } }
+
+        root.put("favorites", strings(favorites))
+        root.put("hiddenAlbums", strings(hiddenAlbums))
+        root.put("excludedUris", strings(excludedUris))
+        root.put("selectedAlbums", strings(selectedAlbums))
+
+        val styleArray = JSONArray()
+        styles.forEach { st ->
+            styleArray.put(
+                JSONObject()
+                    .put("size", st.size.toDouble())
+                    .put("x", st.x.toDouble())
+                    .put("y", st.y.toDouble())
+                    .put("font", st.font)
+                    .put("color", st.color)
+                    .put("align", st.align)
+                    .put("shadow", st.shadow)
+                    .put("visible", st.visible)
+            )
+        }
+        root.put("styles", styleArray)
+        return root.toString(2)
+    }
+
+    fun importSettingsJson(raw: String): Boolean {
+        return runCatching {
+            val root = JSONObject(raw)
+            durationSeconds = root.optInt("durationSeconds", durationSeconds).coerceIn(2, 120)
+            fixedImage = root.optBoolean("fixedImage", fixedImage)
+            loop = root.optBoolean("loop", loop)
+            randomOrder = root.optBoolean("randomOrder", randomOrder)
+            transitionIndex = root.optInt("transitionIndex", transitionIndex).coerceIn(0, transitions.lastIndex)
+            transitionSeconds = root.optDouble("transitionSeconds", transitionSeconds.toDouble()).toFloat().coerceIn(.2f, 4f)
+            kenBurns = root.optBoolean("kenBurns", kenBurns)
+            zoomLevel = root.optInt("zoomLevel", zoomLevel).coerceIn(0, 2)
+            showDate = root.optBoolean("showDate", showDate)
+            showTime = root.optBoolean("showTime", showTime)
+            showTemp = root.optBoolean("showTemp", showTemp)
+            tempCelsius = root.optBoolean("tempCelsius", tempCelsius)
+            dateFormatIndex = root.optInt("dateFormatIndex", dateFormatIndex).coerceIn(0, 2)
+            time24h = root.optBoolean("time24h", time24h)
+            weatherLocation = root.optString("weatherLocation", weatherLocation)
+            imageMode = root.optInt("imageMode", imageMode).coerceIn(0, 3)
+            gridSnap = root.optBoolean("gridSnap", gridSnap)
+            oledProtection = root.optBoolean("oledProtection", oledProtection)
+            overlaysAutoHide = root.optBoolean("overlaysAutoHide", overlaysAutoHide)
+            autoStartMinutes = root.optInt("autoStartMinutes", autoStartMinutes).coerceIn(0, 60)
+            startDirectly = root.optBoolean("startDirectly", startDirectly)
+            favoritesOnly = root.optBoolean("favoritesOnly", favoritesOnly)
+            layoutPreset = root.optInt("layoutPreset", layoutPreset).coerceIn(0, 3)
+
+            fun restoreSet(name: String, target: MutableSet<String>) {
+                val arr = root.optJSONArray(name) ?: return
+                target.clear()
+                for (i in 0 until arr.length()) {
+                    arr.optString(i).takeIf { it.isNotBlank() }?.let { target += it }
+                }
+            }
+            restoreSet("favorites", favorites)
+            restoreSet("hiddenAlbums", hiddenAlbums)
+            restoreSet("excludedUris", excludedUris)
+            restoreSet("selectedAlbums", selectedAlbums)
+
+            root.optJSONArray("styles")?.let { arr ->
+                for (i in 0 until min(arr.length(), styles.size)) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val st = styles[i]
+                    st.size = o.optDouble("size", st.size.toDouble()).toFloat().coerceIn(8f, 100f)
+                    st.x = o.optDouble("x", st.x.toDouble()).toFloat().coerceIn(0f, 100f)
+                    st.y = o.optDouble("y", st.y.toDouble()).toFloat().coerceIn(0f, 100f)
+                    st.font = o.optInt("font", st.font).coerceIn(0, 3)
+                    st.color = o.optInt("color", st.color)
+                    st.align = o.optInt("align", st.align).coerceIn(0, 2)
+                    st.shadow = o.optBoolean("shadow", st.shadow)
+                    st.visible = o.optBoolean("visible", st.visible)
+                }
+            }
+
+            savePrefs()
+            loadWeather()
+            scheduleInactivity()
+            invalidate()
+            true
+        }.getOrDefault(false)
+    }
+
     fun showLoading(message: String) {
         loadingText = message
         invalidate()
@@ -319,7 +440,11 @@ class PhotoTvView(
         library = items
         this.exactAlbums = exactAlbums
         selectedAlbums.clear()
-        selectedAlbums.addAll(items.flatMap { it.albums }.distinct())
+        val allAlbums = items.flatMap { it.albums }.distinct()
+        if (savedSelectedAlbums.isNotEmpty()) {
+            selectedAlbums.addAll(allAlbums.filter { savedSelectedAlbums.contains(it) })
+        }
+        if (selectedAlbums.isEmpty()) selectedAlbums.addAll(allAlbums)
         currentPhoto = prefs.getInt("resume_index", 0).coerceAtLeast(0)
         albumFocus = 0
         photoFocus = 0
