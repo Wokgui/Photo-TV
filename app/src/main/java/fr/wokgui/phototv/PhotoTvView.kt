@@ -68,6 +68,8 @@ class PhotoTvView(
     private val clockHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val bitmapCache = LinkedHashMap<String, Bitmap>()
+    private val gifCache = LinkedHashMap<String, Movie>()
+    private val gifLoading = linkedSetOf<String>()
     private var softSource: Bitmap? = null
     private var softBitmap: Bitmap? = null
 
@@ -611,6 +613,61 @@ class PhotoTvView(
                 }
             }
         }
+    }
+
+    private fun ensureGif(uri: Uri) {
+        val key = uri.toString()
+        synchronized(gifCache) {
+            if (gifCache.containsKey(key) || gifLoading.contains(key)) return
+            gifLoading += key
+        }
+        executor.execute {
+            val movie = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { Movie.decodeStream(it) }
+            }.getOrNull()
+            synchronized(gifCache) {
+                gifLoading.remove(key)
+                if (movie != null) gifCache[key] = movie
+            }
+            postInvalidate()
+        }
+    }
+
+    private fun drawAnimatedGif(c: Canvas, item: PhotoItem, x: Float, y: Float, w: Float, h: Float): Boolean {
+        val key = item.uri.toString()
+        val movie = synchronized(gifCache) { gifCache[key] }
+        if (movie == null) {
+            ensureGif(item.uri)
+            return false
+        }
+        val mw = movie.width().coerceAtLeast(1).toFloat()
+        val mh = movie.height().coerceAtLeast(1).toFloat()
+        val duration = movie.duration().takeIf { it > 0 } ?: 1000
+        movie.setTime((android.os.SystemClock.uptimeMillis() % duration).toInt())
+
+        val scale = when (imageMode) {
+            1, 3 -> min(w / mw, h / mh)
+            2 -> min(1f, min(w / mw, h / mh))
+            else -> max(w / mw, h / mh)
+        }
+
+        if (imageMode == 3) {
+            drawSoftBackground(c, currentBitmap(), x, y, w, h)
+            fill(c, x, y, x + w, y + h, Color.argb(75, 0, 0, 0))
+        } else {
+            fill(c, x, y, x + w, y + h, Color.BLACK)
+        }
+
+        val dx = x + (w - mw * scale) / 2f
+        val dy = y + (h - mh * scale) / 2f
+        c.save()
+        c.clipRect(x, y, x + w, y + h)
+        c.translate(dx, dy)
+        c.scale(scale, scale)
+        movie.draw(c, 0f, 0f)
+        c.restore()
+        postInvalidateDelayed(50L)
+        return true
     }
 
     private fun decodeThumb(uri: Uri): Bitmap? {
@@ -1277,6 +1334,10 @@ class PhotoTvView(
         val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
         if (item?.mediaType == "video" && supportsVideoPlayback) {
             c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        } else if (item?.mediaType == "gif") {
+            if (!drawAnimatedGif(c, item, 0f, 0f, 1280f, 720f)) {
+                drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
+            }
         } else when {
             transitionProgress >= 1f || previous == null || current == null -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
             name.startsWith("Glissement") -> {
