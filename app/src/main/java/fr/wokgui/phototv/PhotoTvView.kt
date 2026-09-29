@@ -29,7 +29,8 @@ import kotlin.random.Random
 class PhotoTvView(
     context: Context,
     private val onExactSource: () -> Unit,
-    private val onPickPhotos: () -> Unit
+    private val onPickPhotos: () -> Unit,
+    private val onWeatherLocation: () -> Unit = {}
 ) : View(context) {
 
     private data class Style(
@@ -97,6 +98,11 @@ class PhotoTvView(
     private var dateFormatIndex = 0
     private var time24h = true
     private var temperatureC = 17f
+    private var feelsLikeC = 17f
+    private var forecastMinC = 12f
+    private var forecastMaxC = 19f
+    private var weatherSummary = "—"
+    private var weatherLocation = ""
     private var imageMode = 0
     private var gridSnap = true
     private var oledProtection = true
@@ -180,6 +186,7 @@ class PhotoTvView(
         tempCelsius = prefs.getBoolean("celsius", true)
         dateFormatIndex = prefs.getInt("date_format", 0).coerceIn(0, 2)
         time24h = prefs.getBoolean("time_24h", true)
+        weatherLocation = prefs.getString("weather_location", "") ?: ""
         imageMode = prefs.getInt("image_mode", 0).coerceIn(0, 3)
         gridSnap = prefs.getBoolean("grid_snap", true)
         oledProtection = prefs.getBoolean("oled", true)
@@ -220,6 +227,7 @@ class PhotoTvView(
             putBoolean("celsius", tempCelsius)
             putInt("date_format", dateFormatIndex)
             putBoolean("time_24h", time24h)
+            putString("weather_location", weatherLocation)
             putInt("image_mode", imageMode)
             putBoolean("grid_snap", gridSnap)
             putBoolean("oled", oledProtection)
@@ -245,21 +253,45 @@ class PhotoTvView(
         }.apply()
     }
 
+    fun setWeatherLocation(value: String) {
+        weatherLocation = value.trim()
+        savePrefs()
+        loadWeather()
+        invalidate()
+    }
+
     private fun loadWeather() {
         executor.execute {
             runCatching {
-                val connection = URL("https://wttr.in/?format=j1").openConnection().apply {
+                val encoded = if (weatherLocation.isBlank()) "" else java.net.URLEncoder.encode(weatherLocation, "UTF-8")
+                val url = if (encoded.isBlank()) {
+                    "https://wttr.in/?format=j1"
+                } else {
+                    "https://wttr.in/$encoded?format=j1"
+                }
+                val connection = URL(url).openConnection().apply {
                     connectTimeout = 5000
                     readTimeout = 5000
-                    setRequestProperty("User-Agent", "PhotoTV/0.3")
+                    setRequestProperty("User-Agent", "PhotoTV/0.4")
                 }
                 val json = connection.getInputStream().bufferedReader().use { it.readText() }
-                val current = JSONObject(json).optJSONArray("current_condition")?.optJSONObject(0)
+                val root = JSONObject(json)
+                val current = root.optJSONArray("current_condition")?.optJSONObject(0)
                 val c = current?.optString("temp_C")?.toFloatOrNull()
-                if (c != null) {
-                    temperatureC = c
-                    postInvalidate()
-                }
+                if (c != null) temperatureC = c
+                feelsLikeC = current?.optString("FeelsLikeC")?.toFloatOrNull() ?: temperatureC
+                weatherSummary = current
+                    ?.optJSONArray("weatherDesc")
+                    ?.optJSONObject(0)
+                    ?.optString("value")
+                    ?.trim()
+                    .orEmpty()
+                    .ifBlank { "—" }
+
+                val today = root.optJSONArray("weather")?.optJSONObject(0)
+                forecastMinC = today?.optString("mintempC")?.toFloatOrNull() ?: forecastMinC
+                forecastMaxC = today?.optString("maxtempC")?.toFloatOrNull() ?: forecastMaxC
+                postInvalidate()
             }
         }
     }
