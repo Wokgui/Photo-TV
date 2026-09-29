@@ -115,6 +115,7 @@ class PhotoTvView(
     private var slideStartedAt = System.currentTimeMillis()
     private var inactivityToken = 0L
     private var editorMoveMode = false
+    private var longActionLatched = false
     private var layoutPreset = 0
 
     private val transitions = listOf(
@@ -1421,26 +1422,171 @@ class PhotoTvView(
         p.shader=null;p.style=Paint.Style.FILL;p.color=color;c.drawCircle(x,y,radius,p)
     }
 
+    private fun markInteraction() {
+        scheduleInactivity()
+    }
+
+    private fun scheduleInactivity() {
+        inactivityHandler.removeCallbacksAndMessages(null)
+        inactivityToken = System.currentTimeMillis()
+        if (autoStartMinutes <= 0 || slideshow) return
+        val token = inactivityToken
+        inactivityHandler.postDelayed({
+            if (token == inactivityToken && !slideshow && activePhotos().isNotEmpty()) {
+                startSlideshow()
+            }
+        }, autoStartMinutes * 60_000L)
+    }
+
+    private fun handleLongAction(): Boolean {
+        if (slideshow) {
+            if (!quickMenuVisible) {
+                quickMenuVisible = true
+                quickMenuIndex = 0
+                paused = true
+                handler.removeCallbacksAndMessages(null)
+                invalidate()
+            }
+            return true
+        }
+        if (page == 1 && photosRow == 1 && library.isNotEmpty()) {
+            val album = currentAlbumName()
+            if (hiddenAlbums.contains(album)) hiddenAlbums.remove(album) else hiddenAlbums.add(album)
+            savePrefs()
+            invalidate()
+            return true
+        }
+        if (page == 2 && editorColumn == 1) {
+            editorMoveMode = !editorMoveMode
+            invalidate()
+            return true
+        }
+        return false
+    }
+
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            longActionLatched = true
+            return handleLongAction()
+        }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            longActionLatched = false
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        markInteraction()
+
+        if ((keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) &&
+            (event?.repeatCount ?: 0) >= 2 && !longActionLatched
+        ) {
+            longActionLatched = true
+            return handleLongAction()
+        }
+
+        if (quickMenuVisible) {
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    quickMenuIndex = (quickMenuIndex - 1 + 4) % 4
+                    invalidate()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    quickMenuIndex = (quickMenuIndex + 1) % 4
+                    invalidate()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    activateQuickMenu()
+                    true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    quickMenuVisible = false
+                    invalidate()
+                    true
+                }
+                else -> true
+            }
+        }
+
+        if (infoPanelVisible) {
+            return when (keyCode) {
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    infoPanelVisible = false
+                    invalidate()
+                    true
+                }
+                else -> true
+            }
+        }
+
         if (slideshow) {
             return when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_RIGHT -> { slideshowNext(1); true }
                 KeyEvent.KEYCODE_DPAD_LEFT -> { slideshowNext(-1); true }
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { togglePause(); true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    togglePause()
+                    true
+                }
                 KeyEvent.KEYCODE_BACK -> { stopSlideshow(); true }
                 else -> super.onKeyDown(keyCode, event)
             }
         }
 
         when (keyCode) {
-            KeyEvent.KEYCODE_BACK -> if (page != 0) { page = 0; navFocus = true; invalidate(); return true }
+            KeyEvent.KEYCODE_BACK -> if (page != 0) {
+                page = 0
+                navFocus = true
+                editorMoveMode = false
+                invalidate()
+                return true
+            }
             KeyEvent.KEYCODE_DPAD_DOWN -> { moveVertical(1); return true }
             KeyEvent.KEYCODE_DPAD_UP -> { moveVertical(-1); return true }
             KeyEvent.KEYCODE_DPAD_LEFT -> { moveHorizontal(-1); return true }
             KeyEvent.KEYCODE_DPAD_RIGHT -> { moveHorizontal(1); return true }
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { activate(); return true }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                if (!longActionLatched) activate()
+                return true
+            }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    private fun activateQuickMenu() {
+        val item = currentItem()
+        when (quickMenuIndex) {
+            0 -> item?.let {
+                val key = it.uri.toString()
+                if (favorites.contains(key)) favorites.remove(key) else favorites.add(key)
+            }
+            1 -> item?.let {
+                excludedUris.add(it.uri.toString())
+                quickMenuVisible = false
+                paused = false
+                if (activePhotos().isEmpty()) stopSlideshow() else {
+                    currentPhoto = currentPhoto.coerceIn(0, activePhotos().lastIndex)
+                    slideStartedAt = System.currentTimeMillis()
+                    preloadAroundCurrent()
+                    scheduleSlideshow()
+                }
+            }
+            2 -> {
+                quickMenuVisible = false
+                infoPanelVisible = true
+            }
+            3 -> {
+                quickMenuVisible = false
+                togglePause()
+            }
+        }
+        savePrefs()
+        invalidate()
     }
 
     private fun moveVertical(dir: Int) {
