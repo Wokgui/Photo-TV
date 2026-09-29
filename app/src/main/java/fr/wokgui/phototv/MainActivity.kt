@@ -76,7 +76,8 @@ class MainActivity : AppCompatActivity() {
             onExportSettings = { exportSettings() },
             onImportSettings = { importSettings() },
             onAlbumSearch = { requestAlbumSearch() },
-            onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) }
+            onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) },
+            supportsVideoPlayback = true
         )
 
         val root = FrameLayout(this).apply {
