@@ -331,20 +331,20 @@ class PhotoTvView(
         drawBrand(c, 42f, 30f, "DIAPORAMA")
         drawClock(c, 1215f, 32f)
 
-        circle(c, 58f, 352f, 30f, Color.argb(190, 7, 15, 24))
-        text(c, "‹", 58f, 363f, 40f, Color.WHITE, 0, 1)
-        circle(c, 1183f, 352f, 30f, Color.argb(190, 7, 15, 24))
-        text(c, "›", 1183f, 363f, 40f, Color.WHITE, 0, 1)
+        circle(c, 82f, 352f, 30f, Color.argb(190, 7, 15, 24))
+        text(c, "‹", 82f, 363f, 40f, Color.WHITE, 0, 1)
+        circle(c, 1198f, 352f, 30f, Color.argb(190, 7, 15, 24))
+        text(c, "›", 1198f, 363f, 40f, Color.WHITE, 0, 1)
 
         val item = currentItem()
         val title = item?.title ?: "001. Opéra d'Oslo"
         val album = item?.album ?: "Norvège 2026"
-        text(c, title, 78f, 605f, 31f, Color.WHITE, 1)
-        text(c, album, 78f, 641f, 19f, Color.WHITE, 0)
+        text(c, title, 78f, 568f, 31f, Color.WHITE, 1)
+        text(c, album, 78f, 607f, 19f, Color.WHITE, 0)
 
         val count = activePhotos().size
         val countText = if (count > 0) "${currentPhoto + 1} / $count" else "3 / 142"
-        text(c, countText, 1215f, 640f, 15f, Color.WHITE, 0, 2)
+        text(c, countText, 1215f, 607f, 15f, Color.WHITE, 0, 2)
     }
 
     private fun drawPhotos(c: Canvas) {
@@ -726,21 +726,21 @@ class PhotoTvView(
     }
 
     private fun drawBottomNav(c: Canvas) {
-        val x = 420f
-        val y = 652f
-        val w = 440f
-        val h = 54f
+        val x = 280f
+        val y = 646f
+        val w = 720f
+        val h = 62f
         round(c, x, y, x + w, y + h, 18f, Color.argb(235, 3, 15, 28))
         strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(22, 49, 77), 1f)
 
         val labels = listOf("Aperçu", "Photos", "Éditeur", "Réglages")
         for (i in 0..3) {
-            val tx = x + i * 110f
+            val tx = x + i * 180f
             val active = page == i
-            if (active) gradientRound(c, tx + 2f, y + 3f, tx + 108f, y + h - 3f, 15f, Color.rgb(12, 128, 255), Color.rgb(7, 91, 237))
-            if (navFocus && active) strokeRound(c, tx - 1f, y, tx + 111f, y + h, 17f, Color.rgb(154, 211, 255), 2f)
-            drawBottomIcon(c, tx + 28f, y + 27f, i)
-            text(c, labels[i], tx + 48f, y + 33f, 12.5f, Color.WHITE)
+            if (active) gradientRound(c, tx + 3f, y + 4f, tx + 177f, y + h - 4f, 16f, Color.rgb(12, 128, 255), Color.rgb(7, 91, 237))
+            if (navFocus && active) strokeRound(c, tx, y + 1f, tx + 180f, y + h - 1f, 18f, Color.rgb(154, 211, 255), 2f)
+            drawBottomIcon(c, tx + 49f, y + 31f, i)
+            text(c, labels[i], tx + 72f, y + 38f, 13.5f, Color.WHITE)
         }
     }
 
@@ -1375,8 +1375,8 @@ class PhotoTvView(
             return true
         }
 
-        if (y >= 645f) {
-            page = ((x - 420f) / 110f).toInt().coerceIn(0, 3)
+        if (y >= 640f && x >= 280f && x <= 1000f) {
+            page = ((x - 280f) / 180f).toInt().coerceIn(0, 3)
             navFocus = false
             invalidate()
             return true
