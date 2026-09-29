@@ -762,7 +762,7 @@ class PhotoTvView(
 
         val item = currentItem()
         val title = item?.title ?: "001. Opéra d'Oslo"
-        val album = item?.album ?: "Norvège 2026"
+        val album = albumDisplay(item)
         text(c, title, 78f, 568f, 31f, Color.WHITE, 1)
         text(c, album, 78f, 607f, 19f, Color.WHITE, 0)
 
@@ -845,9 +845,16 @@ class PhotoTvView(
         return library.filter { it.albums.contains(name) }.map { it as PhotoItem? }
     }
 
+    private fun albumDisplay(item: PhotoItem?): String {
+        if (item == null) return "Norvège 2026"
+        val preferred = item.albums.filter { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) }
+        val values = if (preferred.isNotEmpty()) preferred else item.albums.toList()
+        return values.joinToString(" • ").ifBlank { "Album" }
+    }
+
     private fun metadataValues(item: PhotoItem? = currentItem()): List<String> = listOf(
         item?.title ?: "001. Opéra d'Oslo",
-        item?.album ?: "Norvège 2026",
+        albumDisplay(item),
         itemDate(item),
         currentTime(),
         tempText(),
