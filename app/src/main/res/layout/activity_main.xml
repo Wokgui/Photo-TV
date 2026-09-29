@@ -76,9 +76,10 @@
                     android:orientation="vertical"
                     android:gravity="right">
                     <TextView
+                        android:id="@+id/previewTemp"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="☀  18 °C"
+                        android:text="☀  — °C"
                         android:textColor="#FFFFFF"
                         android:textSize="22sp"/>
                     <TextView
@@ -86,9 +87,18 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="3dp"
-                        android:text="29 septembre 2026 • 15:42"
+                        android:text="29 septembre 2026"
                         android:textColor="#F3F6FB"
-                        android:textSize="13sp"/>
+                        android:textSize="12sp"/>
+                    <TextView
+                        android:id="@+id/previewTime"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:text="15:42"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="30sp"/>
                 </LinearLayout>
 
                 <Button
