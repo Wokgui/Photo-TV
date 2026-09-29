@@ -798,9 +798,9 @@ class PhotoTvView(
         drawBrand(c, 58f, 20f, "PHOTOS ET ALBUMS")
 
         val sourceY = 108f
-        drawSourceCard(c, 45f, sourceY, 360f, 102f, "Google Photos", "Se connecter", 0, sourceFocus == 0 && !navFocus, true)
-        drawSourceCard(c, 420f, sourceY, 360f, 102f, "Choisir un dossier", "Stockage local", 1, sourceFocus == 1 && !navFocus, false)
-        drawSourceCard(c, 795f, sourceY, 440f, 102f, "Sélectionner des photos", "Choisir plusieurs fichiers", 2, sourceFocus == 2 && !navFocus, false)
+        drawSourceCard(c, 47f, sourceY, 388f, 102f, "Google Photos", "Se connecter", 0, sourceFocus == 0 && !navFocus, true)
+        drawSourceCard(c, 450f, sourceY, 362f, 102f, "Choisir un dossier", "Stockage local", 1, sourceFocus == 1 && !navFocus, false)
+        drawSourceCard(c, 828f, sourceY, 410f, 102f, "Sélectionner des photos", "Choisir plusieurs fichiers", 2, sourceFocus == 2 && !navFocus, false)
 
         val albums = albumPairs()
         text(c, "Mes albums Google Photos", 45f, 250f, 19f, Color.WHITE, 1)
@@ -809,11 +809,11 @@ class PhotoTvView(
         text(c, "${albums.size} albums", 1235f, 250f, 13f, Color.rgb(186, 196, 210), 0, 2)
 
         val albumY = 270f
-        val cardW = 165f
+        val cardW = 185f
         val cardH = 198f
-        val gap = 12f
+        val gap = 14f
         albums.take(6).forEachIndexed { i, pair ->
-            val x = 45f + i * (cardW + gap)
+            val x = 47f + i * (cardW + gap)
             val focused = photosRow == 1 && albumFocus == i && !navFocus
             drawAlbumCard(c, x, albumY, cardW, cardH, pair.first, pair.second, i, focused)
         }
@@ -821,9 +821,9 @@ class PhotoTvView(
         text(c, "Photos de l'album sélectionné", 45f, 500f, 19f, Color.WHITE, 1)
         val thumbs = currentAlbumPhotos()
         val py = 522f
-        val tw = 165f
+        val tw = 185f
         thumbs.take(6).forEachIndexed { i, item ->
-            val x = 45f + i * (tw + gap)
+            val x = 47f + i * (tw + gap)
             val focused = photosRow == 2 && photoFocus == i && !navFocus
             drawPhotoThumb(c, x, py, tw, 104f, item, focused)
         }
@@ -1033,12 +1033,12 @@ class PhotoTvView(
 
     private fun drawSettings(c: Canvas) {
         drawAppBackground(c)
-        drawBrand(c, 34f, 20f, "RÉGLAGES")
+        drawBrand(c, 50f, 20f, "RÉGLAGES")
 
         val sideX = 32f
         val sideY = 108f
-        val sideW = 305f
-        val sideH = 525f
+        val sideW = 320f
+        val sideH = 475f
         round(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(6, 18, 29))
         strokeRound(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(22, 45, 69), 1f)
 
@@ -1055,10 +1055,10 @@ class PhotoTvView(
             text(c, name, sideX + 58f, yy + 31f, 14f, Color.WHITE)
         }
 
-        val panelX = 365f
-        val panelY = 72f
-        val panelW = 883f
-        val panelH = 561f
+        val panelX = 380f
+        val panelY = 77f
+        val panelW = 868f
+        val panelH = 536f
         round(c, panelX, panelY, panelX + panelW, panelY + panelH, 13f, Color.rgb(17, 30, 44))
         strokeRound(c, panelX, panelY, panelX + panelW, panelY + panelH, 13f, Color.rgb(38, 56, 76), 1f)
 
@@ -2663,16 +2663,16 @@ class PhotoTvView(
         when {
             y in 108f..210f -> {
                 when {
-                    x in 45f..405f -> onExactSource()
-                    x in 420f..780f -> onExactSource()
-                    x in 795f..1235f -> onPickPhotos()
+                    x in 47f..435f -> onExactSource()
+                    x in 450f..812f -> onExactSource()
+                    x in 828f..1238f -> onPickPhotos()
                 }
             }
             x in 865f..1120f && y in 220f..266f -> onAlbumSearch()
             y in 270f..468f -> {
-                val i = ((x - 45f) / 177f).toInt()
+                val i = ((x - 47f) / 199f).toInt()
                 val albums = albumPairs()
-                if (i in 0 until min(6, albums.size) && x >= 45f + i * 177f && x <= 210f + i * 177f) {
+                if (i in 0 until min(6, albums.size) && x >= 47f + i * 199f && x <= 232f + i * 199f) {
                     albumFocus = i
                     val name = albums[i].first
                     if (library.isNotEmpty()) {
@@ -2681,9 +2681,9 @@ class PhotoTvView(
                 }
             }
             y in 522f..626f -> {
-                val i = ((x - 45f) / 177f).toInt()
+                val i = ((x - 47f) / 199f).toInt()
                 val photos = currentAlbumPhotos()
-                if (i in 0 until min(6, photos.size) && x >= 45f + i * 177f && x <= 210f + i * 177f) {
+                if (i in 0 until min(6, photos.size) && x >= 47f + i * 199f && x <= 232f + i * 199f) {
                     photoFocus = i
                     photos.getOrNull(i)?.let { item ->
                         val active = activePhotos()
@@ -2771,12 +2771,12 @@ class PhotoTvView(
     }
 
     private fun setSliderFromTap(x: Float, minValue: Float, maxValue: Float): Float {
-        val t = ((x - 715f) / 375f).coerceIn(0f, 1f)
+        val t = ((x - 730f) / 375f).coerceIn(0f, 1f)
         return minValue + (maxValue - minValue) * t
     }
 
     private fun handleSettingsTap(x: Float, y: Float) {
-        if (x in 32f..337f && y in 116f..616f) {
+        if (x in 32f..352f && y in 116f..566f) {
             val i = ((y - 116f) / 55f).toInt().coerceIn(0, 7)
             settingsCategory = i
             settingsColumn = 0
@@ -2785,7 +2785,7 @@ class PhotoTvView(
             return
         }
 
-        if (x !in 365f..1248f || y !in 72f..633f) return
+        if (x !in 380f..1248f || y !in 77f..613f) return
         settingsColumn = 1
 
         when (settingsCategory) {
@@ -2796,7 +2796,7 @@ class PhotoTvView(
                 }
                 y in 185f..238f -> {
                     settingsControl = 1
-                    fixedImage = x >= 905f
+                    fixedImage = x >= 920f
                 }
                 y in 240f..292f -> { settingsControl = 2; loop = !loop }
                 y in 294f..346f -> { settingsControl = 3; randomOrder = !randomOrder }
@@ -2814,7 +2814,7 @@ class PhotoTvView(
                 y in 544f..594f -> { settingsControl = 6; kenBurns = !kenBurns }
                 y in 592f..635f -> {
                     settingsControl = 7
-                    zoomLevel = (((x - 715f) / (380f / 3f)).toInt()).coerceIn(0, 2)
+                    zoomLevel = (((x - 730f) / (380f / 3f)).toInt()).coerceIn(0, 2)
                 }
             }
 
@@ -2868,7 +2868,7 @@ class PhotoTvView(
                 y in 136f..190f -> { settingsControl = 0; showTemp = !showTemp }
                 y in 192f..250f -> {
                     settingsControl = 1
-                    tempCelsius = x < 905f
+                    tempCelsius = x < 920f
                     loadWeather()
                 }
                 y in 252f..316f -> { settingsControl = 2; onWeatherLocation() }
