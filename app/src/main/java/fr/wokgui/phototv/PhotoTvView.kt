@@ -1265,15 +1265,18 @@ class PhotoTvView(
 
     private fun drawSlideshow(c: Canvas) {
         val items = activePhotos()
+        val item = currentItem()
         val current = currentBitmap()
         val previous = if (items.isNotEmpty() && previousPhoto in items.indices) {
             val key = items[previousPhoto].uri.toString()
             synchronized(bitmapCache) { bitmapCache[key] } ?: current
         } else current
 
-        val localTransition = ruleForItem(currentItem())?.transitionIndex?.takeIf { it >= 0 } ?: transitionIndex
+        val localTransition = ruleForItem(item)?.transitionIndex?.takeIf { it >= 0 } ?: transitionIndex
         val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
-        when {
+        if (item?.mediaType == "video") {
+            c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        } else when {
             transitionProgress >= 1f || previous == null || current == null -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
             name.startsWith("Glissement") -> {
                 val dir = if (name.contains("droite", true)) -1f else 1f
@@ -1291,7 +1294,6 @@ class PhotoTvView(
         }
 
         drawBottomGradient(c, 0f, 0f, 1280f, 720f)
-        val item = currentItem()
         val vals = metadataValues(item)
         val ruleAllowsMetadata = ruleForItem(item)?.showMetadata ?: true
         val hideOverlays = !ruleAllowsMetadata || (overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L)
