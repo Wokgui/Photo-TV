@@ -10,6 +10,8 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.os.Build
+import android.media.MediaMetadataRetriever
 import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
 import coil.request.ImageRequest
@@ -92,6 +94,23 @@ class PhotoTvView(
     private var dateFormatIndex = 0
     private var time24h = true
     private var temperatureC = 17f
+    private var imageMode = 0
+    private var gridSnap = true
+    private var oledProtection = true
+    private var overlaysAutoHide = false
+    private var autoStartMinutes = 5
+    private var startDirectly = false
+    private var favoritesOnly = false
+    private val favorites = linkedSetOf<String>()
+    private val hiddenAlbums = linkedSetOf<String>()
+    private val excludedUris = linkedSetOf<String>()
+    private val history = mutableListOf<Int>()
+    private val shuffleBag = mutableListOf<Int>()
+    private var quickMenuVisible = false
+    private var quickMenuIndex = 0
+    private var infoPanelVisible = false
+    private var slideStartedAt = System.currentTimeMillis()
+    private var inactivityToken = 0L
 
     private val transitions = listOf(
         "Fondu", "Glissement", "Zoom", "Ken Burns", "Dissolution", "Cube 3D",
@@ -101,7 +120,8 @@ class PhotoTvView(
     )
 
     private val elementNames = listOf(
-        "Titre de la photo", "Nom de l'album", "Date", "Heure", "Température"
+        "Titre de la photo", "Nom de l'album", "Date", "Heure", "Température",
+        "Description", "Lieu", "Appareil photo", "Dimensions", "Orientation"
     )
 
     private val styles = mutableListOf(
@@ -109,7 +129,12 @@ class PhotoTvView(
         Style(19f, 7f, 84f, font = 0, color = Color.WHITE),
         Style(11f, 73f, 10f, font = 0, color = Color.WHITE, align = 2),
         Style(26f, 80f, 15f, font = 0, color = Color.WHITE, align = 2),
-        Style(18f, 80f, 5f, font = 0, color = Color.WHITE, align = 2)
+        Style(18f, 80f, 5f, font = 0, color = Color.WHITE, align = 2),
+        Style(14f, 7f, 90f, font = 0, color = Color.WHITE, visible = false),
+        Style(13f, 7f, 94f, font = 0, color = Color.WHITE, visible = false),
+        Style(12f, 72f, 90f, font = 0, color = Color.WHITE, align = 2, visible = false),
+        Style(12f, 72f, 94f, font = 0, color = Color.WHITE, align = 2, visible = false),
+        Style(12f, 72f, 98f, font = 0, color = Color.WHITE, align = 2, visible = false)
     )
 
     private val mockAlbums = listOf(
@@ -131,6 +156,7 @@ class PhotoTvView(
         requestFocus()
         loadDemo()
         loadWeather()
+        scheduleInactivity()
     }
 
     private fun loadPrefs() {
@@ -148,6 +174,17 @@ class PhotoTvView(
         tempCelsius = prefs.getBoolean("celsius", true)
         dateFormatIndex = prefs.getInt("date_format", 0).coerceIn(0, 2)
         time24h = prefs.getBoolean("time_24h", true)
+        imageMode = prefs.getInt("image_mode", 0).coerceIn(0, 3)
+        gridSnap = prefs.getBoolean("grid_snap", true)
+        oledProtection = prefs.getBoolean("oled", true)
+        overlaysAutoHide = prefs.getBoolean("overlay_hide", false)
+        autoStartMinutes = prefs.getInt("auto_start", 5).coerceIn(0, 60)
+        startDirectly = prefs.getBoolean("start_direct", false)
+        favoritesOnly = prefs.getBoolean("favorites_only", false)
+        favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
+        hiddenAlbums.addAll(prefs.getStringSet("hidden_albums", emptySet()) ?: emptySet())
+        excludedUris.addAll(prefs.getStringSet("excluded_uris", emptySet()) ?: emptySet())
+        currentPhoto = prefs.getInt("resume_index", 0)
         styles.forEachIndexed { i, s ->
             s.size = prefs.getFloat("s${i}_size", s.size)
             s.x = prefs.getFloat("s${i}_x", s.x)
@@ -176,6 +213,17 @@ class PhotoTvView(
             putBoolean("celsius", tempCelsius)
             putInt("date_format", dateFormatIndex)
             putBoolean("time_24h", time24h)
+            putInt("image_mode", imageMode)
+            putBoolean("grid_snap", gridSnap)
+            putBoolean("oled", oledProtection)
+            putBoolean("overlay_hide", overlaysAutoHide)
+            putInt("auto_start", autoStartMinutes)
+            putBoolean("start_direct", startDirectly)
+            putBoolean("favorites_only", favoritesOnly)
+            putStringSet("favorites", HashSet(favorites))
+            putStringSet("hidden_albums", HashSet(hiddenAlbums))
+            putStringSet("excluded_uris", HashSet(excludedUris))
+            putInt("resume_index", currentPhoto)
             styles.forEachIndexed { i, s ->
                 putFloat("s${i}_size", s.size)
                 putFloat("s${i}_x", s.x)
@@ -232,12 +280,16 @@ class PhotoTvView(
         this.exactAlbums = exactAlbums
         selectedAlbums.clear()
         selectedAlbums.addAll(items.map { it.album }.distinct())
-        currentPhoto = 0
+        currentPhoto = prefs.getInt("resume_index", 0).coerceAtLeast(0)
         albumFocus = 0
         photoFocus = 0
         loadingText = null
         preload(items.take(48).map { it.uri })
+        val count = activePhotos().size
+        if (count > 0) currentPhoto = currentPhoto.coerceIn(0, count - 1)
         invalidate()
+        scheduleInactivity()
+        if (startDirectly && count > 0) postDelayed({ if (!slideshow) startSlideshow() }, 450)
     }
 
     private fun preload(uris: List<Uri>) {
@@ -263,18 +315,33 @@ class PhotoTvView(
 
     private fun decodeThumb(uri: Uri): Bitmap? {
         return runCatching {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            var sample = 1
-            while (bounds.outWidth / sample > 1200 || bounds.outHeight / sample > 900) sample *= 2
-            val opt = BitmapFactory.Options().apply { inSampleSize = max(1, sample) }
-            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opt) }
+            val mime = context.contentResolver.getType(uri).orEmpty()
+            if (mime.startsWith("video/")) {
+                val r = MediaMetadataRetriever()
+                try {
+                    r.setDataSource(context, uri)
+                    r.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                } finally {
+                    runCatching { r.release() }
+                }
+            } else {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                while (bounds.outWidth / sample > 1200 || bounds.outHeight / sample > 900) sample *= 2
+                val opt = BitmapFactory.Options().apply { inSampleSize = max(1, sample) }
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opt) }
+            }
         }.getOrNull()
     }
 
     private fun activePhotos(): List<PhotoItem> {
         if (library.isEmpty()) return emptyList()
-        return library.filter { selectedAlbums.contains(it.album) }
+        return library.filter { item ->
+            item.albums.any { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) } &&
+                !excludedUris.contains(item.uri.toString()) &&
+                (!favoritesOnly || favorites.contains(item.uri.toString()))
+        }
     }
 
     private fun currentItem(): PhotoItem? {
@@ -388,7 +455,11 @@ class PhotoTvView(
 
     private fun albumPairs(): List<Pair<String, Int>> {
         if (library.isEmpty()) return mockAlbums
-        return library.groupBy { it.album }.map { it.key to it.value.size }
+        val counts = linkedMapOf<String, Int>()
+        library.forEach { item ->
+            item.albums.forEach { album -> counts[album] = (counts[album] ?: 0) + 1 }
+        }
+        return counts.entries.sortedBy { it.key.lowercase(Locale.FRANCE) }.map { it.key to it.value }
     }
 
     private fun currentAlbumName(): String {
@@ -400,7 +471,7 @@ class PhotoTvView(
     private fun currentAlbumPhotos(): List<PhotoItem?> {
         if (library.isEmpty()) return List(6) { null }
         val name = currentAlbumName()
-        return library.filter { it.album == name }.map { it as PhotoItem? }
+        return library.filter { it.albums.contains(name) }.map { it as PhotoItem? }
     }
 
     private fun drawEditor(c: Canvas) {
