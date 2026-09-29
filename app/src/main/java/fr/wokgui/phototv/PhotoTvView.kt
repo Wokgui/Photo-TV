@@ -884,7 +884,7 @@ class PhotoTvView(
 
     private fun drawEditor(c: Canvas) {
         drawAppBackground(c)
-        drawBrand(c, 34f, 20f, "ÉDITEUR")
+        drawBrand(c, 50f, 20f, "ÉDITEUR")
 
         val leftX = 32f
         val leftW = 320f
@@ -1068,17 +1068,17 @@ class PhotoTvView(
 
     private fun drawSettingsSlideshow(c: Canvas, x: Float, y: Float) {
         text(c, "Diaporama", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        settingsSlider(c, "Durée d'affichage par photo", durationSeconds.toFloat(), 2f, 120f, "$durationSeconds secondes", x, y + 62f, 0)
-        settingsSegment(c, "Mode d'affichage", listOf("Automatique", "Image fixe"), if (fixedImage) 1 else 0, x, y + 121f, 1)
-        settingsToggle(c, "Lecture en boucle", loop, x, y + 181f, 2)
-        settingsChoice(c, "Ordre des photos", if (randomOrder) "Aléatoire" else "Dans l'ordre de l'album", x, y + 239f, 3)
+        settingsSlider(c, "Durée d'affichage par photo", durationSeconds.toFloat(), 2f, 120f, "$durationSeconds secondes", x, y + 40f, 0)
+        settingsSegment(c, "Mode d'affichage", listOf("Automatique", "Image fixe"), if (fixedImage) 1 else 0, x, y + 86f, 1)
+        settingsToggle(c, "Lecture en boucle", loop, x, y + 133f, 2)
+        settingsChoice(c, "Ordre des photos", if (randomOrder) "Aléatoire" else "Dans l'ordre de l'album", x, y + 180f, 3)
 
-        text(c, "Transition entre les photos", x + 22f, y + 304f, 13f, Color.WHITE)
-        drawTransitionCards(c, x + 22f, y + 318f, settingsControl == 4 && settingsColumn == 1 && !navFocus)
+        text(c, "Transition entre les photos", x + 22f, y + 252f, 13f, Color.WHITE)
+        drawTransitionCards(c, x + 22f, y + 267f, settingsControl == 4 && settingsColumn == 1 && !navFocus)
 
-        settingsSlider(c, "Durée de la transition", transitionSeconds, .2f, 4f, "${format1(transitionSeconds)} secondes", x, y + 428f, 5)
-        settingsToggle(c, "Effet panoramique (Ken Burns)", kenBurns, x, y + 480f, 6)
-        settingsSegment(c, "Style d'agrandissement", listOf("Léger", "Moyen", "Fort"), zoomLevel, x, y + 527f, 7)
+        settingsSlider(c, "Durée de la transition", transitionSeconds, .2f, 4f, "${format1(transitionSeconds)} secondes", x, y + 390f, 5)
+        settingsToggle(c, "Effet panoramique (Ken Burns)", kenBurns, x, y + 430f, 6)
+        settingsSegment(c, "Style d'agrandissement", listOf("Léger", "Moyen", "Fort"), zoomLevel, x, y + 471f, 7)
     }
 
     private fun drawSettingsElements(c: Canvas, x: Float, y: Float, w: Float) {
@@ -1729,15 +1729,16 @@ class PhotoTvView(
     private fun drawTransitionCards(c: Canvas, x: Float, y: Float, focused: Boolean) {
         val names = listOf("Fondu", "Glissement", "Zoom", "Ken Burns", "Dissolution", "Cube 3D")
         val w = 131f
+        val h = 100f
         val gap = 10f
         names.forEachIndexed { i, name ->
             val xx = x + i * (w + gap)
-            round(c, xx, y, xx + w, y + 78f, 8f, Color.rgb(13, 27, 40))
-            drawBitmapCenterCrop(c, currentBitmap(), xx + 3f, y + 3f, w - 6f, 49f, 6f)
+            round(c, xx, y, xx + w, y + h, 8f, Color.rgb(13, 27, 40))
+            drawBitmapCenterCrop(c, currentBitmap(), xx + 3f, y + 3f, w - 6f, 66f, 6f)
             val active = transitions[transitionIndex].startsWith(name)
-            if (active) strokeRound(c, xx - 2f, y - 2f, xx + w + 2f, y + 80f, 10f, Color.rgb(29, 145, 255), 2f)
-            if (focused && i == min(transitionIndex, 5)) strokeRound(c, xx - 5f, y - 5f, xx + w + 5f, y + 83f, 11f, Color.WHITE, 2f)
-            text(c, name, xx + w / 2, y + 69f, 10.5f, Color.WHITE, 0, 1)
+            if (active) strokeRound(c, xx - 2f, y - 2f, xx + w + 2f, y + h + 2f, 10f, Color.rgb(29, 145, 255), 2f)
+            if (focused && i == min(transitionIndex, 5)) strokeRound(c, xx - 5f, y - 5f, xx + w + 5f, y + h + 5f, 11f, Color.WHITE, 2f)
+            text(c, name, xx + w / 2, y + 91f, 10.5f, Color.WHITE, 0, 1)
         }
     }
 
@@ -2776,29 +2777,29 @@ class PhotoTvView(
 
         when (settingsCategory) {
             0 -> when {
-                y in 128f..178f -> {
+                y in 112f..164f -> {
                     settingsControl = 0
                     durationSeconds = setSliderFromTap(x, 2f, 120f).toInt().coerceIn(2, 120)
                 }
-                y in 185f..238f -> {
+                y in 164f..214f -> {
                     settingsControl = 1
                     fixedImage = x >= 920f
                 }
-                y in 240f..292f -> { settingsControl = 2; loop = !loop }
-                y in 294f..346f -> { settingsControl = 3; randomOrder = !randomOrder }
-                y in 382f..474f -> {
-                    val i = ((x - 387f) / 141f).toInt()
+                y in 210f..262f -> { settingsControl = 2; loop = !loop }
+                y in 255f..310f -> { settingsControl = 3; randomOrder = !randomOrder }
+                y in 340f..452f -> {
+                    val i = ((x - 402f) / 141f).toInt()
                     if (i in 0..5) {
                         settingsControl = 4
                         transitionIndex = i
                     }
                 }
-                y in 486f..542f -> {
+                y in 455f..515f -> {
                     settingsControl = 5
                     transitionSeconds = setSliderFromTap(x, .2f, 4f)
                 }
-                y in 544f..594f -> { settingsControl = 6; kenBurns = !kenBurns }
-                y in 592f..635f -> {
+                y in 505f..555f -> { settingsControl = 6; kenBurns = !kenBurns }
+                y in 548f..600f -> {
                     settingsControl = 7
                     zoomLevel = (((x - 730f) / (380f / 3f)).toInt()).coerceIn(0, 2)
                 }
@@ -2829,7 +2830,7 @@ class PhotoTvView(
             }
 
             3 -> {
-                val col = ((x - 387f) / 211f).toInt()
+                val col = ((x - 402f) / 211f).toInt()
                 val row = ((y - 142f) / 104f).toInt()
                 val idx = row * 4 + col
                 if (col in 0..3 && row in 0..3 && idx in transitions.indices) {
@@ -2962,7 +2963,10 @@ class PhotoTvView(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         handler.removeCallbacksAndMessages(null)
+        inactivityHandler.removeCallbacksAndMessages(null)
+        clockHandler.removeCallbacksAndMessages(null)
         transitionAnimator?.cancel()
+        onVideoPlayback(null, videoSound)
         executor.shutdownNow()
     }
 }
