@@ -149,7 +149,8 @@ object TakeoutLibrary {
                             location = existing.location.ifBlank { item.location },
                             camera = existing.camera.ifBlank { item.camera },
                             width = if (existing.width > 0) existing.width else item.width,
-                            height = if (existing.height > 0) existing.height else item.height
+                            height = if (existing.height > 0) existing.height else item.height,
+                            sourceCopies = existing.sourceCopies + item.sourceCopies
                         )
                     }
                 }
