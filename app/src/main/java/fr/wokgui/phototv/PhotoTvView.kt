@@ -47,8 +47,11 @@ class PhotoTvView(
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val handler = Handler(Looper.getMainLooper())
+    private val inactivityHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val bitmapCache = LinkedHashMap<String, Bitmap>()
+    private var softSource: Bitmap? = null
+    private var softBitmap: Bitmap? = null
 
     private val demoUrl =
         "https://commons.wikimedia.org/wiki/Special:Redirect/file/Oslo%20-%20Op%C3%A9ra%20-%20Ext%C3%A9rieur%2001.JPG?width=1800"
@@ -111,6 +114,8 @@ class PhotoTvView(
     private var infoPanelVisible = false
     private var slideStartedAt = System.currentTimeMillis()
     private var inactivityToken = 0L
+    private var editorMoveMode = false
+    private var layoutPreset = 0
 
     private val transitions = listOf(
         "Fondu", "Glissement", "Zoom", "Ken Burns", "Dissolution", "Cube 3D",
@@ -180,6 +185,7 @@ class PhotoTvView(
         overlaysAutoHide = prefs.getBoolean("overlay_hide", false)
         autoStartMinutes = prefs.getInt("auto_start", 5).coerceIn(0, 60)
         startDirectly = prefs.getBoolean("start_direct", false)
+        layoutPreset = prefs.getInt("layout_preset", 0).coerceIn(0, 3)
         favoritesOnly = prefs.getBoolean("favorites_only", false)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         hiddenAlbums.addAll(prefs.getStringSet("hidden_albums", emptySet()) ?: emptySet())
@@ -219,6 +225,7 @@ class PhotoTvView(
             putBoolean("overlay_hide", overlaysAutoHide)
             putInt("auto_start", autoStartMinutes)
             putBoolean("start_direct", startDirectly)
+            putInt("layout_preset", layoutPreset)
             putBoolean("favorites_only", favoritesOnly)
             putStringSet("favorites", HashSet(favorites))
             putStringSet("hidden_albums", HashSet(hiddenAlbums))
@@ -279,7 +286,7 @@ class PhotoTvView(
         library = items
         this.exactAlbums = exactAlbums
         selectedAlbums.clear()
-        selectedAlbums.addAll(items.map { it.album }.distinct())
+        selectedAlbums.addAll(items.flatMap { it.albums }.distinct())
         currentPhoto = prefs.getInt("resume_index", 0).coerceAtLeast(0)
         albumFocus = 0
         photoFocus = 0
@@ -1029,7 +1036,7 @@ class PhotoTvView(
 
     private fun albumBitmap(name: String, index: Int): Bitmap? {
         if (library.isEmpty()) return demoBitmap
-        val item = library.firstOrNull { it.album == name } ?: return demoBitmap
+        val item = library.firstOrNull { it.albums.contains(name) } ?: return demoBitmap
         return synchronized(bitmapCache) { bitmapCache[item.uri.toString()] } ?: demoBitmap
     }
 
