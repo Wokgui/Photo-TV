@@ -11,7 +11,6 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.util.Log
-import android.text.TextUtils
 import android.media.MediaMetadataRetriever
 import androidx.core.graphics.drawable.toBitmap
 import androidx.exifinterface.media.ExifInterface
@@ -2731,7 +2730,18 @@ class PhotoTvView(
     ) {
         p.textSize = size
         p.typeface = Typeface.create("sans-serif", if (weight == 1) Typeface.BOLD else Typeface.NORMAL)
-        val safe = TextUtils.ellipsize(s, p, maxWidth.coerceAtLeast(1f), TextUtils.TruncateAt.END).toString()
+        val limit = maxWidth.coerceAtLeast(1f)
+        var safe = s
+        if (p.measureText(safe) > limit) {
+            val ellipsis = "…"
+            var low = 0
+            var high = safe.length
+            while (low < high) {
+                val mid = (low + high + 1) / 2
+                if (p.measureText(safe.substring(0, mid) + ellipsis) <= limit) low = mid else high = mid - 1
+            }
+            safe = safe.substring(0, low) + ellipsis
+        }
         text(c, safe, x, y, size, color, weight, align)
     }
 
@@ -3338,12 +3348,6 @@ class PhotoTvView(
         }
     }
 
-    override fun onDetachedFromWindow() {
-        remoteServer?.stop()
-        remoteServer = null
-        super.onDetachedFromWindow()
-    }
-
     private fun clearAllMasks() {
         excludedUris.clear()
         sessionExcludedUris.clear()
@@ -3932,6 +3936,8 @@ class PhotoTvView(
     }
 
     override fun onDetachedFromWindow() {
+        remoteServer?.stop()
+        remoteServer = null
         super.onDetachedFromWindow()
         handler.removeCallbacksAndMessages(null)
         inactivityHandler.removeCallbacksAndMessages(null)
@@ -3940,5 +3946,6 @@ class PhotoTvView(
         onVideoPause(true)
         onVideoPlayback(null, videoSound)
         executor.shutdownNow()
+        highResExecutor.shutdownNow()
     }
 }
