@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     private var networkRefreshMinutes = 15
     private var currentNetworkSourceName = "Réseau"
     private var pendingDiagnosticText: String? = null
+    private var settingsUnlockedSession = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,6 +88,9 @@ class MainActivity : AppCompatActivity() {
             onFolderSource = { openLocalFolder() },
             onPickPhotos = { openPhotoPicker() },
             onNetworkSource = { requestNetworkSource() },
+            onSettingsPin = { manageSettingsPin() },
+            canOpenSettings = { !SettingsPinStore.hasPin(this) || settingsUnlockedSession },
+            onUnlockSettings = { requestSettingsUnlock() },
             onWeatherLocation = { requestWeatherLocation() },
             onExportSettings = { exportSettings() },
             onImportSettings = { importSettings() },
@@ -191,6 +195,108 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestSettingsUnlock() {
+        if (!SettingsPinStore.hasPin(this)) {
+            settingsUnlockedSession = true
+            ui.openSettingsAfterUnlock()
+            return
+        }
+        val input = EditText(this).apply {
+            hint = "PIN"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Réglages verrouillés")
+            .setView(input)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Déverrouiller") { _, _ ->
+                val pin = input.text?.toString().orEmpty()
+                if (SettingsPinStore.verify(this, pin)) {
+                    settingsUnlockedSession = true
+                    ui.openSettingsAfterUnlock()
+                } else {
+                    Toast.makeText(this, "PIN incorrect", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
+    }
+
+    private fun manageSettingsPin() {
+        if (!SettingsPinStore.hasPin(this)) {
+            promptNewSettingsPin()
+            return
+        }
+        val current = EditText(this).apply {
+            hint = "PIN actuel"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Protection des réglages")
+            .setView(current)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Continuer") { _, _ ->
+                if (!SettingsPinStore.verify(this, current.text?.toString().orEmpty())) {
+                    Toast.makeText(this, "PIN incorrect", Toast.LENGTH_SHORT).show()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Protection des réglages")
+                        .setItems(arrayOf("Changer le PIN", "Désactiver le PIN")) { _, which ->
+                            if (which == 0) {
+                                promptNewSettingsPin()
+                            } else {
+                                SettingsPinStore.clear(this)
+                                settingsUnlockedSession = true
+                                Toast.makeText(this, "PIN désactivé", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .setNegativeButton("Annuler", null)
+                        .show()
+                }
+            }
+            .show()
+    }
+
+    private fun promptNewSettingsPin() {
+        val pin1 = EditText(this).apply {
+            hint = "Nouveau PIN (4 à 8 chiffres)"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val pin2 = EditText(this).apply {
+            hint = "Confirmer le PIN"
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (24 * resources.displayMetrics.density).toInt()
+            setPadding(pad, 0, pad, 0)
+            addView(pin1)
+            addView(pin2)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Définir le PIN des réglages")
+            .setView(box)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Enregistrer") { _, _ ->
+                val first = pin1.text?.toString().orEmpty()
+                val second = pin2.text?.toString().orEmpty()
+                when {
+                    !first.matches(Regex("\\d{4,8}")) ->
+                        Toast.makeText(this, "Le PIN doit contenir 4 à 8 chiffres", Toast.LENGTH_LONG).show()
+                    first != second ->
+                        Toast.makeText(this, "Les deux PIN ne correspondent pas", Toast.LENGTH_LONG).show()
+                    else -> {
+                        SettingsPinStore.setPin(this, first)
+                        settingsUnlockedSession = true
+                        Toast.makeText(this, "PIN activé", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .show()
+    }
     private fun requestNetworkSource() {
         val saved = NetworkSourceStore.list(this)
         val labels = buildList {
