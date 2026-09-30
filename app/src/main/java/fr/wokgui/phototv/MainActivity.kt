@@ -11,7 +11,6 @@ import android.text.InputType
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 
@@ -51,9 +50,6 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_EXPORT_SETTINGS = 44
         private const val REQ_IMPORT_SETTINGS = 45
         private const val REQ_LOCAL_FOLDER = 46
-        private const val PREFS = "photo_tv"
-        private const val KEY_TREE = "takeout_tree"
-        private const val KEY_TREE_EXACT = "takeout_tree_exact"
     }
 
     private lateinit var ui: PhotoTvView
@@ -103,12 +99,7 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
-        val sourcePrefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        sourcePrefs.getString(KEY_TREE, null)?.let { saved ->
-            val uri = runCatching { Uri.parse(saved) }.getOrNull()
-            val exactMode = sourcePrefs.getBoolean(KEY_TREE_EXACT, true)
-            if (uri != null) importTree(uri, silent = true, exactMode = exactMode)
-        }
+        restoreSavedSource()
     }
 
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
@@ -242,11 +233,7 @@ class MainActivity : AppCompatActivity() {
                 runCatching {
                     contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                getSharedPreferences(PREFS, MODE_PRIVATE)
-                    .edit()
-                    .putString(KEY_TREE, uri.toString())
-                    .putBoolean(KEY_TREE_EXACT, true)
-                    .apply()
+                SourceStore.saveTree(this, uri, exactMode = true)
                 importTree(uri, silent = false, exactMode = true)
             }
 
@@ -254,11 +241,7 @@ class MainActivity : AppCompatActivity() {
                 runCatching {
                     contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                getSharedPreferences(PREFS, MODE_PRIVATE)
-                    .edit()
-                    .putString(KEY_TREE, uri.toString())
-                    .putBoolean(KEY_TREE_EXACT, false)
-                    .apply()
+                SourceStore.saveTree(this, uri, exactMode = false)
                 importTree(uri, silent = false, exactMode = false)
             }
 
@@ -284,32 +267,53 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (uris.isEmpty()) data.data?.let { uris += it }
 
-                val items = uris.distinct().map { uri ->
+                val distinct = uris.distinct()
+                distinct.forEach { uri ->
                     runCatching {
-                        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
                     }
-                    val name = displayName(uri)
-                    val mime = contentResolver.getType(uri).orEmpty()
-                    val info = MediaInfoReader.read(this, uri, mime)
-                    PhotoItem(
-                        uri = uri,
-                        title = stripExtension(name),
-                        albums = linkedSetOf("Album indisponible — utilisez le mode exact"),
-                        takenAt = info.takenAt,
-                        location = info.location,
-                        camera = info.camera,
-                        width = info.width,
-                        height = info.height,
-                        mediaType = when {
-                            mime.startsWith("video/") -> "video"
-                            mime.equals("image/gif", true) -> "gif"
-                            else -> "image"
-                        }
-                    )
                 }
-                ui.setLibrary(items, exactAlbums = false, sourceName = "Sélection de photos")
+                SourceStore.savePicked(this, distinct)
+                importPicked(distinct, silent = false)
             }
         }
+    }
+
+    private fun restoreSavedSource() {
+        when (val source = SourceStore.load(this)) {
+            is PhotoSourceSpec.Tree ->
+                importTree(source.uri, silent = true, exactMode = source.exactMode)
+
+            is PhotoSourceSpec.Picked ->
+                importPicked(source.uris, silent = true)
+
+            null -> Unit
+        }
+    }
+
+    private fun importPicked(uris: List<Uri>, silent: Boolean) {
+        if (!silent) ui.showLoading("Analyse des médias sélectionnés…")
+        Thread {
+            val items = PickedLibrary.load(this, uris)
+            runOnUiThread {
+                ui.setLibrary(
+                    items,
+                    exactAlbums = false,
+                    sourceName = "Sélection de photos"
+                )
+                if (!silent) {
+                    Toast.makeText(
+                        this,
+                        if (items.isEmpty()) "Aucun média compatible trouvé."
+                        else "${items.size} média(s) sélectionné(s).",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }.start()
     }
 
     private fun importTree(uri: Uri, silent: Boolean, exactMode: Boolean) {
@@ -344,21 +348,5 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun displayName(uri: Uri): String {
-        var result = "Photo"
-        runCatching {
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (index >= 0) result = cursor.getString(index) ?: result
-                }
-            }
-        }
-        return result
-    }
 
-    private fun stripExtension(name: String): String {
-        val i = name.lastIndexOf('.')
-        return if (i > 0) name.substring(0, i) else name
-    }
 }
