@@ -9,7 +9,7 @@ object PickedLibrary {
         "Album Google Photos indisponible — utilisez le mode exact"
 
     fun load(context: Context, uris: List<Uri>): List<PhotoItem> {
-        return uris.distinct().mapNotNull { uri ->
+        val items = uris.distinct().mapNotNull { uri ->
             runCatching {
                 val name = displayName(context, uri)
                 val mime = context.contentResolver.getType(uri).orEmpty()
@@ -31,6 +31,7 @@ object PickedLibrary {
                 )
             }.getOrNull()
         }
+        return VisualDuplicateDetector.merge(context, items)
     }
 
     private fun displayName(context: Context, uri: Uri): String {
