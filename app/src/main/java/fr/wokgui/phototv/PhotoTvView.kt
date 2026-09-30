@@ -3316,11 +3316,9 @@ class PhotoTvView(
     }
 
     private fun rebuildShuffleBag() {
-        shuffleBag.clear()
         val items = activePhotos()
-        if (items.size <= 1) return
-        shuffleBag.addAll(items.indices.filter { it != currentPhoto })
-        shuffleBag.shuffle()
+        shuffleBag.clear()
+        shuffleBag.addAll(SlideshowOrder.newBag(items.size, currentPhoto))
     }
 
     private fun preloadAroundCurrent() {
