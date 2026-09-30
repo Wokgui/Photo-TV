@@ -1315,7 +1315,19 @@ class PhotoTvView(
             val decoded = openMediaStream(uri)?.use {
                 BitmapFactory.decodeStream(it, null, opt)
             }
-            if (decoded != null) return applyExifOrientation(uri, decoded)
+            if (decoded != null) {
+                val oriented = applyExifOrientation(uri, decoded)
+                val maxPixels = (targetWidth.toLong() * targetHeight.toLong() * 5L / 4L)
+                    .coerceAtLeast(1_500_000L)
+                val pixels = oriented.width.toLong() * oriented.height.toLong()
+                if (pixels > maxPixels) {
+                    val scale = kotlin.math.sqrt(maxPixels.toDouble() / pixels.toDouble()).toFloat()
+                    val outW = max(1, (oriented.width * scale).toInt())
+                    val outH = max(1, (oriented.height * scale).toInt())
+                    return Bitmap.createScaledBitmap(oriented, outW, outH, true)
+                }
+                return oriented
+            }
         }
 
         if (!NetworkLibrary.isNetworkUri(uri) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -1487,7 +1499,6 @@ class PhotoTvView(
         super.onSizeChanged(w, h, oldw, oldh)
         if (w == oldw && h == oldh) return
         synchronized(highResCache) {
-            highResCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
             highResCache.clear()
             highResLoading.clear()
             highResCacheBytes = 0L
