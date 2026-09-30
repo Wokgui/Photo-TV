@@ -14,6 +14,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.File
+import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.StringReader
 import java.net.URI
@@ -343,9 +344,20 @@ object NetworkLibrary {
             return null
         }
 
-        val bytes = response.body?.bytes()
-        response.close()
-        return bytes?.inputStream()
+        val stream = response.body?.byteStream() ?: run {
+            response.close()
+            return null
+        }
+
+        return object : FilterInputStream(stream) {
+            override fun close() {
+                try {
+                    super.close()
+                } finally {
+                    response.close()
+                }
+            }
+        }
     }
 
     private fun smbContext(cfg: Config): jcifs.CIFSContext {
