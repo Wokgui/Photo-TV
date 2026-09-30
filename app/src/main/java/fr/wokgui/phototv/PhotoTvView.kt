@@ -35,6 +35,7 @@ class PhotoTvView(
     private val onImportSettings: () -> Unit = {},
     private val onAlbumSearch: () -> Unit = {},
     private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> },
+    private val onVideoPause: (Boolean) -> Unit = {},
     private val supportsVideoPlayback: Boolean = false
 ) : View(context) {
 
@@ -2193,6 +2194,7 @@ class PhotoTvView(
                 quickMenuVisible = true
                 quickMenuIndex = 0
                 paused = true
+                if (currentItem()?.mediaType == "video") onVideoPause(true)
                 handler.removeCallbacksAndMessages(null)
                 invalidate()
             }
@@ -2749,6 +2751,7 @@ class PhotoTvView(
 
     private fun togglePause() {
         paused = !paused
+        if (currentItem()?.mediaType == "video") onVideoPause(paused)
         scheduleSlideshow()
         invalidate()
     }
@@ -3187,6 +3190,7 @@ class PhotoTvView(
         inactivityHandler.removeCallbacksAndMessages(null)
         clockHandler.removeCallbacksAndMessages(null)
         transitionAnimator?.cancel()
+        onVideoPause(true)
         onVideoPlayback(null, videoSound)
         executor.shutdownNow()
     }
