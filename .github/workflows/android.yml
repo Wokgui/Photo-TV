@@ -197,15 +197,7 @@ jobs:
           profile: tv_1080p
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            REMOTE_STATUS=0
-            VISUAL_STATUS=0
-            bash visual/android_tv_test.sh Photo-TV.apk android-visual-results || REMOTE_STATUS=$?
-            python3 visual/compare.py android-visual-results 28 20 || VISUAL_STATUS=$?
-            if [ "$REMOTE_STATUS" -ne 0 ] || [ "$VISUAL_STATUS" -ne 0 ]; then
-              echo "Android TV regression failed: remote=$REMOTE_STATUS visual=$VISUAL_STATUS" >&2
-              exit 1
-            fi
+          script: bash visual/run_android_tv_ci.sh Photo-TV.apk android-visual-results
 
       - name: Upload Android TV visual report
         if: always()
