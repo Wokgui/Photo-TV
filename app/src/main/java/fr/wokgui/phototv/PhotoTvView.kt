@@ -10,6 +10,7 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.util.Log
 import android.media.MediaMetadataRetriever
 import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
@@ -715,6 +716,7 @@ class PhotoTvView(
                 settingsColumn = 0
             }
         }
+        if (automationMode) Log.i("PhotoTVState", automationStateDescription())
         invalidate()
     }
 
@@ -2547,6 +2549,7 @@ class PhotoTvView(
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
             longActionLatched = false
         }
+        if (automationMode) Log.i("PhotoTVState", automationStateDescription())
         return super.onKeyUp(keyCode, event)
     }
 
