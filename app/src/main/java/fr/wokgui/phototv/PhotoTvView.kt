@@ -725,6 +725,7 @@ class PhotoTvView(
             "albumFocus=$albumFocus photoFocus=$photoFocus editorColumn=$editorColumn " +
             "editorElement=$editorElement editorControl=$editorControl editorMoveMode=$editorMoveMode " +
             "settingsCategory=$settingsCategory settingsColumn=$settingsColumn settingsControl=$settingsControl " +
+            "rulesOpen=$advancedRulesOpen diagnostics=$interactionDiagnostics " +
             "slideshow=$slideshow paused=$paused quickMenu=$quickMenuVisible"
 
     fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection") {
