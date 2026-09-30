@@ -102,6 +102,7 @@ class PhotoTvView(
     private val executor = Executors.newSingleThreadExecutor()
     private val highResExecutor = Executors.newSingleThreadExecutor()
     private val bitmapCache = LinkedHashMap<String, Bitmap>(32, .75f, true)
+    private val bitmapLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var bitmapCacheBytes = 0L
     private val bitmapCacheLimitBytes: Long by lazy {
         val adaptive = Runtime.getRuntime().maxMemory() / 8L
@@ -204,9 +205,9 @@ class PhotoTvView(
     private val hiddenAlbums = linkedSetOf<String>()
     private val excludedUris = linkedSetOf<String>()
     private val sessionExcludedUris = linkedSetOf<String>()
-    private val failedMediaUris = linkedSetOf<String>()
-    private var decodeFailureCount = 0
-    private var lastDecodeFailure = ""
+    private val failedMediaUris = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    @Volatile private var decodeFailureCount = 0
+    @Volatile private var lastDecodeFailure = ""
     private val recentUris = java.util.ArrayDeque<String>()
     private var cacheHits = 0L
     private var cacheMisses = 0L
@@ -1061,12 +1062,11 @@ class PhotoTvView(
         sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection"
     ) {
         synchronized(bitmapCache) {
-            bitmapCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
             bitmapCache.clear()
+            bitmapLoading.clear()
             bitmapCacheBytes = 0L
         }
         synchronized(highResCache) {
-            highResCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
             highResCache.clear()
             highResLoading.clear()
             highResCacheBytes = 0L
@@ -1076,7 +1076,6 @@ class PhotoTvView(
             gifLoading.clear()
         }
         softSource = null
-        softBitmap?.let { if (!it.isRecycled) it.recycle() }
         softBitmap = null
 
         failedMediaUris.clear()
@@ -1152,27 +1151,32 @@ class PhotoTvView(
     private fun preload(uris: List<Uri>) {
         uris.distinct().forEach { uri ->
             val key = uri.toString()
-            if (failedMediaUris.contains(key) || bitmapCache.containsKey(key)) return@forEach
+            if (failedMediaUris.contains(key)) return@forEach
+            val alreadyCached = synchronized(bitmapCache) { bitmapCache.containsKey(key) }
+            if (alreadyCached || !bitmapLoading.add(key)) return@forEach
+
             executor.execute {
-                val bmp = decodeThumb(uri)
-                if (bmp != null) {
-                    synchronized(bitmapCache) {
-                        bitmapCache.remove(key)?.let { old ->
-                            bitmapCacheBytes -= old.allocationByteCount.toLong()
-                            if (!old.isRecycled) old.recycle()
+                try {
+                    val bmp = decodeThumb(uri)
+                    if (bmp != null) {
+                        synchronized(bitmapCache) {
+                            bitmapCache.remove(key)?.let { old ->
+                                bitmapCacheBytes -= old.allocationByteCount.toLong()
+                            }
+                            bitmapCache[key] = bmp
+                            bitmapCacheBytes += bmp.allocationByteCount.toLong()
+                            while (bitmapCacheBytes > bitmapCacheLimitBytes && bitmapCache.size > 1) {
+                                val first = bitmapCache.entries.firstOrNull() ?: break
+                                bitmapCacheBytes -= first.value.allocationByteCount.toLong()
+                                bitmapCache.remove(first.key)
+                            }
                         }
-                        bitmapCache[key] = bmp
-                        bitmapCacheBytes += bmp.allocationByteCount.toLong()
-                        while (bitmapCacheBytes > bitmapCacheLimitBytes && bitmapCache.size > 1) {
-                            val first = bitmapCache.entries.firstOrNull() ?: break
-                            bitmapCacheBytes -= first.value.allocationByteCount.toLong()
-                            if (!first.value.isRecycled) first.value.recycle()
-                            bitmapCache.remove(first.key)
-                        }
+                        postInvalidate()
+                    } else {
+                        registerDecodeFailure(uri, "Image illisible ou format non pris en charge")
                     }
-                    postInvalidate()
-                } else {
-                    registerDecodeFailure(uri, "Image illisible ou format non pris en charge")
+                } finally {
+                    bitmapLoading.remove(key)
                 }
             }
         }
@@ -1180,7 +1184,7 @@ class PhotoTvView(
 
     private fun registerDecodeFailure(uri: Uri, reason: String) {
         val key = uri.toString()
-        val added = synchronized(failedMediaUris) { failedMediaUris.add(key) }
+        val added = failedMediaUris.add(key)
         if (!added) return
         decodeFailureCount++
         lastDecodeFailure = reason
@@ -1214,7 +1218,13 @@ class PhotoTvView(
             }.getOrNull()
             synchronized(gifCache) {
                 gifLoading.remove(key)
-                if (movie != null) gifCache[key] = movie
+                if (movie != null) {
+                    gifCache[key] = movie
+                    while (gifCache.size > 12) {
+                        val first = gifCache.entries.firstOrNull() ?: break
+                        gifCache.remove(first.key)
+                    }
+                }
             }
             postInvalidate()
         }
@@ -1373,14 +1383,12 @@ class PhotoTvView(
                 if (bmp != null) {
                     highResCache.remove(key)?.let { old ->
                         highResCacheBytes -= old.allocationByteCount.toLong()
-                        if (!old.isRecycled) old.recycle()
                     }
                     highResCache[key] = bmp
                     highResCacheBytes += bmp.allocationByteCount.toLong()
                     while (highResCacheBytes > highResCacheLimitBytes && highResCache.size > 1) {
                         val first = highResCache.entries.firstOrNull() ?: break
                         highResCacheBytes -= first.value.allocationByteCount.toLong()
-                        if (!first.value.isRecycled) first.value.recycle()
                         highResCache.remove(first.key)
                     }
                 }
@@ -4250,7 +4258,6 @@ class PhotoTvView(
             while (highResCache.size > keep) {
                 val first = highResCache.entries.firstOrNull() ?: break
                 highResCacheBytes -= first.value.allocationByteCount.toLong()
-                if (!first.value.isRecycled) first.value.recycle()
                 highResCache.remove(first.key)
             }
         }
@@ -4259,7 +4266,6 @@ class PhotoTvView(
             while (bitmapCache.size > keep) {
                 val first = bitmapCache.entries.firstOrNull() ?: break
                 bitmapCacheBytes -= first.value.allocationByteCount.toLong()
-                if (!first.value.isRecycled) first.value.recycle()
                 bitmapCache.remove(first.key)
             }
         }
@@ -4830,7 +4836,6 @@ class PhotoTvView(
     override fun onDetachedFromWindow() {
         remoteServer?.stop()
         remoteServer = null
-        remoteQrBitmap?.let { if (!it.isRecycled) it.recycle() }
         remoteQrBitmap = null
         super.onDetachedFromWindow()
         handler.removeCallbacksAndMessages(null)
