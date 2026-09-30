@@ -12,6 +12,8 @@ import android.text.InputType
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.KeyEvent
 import androidx.appcompat.app.AppCompatActivity
@@ -52,10 +54,15 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_EXPORT_SETTINGS = 44
         private const val REQ_IMPORT_SETTINGS = 45
         private const val REQ_LOCAL_FOLDER = 46
+        private const val REQ_EXPORT_DIAGNOSTICS = 47
     }
 
     private lateinit var ui: PhotoTvView
     private lateinit var videoView: VideoView
+    private val networkRefreshHandler = Handler(Looper.getMainLooper())
+    private var networkRefreshMinutes = 15
+    private var currentNetworkSourceName = "Réseau"
+    private var pendingDiagnosticText: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -189,6 +196,9 @@ class MainActivity : AppCompatActivity() {
             saved.forEach { add("↻ " + it.label) }
             add("＋ Ajouter WebDAV")
             add("＋ Ajouter SMB / NAS")
+            add("Réglages cache et rescan")
+            add("Vider le cache réseau")
+            add("Exporter diagnostic")
             if (saved.isNotEmpty()) add("Supprimer une source enregistrée")
         }.toTypedArray()
 
@@ -206,6 +216,12 @@ class MainActivity : AppCompatActivity() {
                     }
                     which == saved.size -> requestNetworkCredentials(NetworkLibrary.Kind.WEBDAV)
                     which == saved.size + 1 -> requestNetworkCredentials(NetworkLibrary.Kind.SMB)
+                    which == saved.size + 2 -> requestNetworkCacheSettings()
+                    which == saved.size + 3 -> {
+                        NetworkLibrary.clearDiskCache(this)
+                        Toast.makeText(this, "Cache réseau vidé", Toast.LENGTH_SHORT).show()
+                    }
+                    which == saved.size + 4 -> exportDiagnostics()
                     else -> deleteSavedNetworkSource()
                 }
             }
