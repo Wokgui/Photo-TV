@@ -1,4 +1,16 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+
+val releaseStorePath = System.getenv("PHOTO_TV_RELEASE_KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("PHOTO_TV_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("PHOTO_TV_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("PHOTO_TV_RELEASE_KEY_PASSWORD")
+val hasSecureReleaseSigner = listOf(
+    releaseStorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
 android {
     namespace="fr.wokgui.phototv"
     compileSdk=35
@@ -9,6 +21,7 @@ android {
         versionCode=7
         versionName="0.7"
     }
+
     signingConfigs {
         create("stableDevelopment") {
             val stableStore = rootProject.file("build-keys/photo-tv-stable.p12")
@@ -20,7 +33,17 @@ android {
                 storeType = "PKCS12"
             }
         }
+
+        create("secureRelease") {
+            if (hasSecureReleaseSigner) {
+                storeFile = rootProject.file(releaseStorePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
+
     buildTypes {
         getByName("debug") {
             val stableStore = rootProject.file("build-keys/photo-tv-stable.p12")
@@ -28,13 +51,22 @@ android {
                 signingConfig = signingConfigs.getByName("stableDevelopment")
             }
         }
+
+        getByName("release") {
+            isMinifyEnabled = false
+            if (hasSecureReleaseSigner) {
+                signingConfig = signingConfigs.getByName("secureRelease")
+            }
+        }
     }
+
     compileOptions {
         sourceCompatibility=JavaVersion.VERSION_17
         targetCompatibility=JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget="17" }
 }
+
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
