@@ -76,7 +76,7 @@ key() {
     KEYCODE_DPAD_CENTER|KEYCODE_ENTER) code=23 ;;
     KEYCODE_BACK) code=4 ;;
   esac
-  adb shell input keyevent "$code"
+  adb shell input -d 0 keyevent "$code"
   sleep 0.25
   assert_foreground
 }
@@ -90,7 +90,7 @@ repeat_key() {
 }
 
 long_center() {
-  adb shell input keyevent --longpress 23
+  adb shell input -d 0 keyevent --longpress 23
   sleep 0.45
   assert_foreground
 }
