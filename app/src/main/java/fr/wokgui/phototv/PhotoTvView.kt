@@ -127,10 +127,10 @@ class PhotoTvView(
     private var dateFormatIndex = 0
     private var time24h = true
     private var showSeconds = false
-    private var temperatureC = 17f
-    private var feelsLikeC = 17f
-    private var forecastMinC = 12f
-    private var forecastMaxC = 19f
+    private var temperatureC = Float.NaN
+    private var feelsLikeC = Float.NaN
+    private var forecastMinC = Float.NaN
+    private var forecastMaxC = Float.NaN
     private var weatherSummary = "—"
     private var weatherLocation = ""
     private val forecastLines = mutableListOf<String>()
@@ -322,7 +322,7 @@ class PhotoTvView(
 
     private fun loadWeather() {
         executor.execute {
-            runCatching {
+            val result = runCatching {
                 val encoded = if (weatherLocation.isBlank()) "" else java.net.URLEncoder.encode(weatherLocation, "UTF-8")
                 val url = if (encoded.isBlank()) {
                     "https://wttr.in/?format=j1"
@@ -337,8 +337,7 @@ class PhotoTvView(
                 val json = connection.getInputStream().bufferedReader().use { it.readText() }
                 val root = JSONObject(json)
                 val current = root.optJSONArray("current_condition")?.optJSONObject(0)
-                val c = current?.optString("temp_C")?.toFloatOrNull()
-                if (c != null) temperatureC = c
+                current?.optString("temp_C")?.toFloatOrNull()?.let { temperatureC = it }
                 feelsLikeC = current?.optString("FeelsLikeC")?.toFloatOrNull() ?: temperatureC
                 weatherSummary = current
                     ?.optJSONArray("weatherDesc")
@@ -350,8 +349,8 @@ class PhotoTvView(
 
                 val weather = root.optJSONArray("weather")
                 val today = weather?.optJSONObject(0)
-                forecastMinC = today?.optString("mintempC")?.toFloatOrNull() ?: forecastMinC
-                forecastMaxC = today?.optString("maxtempC")?.toFloatOrNull() ?: forecastMaxC
+                forecastMinC = today?.optString("mintempC")?.toFloatOrNull() ?: Float.NaN
+                forecastMaxC = today?.optString("maxtempC")?.toFloatOrNull() ?: Float.NaN
 
                 forecastLines.clear()
                 if (weather != null) {
@@ -362,15 +361,17 @@ class PhotoTvView(
                             val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(rawDate)
                             SimpleDateFormat("EEE dd/MM", Locale.FRANCE).format(parsed ?: Date())
                         }.getOrDefault(rawDate)
-                        val minC = day.optString("mintempC").toFloatOrNull() ?: 0f
-                        val maxC = day.optString("maxtempC").toFloatOrNull() ?: 0f
-                        val minShown = if (tempCelsius) minC.toInt() else (minC * 9f / 5f + 32f).toInt()
-                        val maxShown = if (tempCelsius) maxC.toInt() else (maxC * 9f / 5f + 32f).toInt()
-                        forecastLines += "$label  $minShown° / $maxShown°"
+                        val minC = day.optString("mintempC").toFloatOrNull() ?: Float.NaN
+                        val maxC = day.optString("maxtempC").toFloatOrNull() ?: Float.NaN
+                        forecastLines += "$label  ${temperatureLabel(minC, false)} / ${temperatureLabel(maxC, false)}"
                     }
                 }
-                postInvalidate()
             }
+            if (result.isFailure && !temperatureC.isFinite()) {
+                weatherSummary = "Météo indisponible"
+                forecastLines.clear()
+            }
+            postInvalidate()
         }
     }
 
@@ -1209,9 +1210,9 @@ class PhotoTvView(
         text(c, "Aperçu météo", x + 22f, y + 285f, 13f, Color.rgb(177, 191, 209))
         text(c, "☀  ${tempText()}", x + 22f, y + 335f, 31f, Color.WHITE, 1)
         text(c, weatherSummary.take(48), x + 22f, y + 370f, 14f, Color.WHITE)
-        val feels = if (tempCelsius) "${feelsLikeC.toInt()} °C" else "${(feelsLikeC * 9f / 5f + 32f).toInt()} °F"
-        val minT = if (tempCelsius) "${forecastMinC.toInt()}°" else "${(forecastMinC * 9f / 5f + 32f).toInt()}°"
-        val maxT = if (tempCelsius) "${forecastMaxC.toInt()}°" else "${(forecastMaxC * 9f / 5f + 32f).toInt()}°"
+        val feels = temperatureLabel(feelsLikeC, includeUnit = true)
+        val minT = temperatureLabel(forecastMinC, includeUnit = false)
+        val maxT = temperatureLabel(forecastMaxC, includeUnit = false)
         text(c, "Ressenti $feels • Aujourd'hui $minT / $maxT", x + 22f, y + 401f, 12f, Color.rgb(169, 184, 203))
         forecastLines.take(3).forEachIndexed { i, line ->
             text(c, line, x + 22f + i * 210f, y + 438f, 11f, Color.rgb(196, 210, 228))
@@ -1717,9 +1718,20 @@ class PhotoTvView(
         return SimpleDateFormat(pattern, Locale.getDefault()).format(Date())
     }
 
-    private fun tempText(): String {
-        val c = temperatureC
-        return if (tempCelsius) "${c.toInt()} °C" else "${(c * 9f / 5f + 32f).toInt()} °F"
+    private fun tempText(): String = temperatureLabel(temperatureC, includeUnit = true)
+
+    private fun temperatureLabel(valueC: Float, includeUnit: Boolean): String {
+        if (!valueC.isFinite()) {
+            return if (includeUnit) {
+                if (tempCelsius) "— °C" else "— °F"
+            } else "—°"
+        }
+        val shown = if (tempCelsius) valueC else valueC * 9f / 5f + 32f
+        return if (includeUnit) {
+            "${shown.toInt()} °${if (tempCelsius) "C" else "F"}"
+        } else {
+            "${shown.toInt()}°"
+        }
     }
 
     private fun drawSourceCard(c: Canvas, x: Float, y: Float, w: Float, h: Float, title: String, sub: String, icon: Int, focused: Boolean, primary: Boolean) {
