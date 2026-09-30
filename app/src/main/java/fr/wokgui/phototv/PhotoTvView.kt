@@ -1240,8 +1240,24 @@ class PhotoTvView(
 
     private fun drawSettingsSource(c: Canvas, x: Float, y: Float, w: Float) {
         text(c, "Source des photos", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        drawSourceCard(c, x + 22f, y + 72f, 395f, 105f, "Google Photos", "Se connecter — mode exact", 0, settingsControl == 0 && settingsColumn == 1 && !navFocus, true)
-        drawSourceCard(c, x + 438f, y + 72f, 395f, 105f, "Sélectionner des photos", "Album non garanti", 2, settingsControl == 1 && settingsColumn == 1 && !navFocus, false)
+
+        val cardW = 264f
+        val gap = 12f
+        drawSourceCard(
+            c, x + 22f, y + 72f, cardW, 105f,
+            "Google Photos", "Takeout • albums exacts", 0,
+            settingsControl == 0 && settingsColumn == 1 && !navFocus, true
+        )
+        drawSourceCard(
+            c, x + 22f + cardW + gap, y + 72f, cardW, 105f,
+            "Dossier local", "Parcourir le stockage", 1,
+            settingsControl == 1 && settingsColumn == 1 && !navFocus, false
+        )
+        drawSourceCard(
+            c, x + 22f + (cardW + gap) * 2f, y + 72f, cardW, 105f,
+            "Choisir des photos", "Album Google non garanti", 2,
+            settingsControl == 2 && settingsColumn == 1 && !navFocus, false
+        )
 
         val status = when {
             library.isEmpty() -> "Aucune photothèque connectée."
@@ -1252,23 +1268,26 @@ class PhotoTvView(
                 "$sourceName • ${library.size} médias • noms de dossiers utilisés"
             else -> "$sourceName • ${library.size} médias • album Google Photos non garanti"
         }
-        text(c, status, x + 22f, y + 215f, 14f, if (exactAlbums) Color.rgb(91, 213, 145) else Color.rgb(187, 198, 212))
+        text(
+            c, status, x + 22f, y + 215f, 14f,
+            if (exactAlbums) Color.rgb(91, 213, 145) else Color.rgb(187, 198, 212)
+        )
 
         settingsChoice(
             c,
             "Tri des albums",
             if (albumSort == 0) "Alphabétique" else "Nombre de photos",
             x,
-            y + 245f,
-            2
+            y + 235f,
+            3
         )
         settingsChoice(
             c,
             "Recherche d'album",
             if (albumSearch.isBlank()) "Aucune" else albumSearch,
             x,
-            y + 305f,
-            3
+            y + 295f,
+            4
         )
 
         val allAlbums = library.flatMap { it.albums }.distinct()
@@ -1276,23 +1295,31 @@ class PhotoTvView(
         controlBox(
             c,
             x + 350f,
-            y + 365f,
+            y + 355f,
             380f,
             39f,
             if (allSelected) "Désélectionner tous les albums" else "Sélectionner tous les albums",
-            settingsColumn == 1 && settingsControl == 4 && !navFocus
+            settingsColumn == 1 && settingsControl == 5 && !navFocus
         )
 
-        text(c, "Appui long OK sur un album : masquer / réafficher.", x + 22f, y + 440f, 11f, Color.rgb(130, 154, 181))
-        text(c, "Masquées : ${excludedUris.size} permanentes • ${sessionExcludedUris.size} session • ${hiddenAlbums.size} albums", x + 22f, y + 470f, 11f, Color.rgb(130, 154, 181))
+        text(
+            c,
+            "Appui long OK sur un album : masquer / réafficher.",
+            x + 22f, y + 430f, 11f, Color.rgb(130, 154, 181)
+        )
+        text(
+            c,
+            "Masquées : ${excludedUris.size} permanentes • ${sessionExcludedUris.size} session • ${hiddenAlbums.size} albums",
+            x + 22f, y + 458f, 11f, Color.rgb(130, 154, 181)
+        )
         controlBox(
             c,
             x + 350f,
-            y + 480f,
+            y + 475f,
             380f,
             39f,
             "Tout réafficher",
-            settingsColumn == 1 && settingsControl == 5 && !navFocus
+            settingsColumn == 1 && settingsControl == 6 && !navFocus
         )
     }
 
@@ -2441,7 +2468,7 @@ class PhotoTvView(
         3 -> transitions.lastIndex
         4 -> 4
         5 -> 2
-        6 -> 5
+        6 -> 6
         else -> if (advancedRulesOpen) 8 else 11
     }
 
@@ -2532,9 +2559,9 @@ class PhotoTvView(
             }
             5 -> when(settingsControl) { 0 -> showTemp=!showTemp; 1 -> tempCelsius=!tempCelsius }
             6 -> when (settingsControl) {
-                2 -> albumSort = (albumSort + dir + 2) % 2
-                4 -> toggleAllAlbums()
-                5 -> clearAllMasks()
+                3 -> albumSort = (albumSort + dir + 2) % 2
+                5 -> toggleAllAlbums()
+                6 -> clearAllMasks()
             }
             7 -> if (advancedRulesOpen) {
                 adjustAlbumRule(dir)
@@ -2616,11 +2643,12 @@ class PhotoTvView(
                     5 -> if (settingsControl == 2) onWeatherLocation() else adjustSettings(1)
                     6 -> when (settingsControl) {
                         0 -> onExactSource()
-                        1 -> onPickPhotos()
-                        2 -> adjustSettings(1)
-                        3 -> onAlbumSearch()
-                        4 -> toggleAllAlbums()
-                        5 -> clearAllMasks()
+                        1 -> onFolderSource()
+                        2 -> onPickPhotos()
+                        3 -> adjustSettings(1)
+                        4 -> onAlbumSearch()
+                        5 -> toggleAllAlbums()
+                        6 -> clearAllMasks()
                     }
                     7 -> if (advancedRulesOpen) {
                         if (settingsControl == 8) {
@@ -3032,12 +3060,34 @@ class PhotoTvView(
             }
 
             6 -> when {
-                y in 138f..258f && x < 800f -> { settingsControl = 0; onExactSource() }
-                y in 138f..258f && x >= 800f -> { settingsControl = 1; onPickPhotos() }
-                y in 300f..350f -> { settingsControl = 2; albumSort = (albumSort + 1) % 2 }
-                y in 356f..414f -> { settingsControl = 3; onAlbumSearch() }
-                y in 416f..474f -> { settingsControl = 4; toggleAllAlbums() }
-                y in 545f..610f -> { settingsControl = 5; clearAllMasks() }
+                y in 145f..260f && x in 402f..666f -> {
+                    settingsControl = 0
+                    onExactSource()
+                }
+                y in 145f..260f && x in 678f..942f -> {
+                    settingsControl = 1
+                    onFolderSource()
+                }
+                y in 145f..260f && x in 954f..1218f -> {
+                    settingsControl = 2
+                    onPickPhotos()
+                }
+                y in 305f..365f -> {
+                    settingsControl = 3
+                    albumSort = (albumSort + 1) % 2
+                }
+                y in 365f..425f -> {
+                    settingsControl = 4
+                    onAlbumSearch()
+                }
+                y in 425f..490f -> {
+                    settingsControl = 5
+                    toggleAllAlbums()
+                }
+                y in 545f..610f -> {
+                    settingsControl = 6
+                    clearAllMasks()
+                }
             }
 
             7 -> if (advancedRulesOpen) {
