@@ -133,6 +133,8 @@ class PhotoTvView(
     private var demoBitmap: Bitmap? = null
 
     private var library: List<PhotoItem> = emptyList()
+    private var albumIndex: Map<String, List<PhotoItem>> = emptyMap()
+    private var sourceIndex: Map<String, List<PhotoItem>> = emptyMap()
     private var exactAlbums = false
     private var sourceName = "Démo"
     private var page = 0
@@ -830,8 +832,7 @@ class PhotoTvView(
         }
     }
 
-    private fun sourceLabels(): List<String> =
-        library.map { it.sourceLabel.ifBlank { "Source" } }.distinct().sorted()
+    private fun sourceLabels(): List<String> = sourceIndex.keys.sorted()
 
     private fun sourceAllowed(label: String, now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
         val rule = sourceRules[label] ?: return true
@@ -968,14 +969,29 @@ class PhotoTvView(
             "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size} " +
             "night=${isNightModeActive()} memory=${memoryDiagnostics()}"
 
+    private fun rebuildLibraryIndexes() {
+        val albums = linkedMapOf<String, MutableList<PhotoItem>>()
+        val sources = linkedMapOf<String, MutableList<PhotoItem>>()
+        library.forEach { item ->
+            item.albums.forEach { album ->
+                albums.getOrPut(album) { mutableListOf() }.add(item)
+            }
+            val source = item.sourceLabel.ifBlank { "Source" }
+            sources.getOrPut(source) { mutableListOf() }.add(item)
+        }
+        albumIndex = albums.mapValues { it.value.toList() }
+        sourceIndex = sources.mapValues { it.value.toList() }
+    }
+
     private fun tagSource(items: List<PhotoItem>, label: String): List<PhotoItem> =
         items.map { item ->
             if (item.sourceLabel.isBlank()) item.copy(sourceLabel = label) else item
         }
 
     private fun refreshLibraryState(resetCurrent: Boolean) {
+        rebuildLibraryIndexes()
         selectedAlbums.clear()
-        val allAlbums = library.flatMap { it.albums }.distinct()
+        val allAlbums = albumIndex.keys.toList()
         if (savedSelectedAlbums.isNotEmpty()) {
             selectedAlbums.addAll(allAlbums.filter { savedSelectedAlbums.contains(it) })
         }
@@ -1678,17 +1694,11 @@ class PhotoTvView(
         val base = if (library.isEmpty()) {
             mockAlbums
         } else {
-            val counts = linkedMapOf<String, Int>()
-            library.forEach { item ->
-                item.albums.forEach { album -> counts[album] = (counts[album] ?: 0) + 1 }
-            }
-            counts.entries.map { it.key to it.value }
+            albumIndex.entries.map { it.key to it.value.size }
         }
-
         val filtered = if (albumSearch.isBlank()) base else {
             base.filter { it.first.contains(albumSearch, ignoreCase = true) }
         }
-
         return when {
             library.isEmpty() && albumSort == 0 -> filtered
             albumSort == 1 -> filtered.sortedByDescending { it.second }
@@ -1705,9 +1715,8 @@ class PhotoTvView(
     private fun currentAlbumPhotos(): List<PhotoItem?> {
         if (library.isEmpty()) return List(6) { null }
         val name = currentAlbumName()
-        return library.filter { it.albums.contains(name) }.map { it as PhotoItem? }
+        return albumIndex[name].orEmpty().map { it as PhotoItem? }
     }
-
     private fun albumDisplay(item: PhotoItem?): String {
         if (item == null) return "Norvège 2026"
         val preferred = item.albums.filter { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) }
