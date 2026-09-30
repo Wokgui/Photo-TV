@@ -927,6 +927,31 @@ class PhotoTvView(
         invalidate()
     }
 
+    fun installAutomationLibraryForTest(count: Int) {
+        if (!automationMode) return
+        val safeCount = count.coerceIn(1, 500)
+        val items = (0 until safeCount).map { index ->
+            PhotoItem(
+                uri = Uri.parse("content://phototv-test/photo-" + index),
+                title = "Test " + index,
+                albums = linkedSetOf("Test"),
+                sourceLabel = "Test"
+            )
+        }
+        setLibrary(items, exactAlbums = false, sourceName = "Test")
+    }
+
+    fun startAutomationSlideshowForTest() {
+        if (automationMode) startSlideshow()
+    }
+
+    fun advanceAutomationForTest() {
+        if (automationMode && slideshow) slideshowNext(1)
+    }
+
+    fun importSettingsForTest(raw: String): Boolean =
+        if (automationMode) importSettingsJson(raw) else false
+
     fun openSettingsAfterUnlock() {
         page = 3
         navFocus = false
@@ -969,7 +994,7 @@ class PhotoTvView(
             "editorElement=$editorElement editorControl=$editorControl editorMoveMode=$editorMoveMode " +
             "settingsCategory=$settingsCategory settingsColumn=$settingsColumn settingsControl=$settingsControl " +
             "rulesOpen=$advancedRulesOpen diagnostics=$interactionDiagnostics " +
-            "slideshow=$slideshow paused=$paused quickMenu=$quickMenuVisible " +
+            "slideshow=$slideshow paused=$paused currentPhoto=$currentPhoto quickMenu=$quickMenuVisible " +
             "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size} " +
             "night=${isNightModeActive()} memory=${memoryDiagnostics()}"
 
@@ -1014,7 +1039,7 @@ class PhotoTvView(
         albumFocus = 0
         photoFocus = 0
         loadingText = null
-        preload(library.take(48).map { it.uri })
+        if (!automationMode) preload(library.take(48).map { it.uri })
         val count = activePhotos().size
         if (count > 0) currentPhoto = currentPhoto.coerceIn(0, count - 1)
         else currentPhoto = 0
@@ -1413,6 +1438,7 @@ class PhotoTvView(
     }
 
     private fun currentBitmap(): Bitmap? {
+        if (automationMode) return demoBitmap
         val item = currentItem()
         return if (item == null) demoBitmap else {
             val key = item.uri.toString()
@@ -4147,6 +4173,7 @@ class PhotoTvView(
     }
 
     private fun preloadAroundCurrent() {
+        if (automationMode) return
         val items = activePhotos()
         if (items.isEmpty()) return
 
