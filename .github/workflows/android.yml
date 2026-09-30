@@ -41,7 +41,7 @@ jobs:
           js = m.group(1)
           required = [
               "function preview()", "function photos()", "function editor()",
-              "function settings()", "function mouse(e)",
+              "function settings()", "function visibleAlbums()", "function mouse(e)",
               'cv.addEventListener("click",mouse)'
           ]
           missing = [item for item in required if item not in js]
@@ -50,6 +50,39 @@ jobs:
           Path("/tmp/photo-tv-preview.js").write_text(js, encoding="utf-8")
           PY
           node --check /tmp/photo-tv-preview.js
+          node - <<'NODE'
+          const fs = require("fs");
+          const js = fs.readFileSync("/tmp/photo-tv-preview.js", "utf8");
+          const prelude = `
+          const gradientMock={addColorStop(){}};
+          const mockCtx=new Proxy({
+            createLinearGradient(){return gradientMock;},
+            createRadialGradient(){return gradientMock;},
+            measureText(t){return {width:String(t).length*7,actualBoundingBoxAscent:10,actualBoundingBoxDescent:3};},
+            roundRect(){},beginPath(){},fill(){},stroke(){},fillRect(){},clearRect(){},drawImage(){},save(){},restore(){},
+            arc(){},moveTo(){},lineTo(){},closePath(){},clip(){},translate(){},scale(){},rotate(){},strokeRect(){},setLineDash(){}
+          },{get(t,p){if(p in t)return t[p];return ()=>{}},set(t,p,v){t[p]=v;return true}});
+          const canvasMock={width:1280,height:720,getContext(){return mockCtx;},addEventListener(){},getBoundingClientRect(){return {left:0,top:0,width:1280,height:720}}};
+          const inputMock={addEventListener(){},click(){},files:[]};
+          globalThis.document={getElementById(id){return id==="tv"?canvasMock:inputMock},addEventListener(){}};
+          globalThis.localStorage={getItem(){return null},setItem(){}};
+          globalThis.Image=class{constructor(){this.complete=true;this.naturalWidth=1280;this.naturalHeight=720}set src(v){this._src=v}get src(){return this._src}};
+          globalThis.Path2D=class{constructor(){}};
+          globalThis.URL={createObjectURL(){return "blob:test"},revokeObjectURL(){}};
+          globalThis.Blob=class{};
+          globalThis.prompt=()=>null;
+          globalThis.setInterval=()=>0;
+          globalThis.setTimeout=()=>0;
+          `;
+          const checks = `
+          page=1; photos();
+          page=2; editor();
+          page=3; settingsCat=0; settings();
+          page=3; settingsCat=6; settings();
+          page=0; preview();
+          `;
+          new Function(prelude + js + checks)();
+          NODE
 
       - name: Run JVM tests
         run: gradle --no-daemon --stacktrace testDebugUnitTest
