@@ -94,7 +94,7 @@ class RemoteControlServer(
 
             if (path == "/action") {
                 val cmd = params["cmd"].orEmpty()
-                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev")) {
+                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev", "sources")) {
                     onCommand(cmd)
                     respond(s, 200, "application/json; charset=utf-8", "{\"ok\":true}")
                 } else {
@@ -137,7 +137,7 @@ small{display:block;margin-top:18px;color:#9fb3c8}
 <button onclick="send('mode_next')">Affichage</button>
 <button onclick="send('album_next')">Album suivant</button>
 <button onclick="send('history_prev')">Historique</button>
-<button class="wide" onclick="send('stop')">Arrêter le diaporama</button>
+<button onclick="send('sources')">Sources</button><button onclick="send('stop')">Arrêter</button>
 <div id="status" style="grid-column:1/-1;background:#0d2134;border-radius:14px;padding:16px"></div>
 </div>
 <small>Réseau local uniquement. Le lien secret est affiché dans Photo TV.</small>
