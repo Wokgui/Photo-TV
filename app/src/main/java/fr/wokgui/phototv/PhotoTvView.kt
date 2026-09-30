@@ -2329,6 +2329,7 @@ class PhotoTvView(
                     currentPhoto = currentPhoto.coerceIn(0, activePhotos().lastIndex)
                     slideStartedAt = System.currentTimeMillis()
                     preloadAroundCurrent()
+                    syncVideoPlayback()
                     scheduleSlideshow()
                 }
             }
