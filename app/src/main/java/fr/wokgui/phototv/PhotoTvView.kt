@@ -36,6 +36,7 @@ class PhotoTvView(
     private val onFolderSource: () -> Unit = {},
     private val onPickPhotos: () -> Unit,
     private val onNetworkSource: () -> Unit = {},
+    private val onPrepareNetworkSource: (NetworkLibrary.Kind, String, String) -> Unit = { _, _, _ -> },
     private val onSettingsPin: () -> Unit = {},
     private val canOpenSettings: () -> Boolean = { true },
     private val onUnlockSettings: () -> Unit = {},
@@ -3868,6 +3869,15 @@ class PhotoTvView(
                 photoFocus = 0
                 savePrefs()
                 invalidate()
+            }
+            "network_prepare" -> {
+                val parts = commandValue.split('	')
+                val kind = runCatching { NetworkLibrary.Kind.valueOf(parts.getOrNull(0).orEmpty()) }.getOrNull()
+                val address = parts.getOrNull(1).orEmpty().trim()
+                val user = parts.getOrNull(2).orEmpty().trim()
+                if (kind != null && address.isNotBlank()) {
+                    onPrepareNetworkSource(kind, address, user)
+                }
             }
             "favorite" -> currentItem()?.let { item ->
                 val key = item.uri.toString()
