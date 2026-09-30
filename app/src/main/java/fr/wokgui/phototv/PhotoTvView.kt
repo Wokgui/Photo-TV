@@ -50,6 +50,14 @@ class PhotoTvView(
         var visible: Boolean = true
     )
 
+    private data class EditorSnapshot(
+        val styles: List<Style>,
+        val showDate: Boolean,
+        val showTime: Boolean,
+        val showTemp: Boolean,
+        val layoutPreset: Int
+    )
+
     private data class AlbumRule(
         var enabled: Boolean = false,
         var daysMode: Int = 0,
@@ -156,6 +164,10 @@ class PhotoTvView(
     private var editorMoveMode = false
     private var longActionLatched = false
     private var touchDraggingEditor = false
+    private var editorGestureRecorded = false
+    private val editorUndo = java.util.ArrayDeque<EditorSnapshot>()
+    private val editorRedo = java.util.ArrayDeque<EditorSnapshot>()
+    private var interactionDiagnostics = false
     private var layoutPreset = 0
     private var albumSearch = ""
     private var albumSort = 0
@@ -239,6 +251,7 @@ class PhotoTvView(
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
         videoSound = prefs.getBoolean("video_sound", false)
+        interactionDiagnostics = prefs.getBoolean("interaction_diagnostics", false)
         restoreAlbumRules(prefs.getString("album_rules", null))
         favoritesOnly = prefs.getBoolean("favorites_only", false)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
@@ -288,6 +301,7 @@ class PhotoTvView(
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
             putBoolean("video_sound", videoSound)
+            putBoolean("interaction_diagnostics", interactionDiagnostics)
             putString("album_rules", albumRulesJson().toString())
             putBoolean("favorites_only", favoritesOnly)
             putStringSet("favorites", HashSet(favorites))
