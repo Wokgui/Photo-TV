@@ -64,6 +64,7 @@ object NetworkLibrary {
     private const val CACHE_MAX_FILES = 300
     @Volatile private var cacheMaxBytes = 512L * 1024L * 1024L
     @Volatile private var cacheFreshMs = 24L * 60L * 60L * 1000L
+    @Volatile private var offlineUntilMs = 0L
 
     fun load(
         kind: Kind,
@@ -126,8 +127,11 @@ object NetworkLibrary {
             }
             cached.setLastModified(now)
             trimCache(cacheDir)
+            offlineUntilMs = 0L
             true
-        }.getOrDefault(false)
+        }.getOrElse {
+            false
+        }
 
         return when {
             downloaded && cached.isFile -> cached.inputStream()
@@ -137,12 +141,25 @@ object NetworkLibrary {
             }
             else -> {
                 tmp.delete()
+                offlineUntilMs = now + 60_000L
                 null
             }
         }
     }
 
     fun isNetworkUri(uri: Uri): Boolean = uri.scheme == "phototv-network"
+
+    fun isTemporarilyOffline(): Boolean = System.currentTimeMillis() < offlineUntilMs
+
+    fun isCached(context: Context, uri: Uri): Boolean {
+        if (!isNetworkUri(uri)) return false
+        val id = uri.host ?: uri.schemeSpecificPart.removePrefix("//")
+        val file = File(File(context.cacheDir, "network-media"), id + ".bin")
+        return file.isFile && file.length() > 0L
+    }
+
+    fun canUseOffline(context: Context, uri: Uri): Boolean =
+        !isNetworkUri(uri) || !isTemporarilyOffline() || isCached(context, uri)
 
     fun materialize(context: Context, uri: Uri): File? {
         if (!isNetworkUri(uri)) return null
