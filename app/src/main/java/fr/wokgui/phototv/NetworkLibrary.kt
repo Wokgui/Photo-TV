@@ -144,6 +144,14 @@ object NetworkLibrary {
 
     fun isNetworkUri(uri: Uri): Boolean = uri.scheme == "phototv-network"
 
+    fun materialize(context: Context, uri: Uri): File? {
+        if (!isNetworkUri(uri)) return null
+        val id = uri.host ?: uri.schemeSpecificPart.removePrefix("//")
+        open(context, uri)?.use { }
+        return File(File(context.cacheDir, "network-media"), id + ".bin")
+            .takeIf { it.isFile && it.length() > 0L }
+    }
+
     fun isConfigured(): Boolean = synchronized(entries) { configs.isNotEmpty() }
 
     fun configureCache(maxMb: Int, ttlHours: Int) {
@@ -473,7 +481,7 @@ object NetworkLibrary {
             contentType?.startsWith("video/") == true ||
                 lower.endsWith(".mp4") ||
                 lower.endsWith(".mkv") ||
-                lower.endsWith(".webm") -> null
+                lower.endsWith(".webm") -> "video"
 
             contentType.equals("image/gif", true) || lower.endsWith(".gif") -> "gif"
 
