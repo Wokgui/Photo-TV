@@ -36,7 +36,8 @@ class PhotoTvView(
     private val onAlbumSearch: () -> Unit = {},
     private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> },
     private val onVideoPause: (Boolean) -> Unit = {},
-    private val supportsVideoPlayback: Boolean = false
+    private val supportsVideoPlayback: Boolean = false,
+    private val automationMode: Boolean = false
 ) : View(context) {
 
     private data class Style(
@@ -220,8 +221,20 @@ class PhotoTvView(
         isFocusableInTouchMode = true
         loadPrefs()
         requestFocus()
-        loadDemo()
-        loadWeather()
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+        loadDeterministicDemo()
+        if (!automationMode) {
+            loadDemo()
+            loadWeather()
+        } else {
+            temperatureC = 17f
+            feelsLikeC = 17f
+            forecastMinC = 12f
+            forecastMaxC = 19f
+            weatherSummary = "Ciel dégagé"
+            forecastLines.clear()
+            forecastLines += listOf("Lun  12° / 19°", "Mar  11° / 18°", "Mer  13° / 20°")
+        }
         scheduleInactivity()
         scheduleClock()
     }
@@ -393,6 +406,53 @@ class PhotoTvView(
             }
             postInvalidate()
         }
+    }
+
+    private fun loadDeterministicDemo() {
+        mockAlbumBitmaps.values.forEach { if (!it.isRecycled) it.recycle() }
+        mockAlbumBitmaps.clear()
+
+        val palettes = listOf(
+            intArrayOf(Color.rgb(26, 55, 77), Color.rgb(89, 127, 145), Color.rgb(12, 27, 41)),
+            intArrayOf(Color.rgb(26, 45, 70), Color.rgb(113, 91, 77), Color.rgb(12, 24, 39)),
+            intArrayOf(Color.rgb(45, 60, 45), Color.rgb(111, 130, 102), Color.rgb(23, 34, 29)),
+            intArrayOf(Color.rgb(40, 56, 74), Color.rgb(80, 118, 144), Color.rgb(18, 30, 44)),
+            intArrayOf(Color.rgb(62, 49, 43), Color.rgb(137, 101, 71), Color.rgb(28, 25, 27)),
+            intArrayOf(Color.rgb(28, 64, 79), Color.rgb(88, 143, 160), Color.rgb(12, 34, 43))
+        )
+
+        palettes.forEachIndexed { index, colors ->
+            val bmp = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            val gradient = LinearGradient(
+                0f, 0f, 1280f, 720f,
+                colors[0], colors[1],
+                Shader.TileMode.CLAMP
+            )
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { shader = gradient }
+            canvas.drawRect(0f, 0f, 1280f, 720f, paint)
+
+            paint.shader = null
+            paint.color = colors[2]
+            val path = Path().apply {
+                moveTo(0f, 590f)
+                lineTo(300f, 310f + index * 18f)
+                lineTo(520f, 520f)
+                lineTo(760f, 270f + index * 12f)
+                lineTo(1010f, 500f)
+                lineTo(1280f, 330f + index * 14f)
+                lineTo(1280f, 720f)
+                lineTo(0f, 720f)
+                close()
+            }
+            canvas.drawPath(path, paint)
+
+            paint.color = Color.argb(90, 255, 255, 255)
+            canvas.drawCircle(1040f - index * 38f, 135f + index * 14f, 45f, paint)
+
+            mockAlbumBitmaps[index] = bmp
+        }
+        demoBitmap = mockAlbumBitmaps[0]
     }
 
     private fun loadDemo() {
@@ -632,6 +692,38 @@ class PhotoTvView(
         invalidate()
     }
 
+    fun setAutomationPage(index: Int) {
+        slideshow = false
+        paused = false
+        quickMenuVisible = false
+        infoPanelVisible = false
+        page = index.coerceIn(0, 3)
+        navFocus = false
+        when (page) {
+            1 -> {
+                photosRow = 0
+                sourceFocus = 0
+            }
+            2 -> {
+                editorElement = 0
+                editorControl = 0
+                editorColumn = 0
+            }
+            3 -> {
+                settingsCategory = 0
+                settingsControl = 0
+                settingsColumn = 0
+            }
+        }
+        invalidate()
+    }
+
+    fun automationStateDescription(): String =
+        "PhotoTV page=$page navFocus=$navFocus photosRow=$photosRow sourceFocus=$sourceFocus " +
+            "albumFocus=$albumFocus photoFocus=$photoFocus editorColumn=$editorColumn " +
+            "editorElement=$editorElement editorControl=$editorControl settingsCategory=$settingsCategory " +
+            "settingsColumn=$settingsColumn settingsControl=$settingsControl slideshow=$slideshow paused=$paused"
+
     fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection") {
         synchronized(bitmapCache) {
             bitmapCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
@@ -805,6 +897,7 @@ class PhotoTvView(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        contentDescription = automationStateDescription()
         if (width <= 0 || height <= 0) return
         val sx = width / 1280f
         val sy = height / 720f
