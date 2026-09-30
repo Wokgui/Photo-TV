@@ -133,6 +133,7 @@ class PhotoTvView(
     private var demoBitmap: Bitmap? = null
 
     private var library: List<PhotoItem> = emptyList()
+    private var uriIndex: Map<String, PhotoItem> = emptyMap()
     private var albumIndex: Map<String, List<PhotoItem>> = emptyMap()
     private var sourceIndex: Map<String, List<PhotoItem>> = emptyMap()
     private var exactAlbums = false
@@ -221,6 +222,9 @@ class PhotoTvView(
     private val shuffleBag = mutableListOf<Int>()
     private var quickMenuVisible = false
     private var quickMenuIndex = 0
+    private var historyOverlayVisible = false
+    private var historyOverlayIndex = 0
+    private var technicalDiagnosticsVisible = false
     private var infoPanelVisible = false
     private var slideStartedAt = System.currentTimeMillis()
     private var inactivityToken = 0L
@@ -979,6 +983,7 @@ class PhotoTvView(
             val source = item.sourceLabel.ifBlank { "Source" }
             sources.getOrPut(source) { mutableListOf() }.add(item)
         }
+        uriIndex = library.associateBy { it.uri.toString() }
         albumIndex = albums.mapValues { it.value.toList() }
         sourceIndex = sources.mapValues { it.value.toList() }
     }
@@ -1484,6 +1489,8 @@ class PhotoTvView(
 
         if (interactionDiagnostics) drawInteractionDiagnostics(canvas)
         loadingText?.let { drawLoading(canvas, it) }
+        if (historyOverlayVisible) drawHistoryOverlay(canvas)
+        if (technicalDiagnosticsVisible) drawTechnicalDiagnosticsOverlay(canvas)
         if (remoteQrVisible) drawRemoteQrOverlay(canvas)
         canvas.restore()
     }
@@ -1532,6 +1539,47 @@ class PhotoTvView(
         text(c, "OK, Retour ou appui sur l’écran pour fermer", 640f, 580f, 12f, Color.rgb(163, 179, 198), 0, 1)
     }
 
+    private fun recentItemsForOverlay(): List<PhotoItem> =
+        recentUris.toList().asReversed().mapNotNull { uriIndex[it] }.distinctBy { it.uri }.take(12)
+
+    private fun drawHistoryOverlay(c: Canvas) {
+        fill(c, 0f, 0f, 1280f, 720f, Color.argb(205, 0, 0, 0))
+        round(c, 115f, 70f, 1165f, 650f, 20f, Color.rgb(11, 24, 38))
+        strokeRound(c, 115f, 70f, 1165f, 650f, 20f, Color.rgb(52, 83, 116), 1.5f)
+        text(c, "Historique récent", 145f, 112f, 23f, Color.WHITE, 1)
+        val items = recentItemsForOverlay()
+        if (items.isEmpty()) {
+            text(c, "Aucune photo récente.", 640f, 360f, 17f, Color.rgb(180, 194, 211), 0, 1)
+            return
+        }
+        historyOverlayIndex = historyOverlayIndex.coerceIn(0, items.lastIndex)
+        items.forEachIndexed { i, item ->
+            val col = i % 4
+            val row = i / 4
+            val x = 145f + col * 245f
+            val y = 145f + row * 155f
+            val bmp = synchronized(highResCache) { highResCache[item.uri.toString()] }
+                ?: synchronized(bitmapCache) { bitmapCache[item.uri.toString()] }
+            if (bmp == null) preload(listOf(item.uri))
+            round(c, x, y, x + 220f, y + 126f, 10f, Color.rgb(7, 17, 28))
+            if (bmp != null && !bmp.isRecycled) drawBitmapCenterCrop(c, bmp, x + 3f, y + 3f, 214f, 92f, 7f)
+            if (i == historyOverlayIndex) strokeRound(c, x - 3f, y - 3f, x + 223f, y + 129f, 12f, Color.rgb(52, 154, 255), 3f)
+            ellipsizedText(c, item.title, x + 10f, y + 115f, 200f, 11f, Color.WHITE)
+        }
+        text(c, "Flèches : choisir • OK : ouvrir • Retour : fermer", 640f, 625f, 11f, Color.rgb(147, 168, 193), 0, 1)
+    }
+
+    private fun drawTechnicalDiagnosticsOverlay(c: Canvas) {
+        fill(c, 0f, 0f, 1280f, 720f, Color.argb(215, 0, 0, 0))
+        round(c, 150f, 80f, 1130f, 640f, 20f, Color.rgb(9, 22, 35))
+        strokeRound(c, 150f, 80f, 1130f, 640f, 20f, Color.rgb(58, 91, 124), 1.5f)
+        text(c, "Diagnostics techniques", 185f, 125f, 23f, Color.WHITE, 1)
+        val lines = diagnosticReport().lines().filter { it.isNotBlank() }.take(17)
+        lines.forEachIndexed { i, line ->
+            ellipsizedText(c, line, 190f, 165f + i * 25f, 900f, 12f, if (i == 0) Color.rgb(109, 181, 255) else Color.rgb(205, 216, 230))
+        }
+        text(c, "OK ou Retour pour fermer", 640f, 610f, 11f, Color.rgb(147, 168, 193), 0, 1)
+    }
     private fun drawInteractionDiagnostics(c: Canvas) {
         val cyan = Color.rgb(60, 205, 255)
         val green = Color.rgb(89, 230, 145)
@@ -2656,12 +2704,14 @@ class PhotoTvView(
             "Masquer pour cette session",
             "Toujours masquer cette photo",
             "Informations",
-            if (paused) "Reprendre" else "Pause"
+            if (paused) "Reprendre" else "Pause",
+            "Historique visuel",
+            "Diagnostics techniques"
         )
         val x = 855f
         val y = 185f
         val w = 370f
-        val h = 310f
+        val h = 402f
         round(c, x, y, x + w, y + h, 18f, Color.argb(238, 5, 17, 29))
         strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(51, 80, 111), 1.5f)
         text(c, "Photo courante", x + 22f, y + 35f, 16f, Color.WHITE, 1)
@@ -3296,15 +3346,48 @@ class PhotoTvView(
             return handleLongAction()
         }
 
+        if (historyOverlayVisible) {
+            val items = recentItemsForOverlay()
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> { if (items.isNotEmpty()) historyOverlayIndex = (historyOverlayIndex - 1 + items.size) % items.size; invalidate(); true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { if (items.isNotEmpty()) historyOverlayIndex = (historyOverlayIndex + 1) % items.size; invalidate(); true }
+                KeyEvent.KEYCODE_DPAD_UP -> { if (items.isNotEmpty()) historyOverlayIndex = (historyOverlayIndex - 4 + items.size) % items.size; invalidate(); true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { if (items.isNotEmpty()) historyOverlayIndex = (historyOverlayIndex + 4) % items.size; invalidate(); true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    items.getOrNull(historyOverlayIndex)?.let { item ->
+                        val active = activePhotos()
+                        val idx = active.indexOfFirst { it.uri == item.uri }
+                        if (idx >= 0) currentPhoto = idx
+                    }
+                    historyOverlayVisible = false
+                    invalidate()
+                    true
+                }
+                KeyEvent.KEYCODE_BACK -> { historyOverlayVisible = false; invalidate(); true }
+                else -> true
+            }
+        }
+
+        if (technicalDiagnosticsVisible) {
+            return when (keyCode) {
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    technicalDiagnosticsVisible = false
+                    invalidate()
+                    true
+                }
+                else -> true
+            }
+        }
+
         if (quickMenuVisible) {
             return when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP -> {
-                    quickMenuIndex = (quickMenuIndex - 1 + 5) % 5
+                    quickMenuIndex = (quickMenuIndex - 1 + 7) % 7
                     invalidate()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    quickMenuIndex = (quickMenuIndex + 1) % 5
+                    quickMenuIndex = (quickMenuIndex + 1) % 7
                     invalidate()
                     true
                 }
@@ -3407,6 +3490,15 @@ class PhotoTvView(
             4 -> {
                 quickMenuVisible = false
                 togglePause()
+            }
+            5 -> {
+                quickMenuVisible = false
+                historyOverlayIndex = 0
+                historyOverlayVisible = true
+            }
+            6 -> {
+                quickMenuVisible = false
+                technicalDiagnosticsVisible = true
             }
         }
         savePrefs()
@@ -4589,9 +4681,32 @@ class PhotoTvView(
 
         if (event.actionMasked != MotionEvent.ACTION_UP) return true
 
+        if (historyOverlayVisible) {
+            if (x in 145f..1125f && y in 145f..610f) {
+                val col = ((x - 145f) / 245f).toInt().coerceIn(0, 3)
+                val row = ((y - 145f) / 155f).toInt().coerceIn(0, 2)
+                val index = row * 4 + col
+                val items = recentItemsForOverlay()
+                items.getOrNull(index)?.let { item ->
+                    val active = activePhotos()
+                    val idx = active.indexOfFirst { it.uri == item.uri }
+                    if (idx >= 0) currentPhoto = idx
+                }
+            }
+            historyOverlayVisible = false
+            invalidate()
+            return true
+        }
+
+        if (technicalDiagnosticsVisible) {
+            technicalDiagnosticsVisible = false
+            invalidate()
+            return true
+        }
+
         if (quickMenuVisible) {
-            if (x in 855f..1225f && y in 241f..476f) {
-                quickMenuIndex = (((y - 241f) / 47f).toInt()).coerceIn(0, 4)
+            if (x in 855f..1225f && y in 241f..570f) {
+                quickMenuIndex = (((y - 241f) / 47f).toInt()).coerceIn(0, 6)
                 activateQuickMenu()
             } else {
                 quickMenuVisible = false
