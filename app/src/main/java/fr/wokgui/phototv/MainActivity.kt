@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.VideoView
 import android.widget.Toast
 import android.view.WindowManager
@@ -77,6 +78,7 @@ class MainActivity : AppCompatActivity() {
             onExactSource = { openExactSource() },
             onFolderSource = { openLocalFolder() },
             onPickPhotos = { openPhotoPicker() },
+            onNetworkSource = { requestNetworkSource() },
             onWeatherLocation = { requestWeatherLocation() },
             onExportSettings = { exportSettings() },
             onImportSettings = { importSettings() },
@@ -179,6 +181,94 @@ class MainActivity : AppCompatActivity() {
             if (pause) videoView.pause()
             else if (!videoView.isPlaying) videoView.start()
         }
+    }
+
+    private fun requestNetworkSource() {
+        val labels = arrayOf("WebDAV", "SMB / NAS")
+        AlertDialog.Builder(this)
+            .setTitle("Source réseau")
+            .setItems(labels) { _, which ->
+                val kind = if (which == 0) NetworkLibrary.Kind.WEBDAV else NetworkLibrary.Kind.SMB
+                requestNetworkCredentials(kind)
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun requestNetworkCredentials(kind: NetworkLibrary.Kind) {
+        val url = EditText(this).apply {
+            hint = if (kind == NetworkLibrary.Kind.WEBDAV) {
+                "https://nas.exemple/photos/"
+            } else {
+                "smb://192.168.1.20/photos/"
+            }
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+        }
+        val user = EditText(this).apply {
+            hint = "Utilisateur (facultatif)"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+        }
+        val password = EditText(this).apply {
+            hint = "Mot de passe (facultatif)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (24 * resources.displayMetrics.density).toInt()
+            setPadding(pad, 0, pad, 0)
+            addView(url)
+            addView(user)
+            addView(password)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(if (kind == NetworkLibrary.Kind.WEBDAV) "Connexion WebDAV" else "Connexion SMB / NAS")
+            .setView(box)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Connecter") { _, _ ->
+                val address = url.text?.toString().orEmpty().trim()
+                if (address.isBlank()) {
+                    Toast.makeText(this, "Adresse réseau manquante", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                ui.showLoading("Connexion au réseau…")
+                Thread {
+                    val result = runCatching {
+                        NetworkLibrary.load(
+                            kind = kind,
+                            baseUrl = address,
+                            username = user.text?.toString().orEmpty(),
+                            password = password.text?.toString().orEmpty()
+                        )
+                    }
+                    runOnUiThread {
+                        result.onSuccess { items ->
+                            if (items.isEmpty()) {
+                                ui.showLoading("")
+                                Toast.makeText(this, "Aucune photo compatible trouvée", Toast.LENGTH_LONG).show()
+                            } else {
+                                ui.setLibrary(
+                                    items,
+                                    exactAlbums = false,
+                                    sourceName = if (kind == NetworkLibrary.Kind.WEBDAV) "WebDAV" else "SMB / NAS"
+                                )
+                                Toast.makeText(this, "${items.size} médias réseau chargés", Toast.LENGTH_SHORT).show()
+                            }
+                        }.onFailure { error ->
+                            ui.showLoading("")
+                            Toast.makeText(
+                                this,
+                                "Connexion impossible : " + (error.message ?: "erreur réseau"),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }.start()
+            }
+            .show()
     }
 
     private fun requestAlbumSearch() {
