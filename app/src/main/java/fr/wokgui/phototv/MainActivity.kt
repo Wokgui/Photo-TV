@@ -360,11 +360,13 @@ class MainActivity : AppCompatActivity() {
                                     baseUrl = address,
                                     username = user.text?.toString().orEmpty()
                                 )
+                                currentNetworkSourceName = if (kind == NetworkLibrary.Kind.WEBDAV) "WebDAV" else "SMB / NAS"
                                 ui.setLibrary(
                                     items,
                                     exactAlbums = false,
-                                    sourceName = if (kind == NetworkLibrary.Kind.WEBDAV) "WebDAV" else "SMB / NAS"
+                                    sourceName = currentNetworkSourceName
                                 )
+                                scheduleNetworkRefresh()
                                 Toast.makeText(this, "${items.size} médias réseau chargés", Toast.LENGTH_SHORT).show()
                             }
                         }.onFailure { error ->
@@ -513,12 +515,32 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    override fun onDestroy() {
+        networkRefreshHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+
     @Deprecated("Deprecated in Android framework, retained for broad TV compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != Activity.RESULT_OK || data == null) return
 
         when (requestCode) {
+            REQ_EXPORT_DIAGNOSTICS -> data.data?.let { uri ->
+                val text = pendingDiagnosticText ?: ui.diagnosticReport()
+                val ok = runCatching {
+                    contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { writer ->
+                        writer.write(text)
+                    } ?: error("Flux de sortie indisponible")
+                }.isSuccess
+                pendingDiagnosticText = null
+                Toast.makeText(
+                    this,
+                    if (ok) "Diagnostic exporté." else "Échec de l’export du diagnostic.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
             REQ_EXACT_FOLDER -> data.data?.let { uri ->
                 runCatching {
                     contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
