@@ -168,7 +168,7 @@ object NetworkLibrary {
     private fun mediaType(name: String, contentType: String?): String? {
         val lower = name.lowercase()
         return when {
-            contentType?.startsWith("video/") == true || lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".webm") -> "video"
+            contentType?.startsWith("video/") == true || lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".webm") -> null
             contentType.equals("image/gif", true) || lower.endsWith(".gif") -> "gif"
             contentType?.startsWith("image/") == true || listOf(".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".bmp", ".avif").any { lower.endsWith(it) } -> "image"
             else -> null
