@@ -88,6 +88,7 @@ class MainActivity : AppCompatActivity() {
             onFolderSource = { openLocalFolder() },
             onPickPhotos = { openPhotoPicker() },
             onNetworkSource = { requestNetworkSource() },
+            onPrepareNetworkSource = { kind, url, user -> requestNetworkCredentials(kind, url, user) },
             onSettingsPin = { manageSettingsPin() },
             canOpenSettings = { !SettingsPinStore.hasPin(this) || settingsUnlockedSession },
             onUnlockSettings = { requestSettingsUnlock() },
