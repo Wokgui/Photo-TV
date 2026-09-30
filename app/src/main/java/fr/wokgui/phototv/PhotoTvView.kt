@@ -1431,6 +1431,7 @@ class PhotoTvView(
                         !hiddenAlbums.contains(it) &&
                         albumAllowed(it, now)
                 } &&
+                NetworkLibrary.canUseOffline(context, item.uri) &&
                 !excludedUris.contains(item.uri.toString()) &&
                 !sessionExcludedUris.contains(item.uri.toString()) &&
                 !failedMediaUris.contains(item.uri.toString()) &&
@@ -2460,6 +2461,7 @@ class PhotoTvView(
             appendLine("Historique: " + recentUris.size)
             appendLine("Mémoire: " + memoryDiagnostics())
             appendLine("Cache réseau: " + cache.first + " fichiers • " + (cache.second / (1024L * 1024L)) + " Mo")
+            appendLine("Réseau temporairement hors ligne: " + NetworkLibrary.isTemporarilyOffline())
             appendLine("Télécommande: " + remoteEnabled)
             appendLine("Mode nuit actif: " + isNightModeActive())
             appendLine("État UI: " + automationStateDescription())
