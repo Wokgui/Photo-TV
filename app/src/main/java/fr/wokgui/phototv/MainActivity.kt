@@ -670,16 +670,16 @@ class MainActivity : AppCompatActivity() {
                 runCatching {
                     contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                SourceStore.saveTree(this, uri, exactMode = true)
-                importTree(uri, silent = false, exactMode = true)
+                SourceStore.addTree(this, uri, exactMode = true)
+                importTree(uri, silent = false, exactMode = true, merge = true)
             }
 
             REQ_LOCAL_FOLDER -> data.data?.let { uri ->
                 runCatching {
                     contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                SourceStore.saveTree(this, uri, exactMode = false)
-                importTree(uri, silent = false, exactMode = false)
+                SourceStore.addTree(this, uri, exactMode = false)
+                importTree(uri, silent = false, exactMode = false, merge = true)
             }
 
             REQ_EXPORT_SETTINGS -> data.data?.let { uri ->
@@ -726,34 +726,57 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 }
-                SourceStore.savePicked(this, distinct)
-                importPicked(distinct, silent = false)
+                val merged = SourceStore.addPicked(this, distinct)
+                importPicked(merged, silent = false, merge = true)
             }
         }
     }
 
-    private fun restoreSavedSource() {
-        when (val source = SourceStore.load(this)) {
-            is PhotoSourceSpec.Tree ->
-                importTree(source.uri, silent = true, exactMode = source.exactMode)
-
-            is PhotoSourceSpec.Picked ->
-                importPicked(source.uris, silent = true)
-
-            null -> Unit
+    private fun sourceLabelForTree(uri: Uri, exactMode: Boolean): String {
+        val decoded = Uri.decode(uri.lastPathSegment.orEmpty())
+        val name = decoded.substringAfterLast(':').substringAfterLast('/').ifBlank {
+            if (exactMode) "Takeout" else "Dossier"
         }
+        return (if (exactMode) "Takeout" else "Dossier") + " • " + name
     }
 
-    private fun importPicked(uris: List<Uri>, silent: Boolean) {
+    private fun restoreSavedSource() {
+        val sources = SourceStore.loadAll(this)
+        if (sources.isEmpty()) return
+        Thread {
+            val loaded = mutableListOf<Triple<List<PhotoItem>, Boolean, String>>()
+            sources.forEach { source ->
+                when (source) {
+                    is PhotoSourceSpec.Tree -> {
+                        val result = TakeoutLibrary.load(this, source.uri, exactMode = source.exactMode)
+                        loaded += Triple(result.items, result.exactAlbums, sourceLabelForTree(source.uri, source.exactMode))
+                    }
+                    is PhotoSourceSpec.Picked -> {
+                        loaded += Triple(PickedLibrary.load(this, source.uris), false, "Sélection de photos")
+                    }
+                }
+            }
+            runOnUiThread {
+                loaded.forEachIndexed { index, value ->
+                    if (index == 0) {
+                        ui.setLibrary(value.first, exactAlbums = value.second, sourceName = value.third)
+                    } else {
+                        ui.upsertSourceLibrary(value.first, exactAlbums = value.second, fallbackSourceName = value.third)
+                    }
+                }
+            }
+        }.start()
+    }
+    private fun importPicked(uris: List<Uri>, silent: Boolean, merge: Boolean = false) {
         if (!silent) ui.showLoading("Analyse des médias sélectionnés…")
         Thread {
             val items = PickedLibrary.load(this, uris)
             runOnUiThread {
-                ui.setLibrary(
-                    items,
-                    exactAlbums = false,
-                    sourceName = "Sélection de photos"
-                )
+                if (merge) {
+                    ui.upsertSourceLibrary(items, exactAlbums = false, fallbackSourceName = "Sélection de photos")
+                } else {
+                    ui.setLibrary(items, exactAlbums = false, sourceName = "Sélection de photos")
+                }
                 if (!silent) {
                     Toast.makeText(
                         this,
@@ -766,7 +789,7 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun importTree(uri: Uri, silent: Boolean, exactMode: Boolean) {
+    private fun importTree(uri: Uri, silent: Boolean, exactMode: Boolean, merge: Boolean = false) {
         if (!silent) {
             ui.showLoading(
                 if (exactMode) "Analyse de Google Photos / Takeout…"
@@ -791,12 +814,20 @@ class MainActivity : AppCompatActivity() {
                 }
             )
             runOnUiThread {
-                val source = if (exactMode) "Google Photos / Takeout" else "Dossier local"
-                ui.setLibrary(
-                    loaded.items,
-                    exactAlbums = loaded.exactAlbums,
-                    sourceName = source
-                )
+                val source = sourceLabelForTree(uri, exactMode)
+                if (merge) {
+                    ui.upsertSourceLibrary(
+                        loaded.items,
+                        exactAlbums = loaded.exactAlbums,
+                        fallbackSourceName = source
+                    )
+                } else {
+                    ui.setLibrary(
+                        loaded.items,
+                        exactAlbums = loaded.exactAlbums,
+                        sourceName = source
+                    )
+                }
 
                 if (!silent) {
                     val message = when {
