@@ -765,7 +765,7 @@ class PhotoTvView(
     }
 
     fun showLoading(message: String) {
-        loadingText = message
+        loadingText = message.takeIf { it.isNotBlank() }
         invalidate()
     }
 
