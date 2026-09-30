@@ -181,6 +181,14 @@ class PhotoTvView(
     private val failedMediaUris = linkedSetOf<String>()
     private var decodeFailureCount = 0
     private var lastDecodeFailure = ""
+    private val recentUris = java.util.ArrayDeque<String>()
+    private var cacheHits = 0L
+    private var cacheMisses = 0L
+    private var decodeCount = 0L
+    private var decodeTotalMs = 0L
+    private var frameCount = 0L
+    private var fpsWindowStarted = android.os.SystemClock.uptimeMillis()
+    private var measuredFps = 0f
     private val history = mutableListOf<Int>()
     private val shuffleBag = mutableListOf<Int>()
     private var quickMenuVisible = false
@@ -317,6 +325,10 @@ class PhotoTvView(
         savedSelectedAlbums.addAll(prefs.getStringSet("selected_albums", emptySet()) ?: emptySet())
         currentPhoto = prefs.getInt("resume_index", 0)
         resumeUri = prefs.getString("resume_uri", "").orEmpty()
+        runCatching {
+            val arr = JSONArray(prefs.getString("recent_uris", "[]") ?: "[]")
+            for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { recentUris.addLast(it) }
+        }
         styles.forEachIndexed { i, s ->
             s.size = prefs.getFloat("s${i}_size", s.size)
             s.x = prefs.getFloat("s${i}_x", s.x)
@@ -375,6 +387,7 @@ class PhotoTvView(
             putStringSet("selected_albums", HashSet(selectedAlbums))
             putInt("resume_index", currentPhoto)
             putString("resume_uri", currentItem()?.uri?.toString().orEmpty())
+            putString("recent_uris", JSONArray().apply { recentUris.forEach { put(it) } }.toString())
             styles.forEachIndexed { i, s ->
                 putFloat("s${i}_size", s.size)
                 putFloat("s${i}_x", s.x)
@@ -962,6 +975,8 @@ class PhotoTvView(
     }
 
     private fun decodeBitmap(uri: Uri, targetWidth: Int, targetHeight: Int): Bitmap? {
+        val decodeStarted = android.os.SystemClock.elapsedRealtime()
+        try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, bounds)
@@ -1008,6 +1023,10 @@ class PhotoTvView(
         }
 
         return null
+        } finally {
+            decodeCount++
+            decodeTotalMs += (android.os.SystemClock.elapsedRealtime() - decodeStarted).coerceAtLeast(0L)
+        }
     }
 
     private fun highResTarget(): Pair<Int, Int> {
@@ -1123,11 +1142,21 @@ class PhotoTvView(
         return if (item == null) demoBitmap else {
             val key = item.uri.toString()
             val high = synchronized(highResCache) { highResCache[key] }
-            if (high != null && !high.isRecycled) return high
-            requestHighRes(item.uri)
-            synchronized(bitmapCache) { bitmapCache[key] }.also {
-                if (it == null) preload(listOf(item.uri))
-            } ?: demoBitmap
+            if (high != null && !high.isRecycled) {
+                cacheHits++
+                return high
+            }
+            val thumb = synchronized(bitmapCache) { bitmapCache[key] }
+            if (thumb != null && !thumb.isRecycled) {
+                cacheHits++
+                requestHighRes(item.uri)
+                thumb
+            } else {
+                cacheMisses++
+                requestHighRes(item.uri)
+                preload(listOf(item.uri))
+                demoBitmap
+            }
         }
     }
 
@@ -1145,6 +1174,14 @@ class PhotoTvView(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        frameCount++
+        val nowFps = android.os.SystemClock.uptimeMillis()
+        val elapsedFps = nowFps - fpsWindowStarted
+        if (elapsedFps >= 1000L) {
+            measuredFps = frameCount * 1000f / elapsedFps.toFloat()
+            frameCount = 0
+            fpsWindowStarted = nowFps
+        }
         contentDescription = automationStateDescription()
         if (width <= 0 || height <= 0) return
         val sx = width / 1280f
@@ -2045,7 +2082,10 @@ class PhotoTvView(
         val hdMb = synchronized(highResCache) { highResCacheBytes / (1024L * 1024L) }
         val thumbCount = synchronized(bitmapCache) { bitmapCache.size }
         val hdCount = synchronized(highResCache) { highResCache.size }
-        return "RAM $usedMb/$maxMb Mo • miniatures $thumbMb Mo ($thumbCount) • HD $hdMb Mo ($hdCount)"
+        val total = cacheHits + cacheMisses
+        val hitRate = if (total == 0L) 0 else (cacheHits * 100L / total)
+        val avgDecode = if (decodeCount == 0L) 0L else decodeTotalMs / decodeCount
+        return "RAM $usedMb/$maxMb Mo • mini $thumbMb Mo ($thumbCount) • HD $hdMb Mo ($hdCount) • cache $hitRate% • décod. ${avgDecode} ms • ${format1(measuredFps)} fps"
     }
 
     private fun appVersionName(): String = runCatching {
@@ -3524,6 +3564,7 @@ class PhotoTvView(
         quickMenuVisible = false
         infoPanelVisible = false
         history.clear()
+        rememberCurrentUri()
         rebuildShuffleBag()
         transitionProgress = 1f
         slideStartedAt = System.currentTimeMillis()
@@ -3627,6 +3668,36 @@ class PhotoTvView(
         postInvalidate()
     }
 
+    private fun rememberCurrentUri() {
+        val key = currentItem()?.uri?.toString().orEmpty()
+        if (key.isBlank()) return
+        if (recentUris.peekLast() == key) return
+        recentUris.addLast(key)
+        while (recentUris.size > 100) recentUris.removeFirst()
+    }
+
+    private fun goToRecentPrevious() {
+        val current = currentItem()?.uri?.toString()
+        while (recentUris.isNotEmpty()) {
+            val key = recentUris.removeLast()
+            if (key == current) continue
+            val items = activePhotos()
+            val idx = items.indexOfFirst { it.uri.toString() == key }
+            if (idx >= 0) {
+                previousPhoto = currentPhoto
+                currentPhoto = idx
+                slideStartedAt = System.currentTimeMillis()
+                preloadAroundCurrent()
+                syncVideoPlayback()
+                startTransition()
+                scheduleSlideshow()
+                savePrefs()
+                invalidate()
+                return
+            }
+        }
+    }
+
     private fun slideshowNext(dir: Int) {
         val items = activePhotos()
         if (items.isEmpty()) {
@@ -3669,6 +3740,7 @@ class PhotoTvView(
         }
 
         slideStartedAt = System.currentTimeMillis()
+        rememberCurrentUri()
         savePrefs()
         preloadAroundCurrent()
         syncVideoPlayback()
