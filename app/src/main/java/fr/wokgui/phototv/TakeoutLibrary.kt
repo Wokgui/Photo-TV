@@ -28,8 +28,9 @@ object TakeoutLibrary {
         val exactState = ExactState()
         scanFolder(context, root, raw, exactMode, exactState, onProgress)
 
+        val merged = mergeAlbumMemberships(context, raw)
         return LoadResult(
-            items = mergeAlbumMemberships(context, raw),
+            items = VisualDuplicateDetector.merge(context, merged),
             exactAlbums = exactMode && exactState.foldersWithMedia > 0 && exactState.missingAlbumMetadata == 0,
             missingExactAlbumFolders = exactState.missingAlbumMetadata
         )
