@@ -1124,9 +1124,10 @@ class PhotoTvView(
     ) {
         val label = items.firstOrNull()?.sourceLabel?.takeIf { it.isNotBlank() } ?: fallbackSourceName
         val tagged = tagSource(items, label)
+        val wasEmpty = library.isEmpty()
         val retained = library.filterNot { it.sourceLabel == label }
         library = retained + tagged
-        this.exactAlbums = this.exactAlbums && exactAlbums
+        this.exactAlbums = if (wasEmpty) exactAlbums else this.exactAlbums && exactAlbums
         refreshLibraryState(resetCurrent = false)
     }
 
