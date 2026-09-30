@@ -827,6 +827,86 @@ class PhotoTvView(
         canvas.restore()
     }
 
+    private fun drawInteractionDiagnostics(c: Canvas) {
+        val cyan = Color.rgb(60, 205, 255)
+        val green = Color.rgb(89, 230, 145)
+        val amber = Color.rgb(255, 193, 84)
+        val magenta = Color.rgb(232, 103, 255)
+
+        fun box(l: Float, t: Float, r: Float, b: Float, label: String, color: Int = cyan) {
+            round(c, l, t, r, b, 4f, Color.argb(28, Color.red(color), Color.green(color), Color.blue(color)))
+            strokeRound(c, l, t, r, b, 4f, color, 1.5f)
+            text(c, label, l + 4f, t + 13f, 9f, color, 1)
+        }
+
+        fill(c, 8f, 8f, 360f, 34f, Color.argb(215, 2, 13, 25))
+        val pointer = if (diagnosticTouchX >= 0f) {
+            " • x=${diagnosticTouchX.toInt()} y=${diagnosticTouchY.toInt()}"
+        } else ""
+        text(c, "DIAGNOSTIC • zones interactives$pointer", 16f, 26f, 11f, Color.WHITE, 1)
+
+        if (slideshow) {
+            box(0f, 0f, 426f, 720f, "Précédent", cyan)
+            box(426f, 0f, 854f, 720f, "Pause / reprise", green)
+            box(854f, 0f, 1280f, 720f, "Suivant", cyan)
+            return
+        }
+
+        when (page) {
+            0 -> {
+                box(45f, 305f, 150f, 405f, "Flèche précédente", cyan)
+                box(180f, 90f, 1100f, 625f, "Ouvrir diaporama", green)
+                box(1130f, 305f, 1235f, 405f, "Flèche suivante", cyan)
+            }
+            1 -> {
+                box(47f, 108f, 435f, 210f, "Google / Takeout", green)
+                box(450f, 108f, 812f, 210f, "Dossier local", green)
+                box(828f, 108f, 1238f, 210f, "Sélection fichiers", green)
+                repeat(6) { i ->
+                    val x = 47f + i * 199f
+                    box(x, 270f, x + 185f, 468f, "Album ${i + 1}", amber)
+                    box(x, 522f, x + 185f, 626f, "Photo ${i + 1}", magenta)
+                }
+            }
+            2 -> {
+                repeat(5) { i ->
+                    val y = 120f + i * 87f
+                    box(32f, y, 352f, y + 78f, "Métadonnée ${i + 1}", amber)
+                }
+                box(370f, 64f, 918f, 638f, "Déplacer l'élément", green)
+                box(956f, 131f, 1232f, 166f, "Texte", cyan)
+                box(1048f, 175f, 1232f, 210f, "Police", cyan)
+                box(956f, 220f, 1232f, 268f, "Taille", cyan)
+                box(956f, 280f, 1232f, 330f, "Couleur", cyan)
+                box(956f, 326f, 1232f, 378f, "Position X", cyan)
+                box(956f, 387f, 1232f, 439f, "Position Y", cyan)
+                box(1048f, 454f, 1174f, 506f, "Alignement", cyan)
+                box(956f, 516f, 1232f, 568f, "Ombre", cyan)
+                repeat(4) { i ->
+                    val x = 956f + i * 67f
+                    box(x, 584f, x + 62f, 618f, listOf("Annuler", "Rétablir", "Réinit.", "Tout")[i], magenta)
+                }
+            }
+            else -> {
+                repeat(8) { i ->
+                    val y = 116f + i * 55f
+                    box(32f, y, 352f, y + 50f, "Catégorie ${i + 1}", amber)
+                }
+                if (settingsCategory == 7 && !advancedRulesOpen) {
+                    box(825f, 85f, 1030f, 123f, "Zones diagnostic", magenta)
+                    box(1045f, 85f, 1235f, 123f, "Règles album", magenta)
+                } else {
+                    box(380f, 77f, 1248f, 613f, "Contrôles du panneau", cyan)
+                }
+            }
+        }
+
+        repeat(4) { i ->
+            val x = 218f + i * 218f
+            box(x, 644f, x + 218f, 704f, listOf("Aperçu", "Photos", "Éditeur", "Réglages")[i], green)
+        }
+    }
+
     private fun drawLoading(c: Canvas, msg: String) {
         fill(c, 0f, 0f, 1280f, 720f, Color.argb(170, 0, 0, 0))
         round(c, 430f, 305f, 850f, 415f, 18f, Color.rgb(12, 24, 37))
