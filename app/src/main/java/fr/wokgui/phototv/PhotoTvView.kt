@@ -120,6 +120,10 @@ class PhotoTvView(
     private var page = 0
     private var navFocus = false
     private var currentPhoto = 0
+    private var resumeUri = ""
+    private var resumeWasSlideshow = false
+    private var resumeWasPaused = false
+    private val resumeShuffleUris = mutableListOf<String>()
     private var slideshow = false
     private var paused = false
     private var previousPhoto = 0
