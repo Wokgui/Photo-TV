@@ -848,7 +848,52 @@ class PhotoTvView(
             "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size} " +
             "night=${isNightModeActive()} memory=${memoryDiagnostics()}"
 
-    fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection") {
+    private fun tagSource(items: List<PhotoItem>, label: String): List<PhotoItem> =
+        items.map { item ->
+            if (item.sourceLabel.isBlank()) item.copy(sourceLabel = label) else item
+        }
+
+    private fun refreshLibraryState(resetCurrent: Boolean) {
+        selectedAlbums.clear()
+        val allAlbums = library.flatMap { it.albums }.distinct()
+        if (savedSelectedAlbums.isNotEmpty()) {
+            selectedAlbums.addAll(allAlbums.filter { savedSelectedAlbums.contains(it) })
+        }
+        if (selectedAlbums.isEmpty()) selectedAlbums.addAll(allAlbums)
+
+        if (resetCurrent) {
+            currentPhoto = prefs.getInt("resume_index", 0).coerceAtLeast(0)
+            val activeNow = activePhotos()
+            if (resumeUri.isNotBlank()) {
+                val restored = activeNow.indexOfFirst { it.uri.toString() == resumeUri }
+                if (restored >= 0) currentPhoto = restored
+            }
+        }
+
+        albumFocus = 0
+        photoFocus = 0
+        loadingText = null
+        preload(library.take(48).map { it.uri })
+        val count = activePhotos().size
+        if (count > 0) currentPhoto = currentPhoto.coerceIn(0, count - 1)
+        else currentPhoto = 0
+
+        val labels = library.map { it.sourceLabel.ifBlank { "Source" } }.distinct()
+        sourceName = when (labels.size) {
+            0 -> "Aucune source"
+            1 -> labels.first()
+            else -> "Sources multiples (" + labels.size + ")"
+        }
+
+        invalidate()
+        scheduleInactivity()
+    }
+
+    fun setLibrary(
+        items: List<PhotoItem>,
+        exactAlbums: Boolean,
+        sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection"
+    ) {
         synchronized(bitmapCache) {
             bitmapCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
             bitmapCache.clear()
@@ -871,29 +916,12 @@ class PhotoTvView(
         failedMediaUris.clear()
         decodeFailureCount = 0
         lastDecodeFailure = ""
-        library = items
+        library = tagSource(items, sourceName)
         this.exactAlbums = exactAlbums
         this.sourceName = sourceName
-        selectedAlbums.clear()
-        val allAlbums = items.flatMap { it.albums }.distinct()
-        if (savedSelectedAlbums.isNotEmpty()) {
-            selectedAlbums.addAll(allAlbums.filter { savedSelectedAlbums.contains(it) })
-        }
-        if (selectedAlbums.isEmpty()) selectedAlbums.addAll(allAlbums)
-        currentPhoto = prefs.getInt("resume_index", 0).coerceAtLeast(0)
-        val activeNow = activePhotos()
-        if (resumeUri.isNotBlank()) {
-            val restored = activeNow.indexOfFirst { it.uri.toString() == resumeUri }
-            if (restored >= 0) currentPhoto = restored
-        }
-        albumFocus = 0
-        photoFocus = 0
-        loadingText = null
-        preload(items.take(48).map { it.uri })
+        refreshLibraryState(resetCurrent = true)
+
         val count = activePhotos().size
-        if (count > 0) currentPhoto = currentPhoto.coerceIn(0, count - 1)
-        invalidate()
-        scheduleInactivity()
         if (resumeWasSlideshow && count > 0) {
             postDelayed({
                 if (!slideshow) {
@@ -923,6 +951,25 @@ class PhotoTvView(
         }
     }
 
+    fun upsertSourceLibrary(
+        items: List<PhotoItem>,
+        exactAlbums: Boolean = false,
+        fallbackSourceName: String = "Source"
+    ) {
+        val label = items.firstOrNull()?.sourceLabel?.takeIf { it.isNotBlank() } ?: fallbackSourceName
+        val tagged = tagSource(items, label)
+        val retained = library.filterNot { it.sourceLabel == label }
+        library = retained + tagged
+        this.exactAlbums = this.exactAlbums && exactAlbums
+        refreshLibraryState(resetCurrent = false)
+    }
+
+    fun replaceNetworkLibraries(items: List<PhotoItem>) {
+        val retained = library.filterNot { NetworkLibrary.isNetworkUri(it.uri) }
+        library = retained + items
+        exactAlbums = false
+        refreshLibraryState(resetCurrent = false)
+    }
     fun startAsDream(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String) {
         setLibrary(items, exactAlbums = exactAlbums, sourceName = sourceName)
         if (activePhotos().isNotEmpty()) {
