@@ -153,6 +153,11 @@ class PhotoTvView(
     private var dateFormatIndex = 0
     private var time24h = true
     private var showSeconds = false
+    private var nightModeEnabled = false
+    private var nightStartHour = 22
+    private var nightEndHour = 7
+    private var nightDimPercent = 45
+    private var nightHideOverlays = true
     private var temperatureC = Float.NaN
     private var feelsLikeC = Float.NaN
     private var forecastMinC = Float.NaN
@@ -278,6 +283,11 @@ class PhotoTvView(
         dateFormatIndex = prefs.getInt("date_format", 0).coerceIn(0, 2)
         time24h = prefs.getBoolean("time_24h", true)
         showSeconds = prefs.getBoolean("show_seconds", false)
+        nightModeEnabled = prefs.getBoolean("night_mode", false)
+        nightStartHour = prefs.getInt("night_start", 22).coerceIn(0, 23)
+        nightEndHour = prefs.getInt("night_end", 7).coerceIn(0, 23)
+        nightDimPercent = prefs.getInt("night_dim", 45).coerceIn(0, 85)
+        nightHideOverlays = prefs.getBoolean("night_hide_overlays", true)
         weatherLocation = prefs.getString("weather_location", "") ?: ""
         imageMode = prefs.getInt("image_mode", 0).coerceIn(0, 3)
         gridSnap = prefs.getBoolean("grid_snap", true)
@@ -332,6 +342,11 @@ class PhotoTvView(
             putInt("date_format", dateFormatIndex)
             putBoolean("time_24h", time24h)
             putBoolean("show_seconds", showSeconds)
+            putBoolean("night_mode", nightModeEnabled)
+            putInt("night_start", nightStartHour)
+            putInt("night_end", nightEndHour)
+            putInt("night_dim", nightDimPercent)
+            putBoolean("night_hide_overlays", nightHideOverlays)
             putString("weather_location", weatherLocation)
             putInt("image_mode", imageMode)
             putBoolean("grid_snap", gridSnap)
@@ -755,7 +770,8 @@ class PhotoTvView(
             "settingsCategory=$settingsCategory settingsColumn=$settingsColumn settingsControl=$settingsControl " +
             "rulesOpen=$advancedRulesOpen diagnostics=$interactionDiagnostics " +
             "slideshow=$slideshow paused=$paused quickMenu=$quickMenuVisible " +
-            "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size}"
+            "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size} " +
+            "night=${isNightModeActive()} memory=${memoryDiagnostics()}"
 
     fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection") {
         synchronized(bitmapCache) {
@@ -1714,14 +1730,30 @@ class PhotoTvView(
 
     private fun drawSettingsTime(c: Canvas, x: Float, y: Float) {
         text(c, "Heure et date", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        settingsToggle(c, "Afficher la date", showDate, x, y + 68f, 0)
-        settingsChoice(c, "Format de date", dateFormatLabel(), x, y + 124f, 1)
-        settingsToggle(c, "Afficher l'heure", showTime, x, y + 180f, 2)
-        settingsChoice(c, "Format de l'heure", if (time24h) "24 h" else "12 h", x, y + 236f, 3)
-        settingsToggle(c, "Afficher les secondes", showSeconds, x, y + 292f, 4)
-        text(c, "Aperçu", x + 22f, y + 377f, 13f, Color.rgb(177, 191, 209))
-        text(c, mockDate(), x + 22f, y + 419f, 22f, Color.WHITE, 1)
-        text(c, currentTime(), x + 22f, y + 468f, 34f, Color.WHITE, 1)
+        settingsToggle(c, "Afficher la date", showDate, x, y + 55f, 0)
+        settingsChoice(c, "Format de date", dateFormatLabel(), x, y + 103f, 1)
+        settingsToggle(c, "Afficher l'heure", showTime, x, y + 151f, 2)
+        settingsChoice(c, "Format de l'heure", if (time24h) "24 h" else "12 h", x, y + 199f, 3)
+        settingsToggle(c, "Afficher les secondes", showSeconds, x, y + 247f, 4)
+
+        text(c, "Mode nuit", x + 22f, y + 316f, 13f, Color.rgb(177, 191, 209))
+        settingsToggle(c, "Activer automatiquement", nightModeEnabled, x, y + 326f, 5)
+        settingsChoice(c, "Début", "%02d:00".format(nightStartHour), x, y + 374f, 6)
+        settingsChoice(c, "Fin", "%02d:00".format(nightEndHour), x, y + 422f, 7)
+        settingsSlider(c, "Assombrissement", nightDimPercent.toFloat(), 0f, 85f, "$nightDimPercent %", x, y + 462f, 8)
+        settingsToggle(c, "Masquer les informations la nuit", nightHideOverlays, x, y + 500f, 9)
+    }
+
+    private fun isNightModeActive(now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
+        if (!nightModeEnabled) return false
+        val hour = now.get(java.util.Calendar.HOUR_OF_DAY)
+        return if (nightStartHour == nightEndHour) {
+            true
+        } else if (nightStartHour < nightEndHour) {
+            hour in nightStartHour until nightEndHour
+        } else {
+            hour >= nightStartHour || hour < nightEndHour
+        }
     }
 
     private fun drawSettingsTemp(c: Canvas, x: Float, y: Float) {
@@ -1913,11 +1945,23 @@ class PhotoTvView(
         val albumCount = library.flatMap { it.albums }.distinct().size
         val diag = "Photo TV ${appVersionName()} • ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués • $decodeFailureCount illisibles"
         ellipsizedText(c, diag, x + 22f, y + 545f, 820f, 10f, Color.rgb(135, 158, 184))
+        ellipsizedText(c, memoryDiagnostics(), x + 22f, y + 559f, 820f, 9f, Color.rgb(145, 180, 211))
         if (lastDecodeFailure.isNotBlank()) {
-            ellipsizedText(c, "Dernière erreur : $lastDecodeFailure", x + 22f, y + 561f, 820f, 9f, Color.rgb(196, 150, 120))
+            ellipsizedText(c, "Erreur : $lastDecodeFailure", x + 22f, y + 575f, 820f, 9f, Color.rgb(196, 150, 120))
         } else if (remoteEnabled) {
-            ellipsizedText(c, remoteServer?.url() ?: "Télécommande : connexion réseau en attente", x + 22f, y + 561f, 820f, 9f, Color.rgb(137, 200, 173))
+            ellipsizedText(c, remoteServer?.url() ?: "Télécommande : connexion réseau en attente", x + 22f, y + 575f, 820f, 9f, Color.rgb(137, 200, 173))
         }
+    }
+
+    private fun memoryDiagnostics(): String {
+        val rt = Runtime.getRuntime()
+        val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024L * 1024L)
+        val maxMb = rt.maxMemory() / (1024L * 1024L)
+        val thumbMb = synchronized(bitmapCache) { bitmapCacheBytes / (1024L * 1024L) }
+        val hdMb = synchronized(highResCache) { highResCacheBytes / (1024L * 1024L) }
+        val thumbCount = synchronized(bitmapCache) { bitmapCache.size }
+        val hdCount = synchronized(highResCache) { highResCache.size }
+        return "RAM $usedMb/$maxMb Mo • miniatures $thumbMb Mo ($thumbCount) • HD $hdMb Mo ($hdCount)"
     }
 
     private fun appVersionName(): String = runCatching {
@@ -2110,7 +2154,8 @@ class PhotoTvView(
         drawBottomGradient(c, 0f, 0f, 1280f, 720f)
         val vals = metadataValues(item)
         val ruleAllowsMetadata = ruleForItem(item)?.showMetadata ?: true
-        val hideOverlays = !ruleAllowsMetadata || (overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L)
+        val nightActive = isNightModeActive()
+        val hideOverlays = !ruleAllowsMetadata || (nightActive && nightHideOverlays) || (overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L)
         val shift = oledShift()
         if (!hideOverlays) {
             styles.forEachIndexed { i, st ->
@@ -2122,6 +2167,11 @@ class PhotoTvView(
                 p.textAlign = when (st.align) { 1 -> Paint.Align.CENTER; 2 -> Paint.Align.RIGHT; else -> Paint.Align.LEFT }
                 c.drawText(vals[i], x, y, p)
             }
+        }
+
+        if (nightActive && nightDimPercent > 0) {
+            val alpha = (255f * nightDimPercent / 100f).toInt().coerceIn(0, 230)
+            fill(c, 0f, 0f, 1280f, 720f, Color.argb(alpha, 0, 0, 0))
         }
 
         if (paused) {
@@ -3021,7 +3071,7 @@ class PhotoTvView(
         1 -> elementNames.lastIndex
         2 -> elementNames.lastIndex
         3 -> transitions.lastIndex
-        4 -> 4
+        4 -> 9
         5 -> 2
         6 -> 6
         else -> if (advancedRulesOpen) 8 else 13
@@ -3113,6 +3163,11 @@ class PhotoTvView(
                     showSeconds = !showSeconds
                     scheduleClock()
                 }
+                5 -> nightModeEnabled = !nightModeEnabled
+                6 -> nightStartHour = (nightStartHour + dir + 24) % 24
+                7 -> nightEndHour = (nightEndHour + dir + 24) % 24
+                8 -> nightDimPercent = (nightDimPercent + dir * 5).coerceIn(0, 85)
+                9 -> nightHideOverlays = !nightHideOverlays
             }
             5 -> when(settingsControl) { 0 -> showTemp=!showTemp; 1 -> tempCelsius=!tempCelsius }
             6 -> when (settingsControl) {
