@@ -214,6 +214,18 @@ object NetworkLibrary {
         return all.map(::toPhotoItem)
     }
 
+    fun removeSource(kind: Kind, baseUrl: String, username: String): String? {
+        val clean = normalizeBase(kind, baseUrl)
+        val key = sourceKey(kind, clean, username.trim())
+        val removed = synchronized(entries) {
+            configs.remove(key)
+            val label = entries.values.firstOrNull { it.sourceKey == key }?.sourceLabel
+            entries.entries.removeAll { it.value.sourceKey == key }
+            label
+        }
+        return removed
+    }
+
     fun clearDiskCache(context: Context) {
         File(context.cacheDir, "network-media")
             .takeIf { it.exists() }
