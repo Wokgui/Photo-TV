@@ -168,6 +168,8 @@ class PhotoTvView(
     private val editorUndo = java.util.ArrayDeque<EditorSnapshot>()
     private val editorRedo = java.util.ArrayDeque<EditorSnapshot>()
     private var interactionDiagnostics = false
+    private var diagnosticTouchX = -1f
+    private var diagnosticTouchY = -1f
     private var layoutPreset = 0
     private var albumSearch = ""
     private var albumSort = 0
@@ -820,6 +822,7 @@ class PhotoTvView(
             drawBottomNav(canvas)
         }
 
+        if (interactionDiagnostics) drawInteractionDiagnostics(canvas)
         loadingText?.let { drawLoading(canvas, it) }
         canvas.restore()
     }
@@ -1514,6 +1517,7 @@ class PhotoTvView(
 
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        controlBox(c, x + 445f, y + 8f, 205f, 38f, if (interactionDiagnostics) "Zones : ON" else "Zones : OFF", settingsColumn == 1 && settingsControl == 12 && !navFocus)
         controlBox(c, x + 665f, y + 8f, 190f, 38f, "Règles par album", settingsColumn == 1 && settingsControl == 11 && !navFocus)
         settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 50f, 0)
         settingsToggle(c, "Grille et magnétisme de l'éditeur", gridSnap, x, y + 103f, 1)
@@ -2630,7 +2634,7 @@ class PhotoTvView(
         4 -> 4
         5 -> 2
         6 -> 6
-        else -> if (advancedRulesOpen) 8 else 11
+        else -> if (advancedRulesOpen) 8 else 12
     }
 
     private fun adjustEditor(dir: Int) {
@@ -2745,6 +2749,7 @@ class PhotoTvView(
                     advancedRulesOpen = true
                     settingsControl = 0
                 }
+                12 -> interactionDiagnostics = !interactionDiagnostics
             }
         }
         scheduleSlideshow()
@@ -2832,6 +2837,7 @@ class PhotoTvView(
                             advancedRulesOpen = true
                             settingsControl = 0
                         }
+                        12 -> interactionDiagnostics = !interactionDiagnostics
                         else -> adjustSettings(1)
                     }
                 }
@@ -3291,7 +3297,11 @@ class PhotoTvView(
                     adjustAlbumRule(1)
                 }
             } else when {
-                x >= 1020f && y in 72f..122f -> {
+                x in 825f..1030f && y in 77f..125f -> {
+                    settingsControl = 12
+                    interactionDiagnostics = !interactionDiagnostics
+                }
+                x >= 1040f && y in 77f..125f -> {
                     advancedRulesOpen = true
                     settingsControl = 0
                 }
@@ -3324,6 +3334,8 @@ class PhotoTvView(
         val sy = if (height > 0) height / 720f else 1f
         val x = event.x / sx
         val y = event.y / sy
+        diagnosticTouchX = x
+        diagnosticTouchY = y
 
         if (page == 2 && !slideshow && !quickMenuVisible && !infoPanelVisible) {
             when (event.actionMasked) {
