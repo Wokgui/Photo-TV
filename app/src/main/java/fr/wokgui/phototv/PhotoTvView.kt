@@ -46,6 +46,10 @@ class PhotoTvView(
     private val automationMode: Boolean = false
 ) : View(context) {
 
+    companion object {
+        private const val SETTINGS_SCHEMA_VERSION = 3
+    }
+
     private data class Style(
         var size: Float,
         var x: Float,
@@ -194,6 +198,9 @@ class PhotoTvView(
     private var frameCount = 0L
     private var fpsWindowStarted = android.os.SystemClock.uptimeMillis()
     private var measuredFps = 0f
+    private var lastAnimatedFrameNs = 0L
+    private var animatedFrameCount = 0L
+    private var slowFrameCount = 0L
     private val history = mutableListOf<Int>()
     private val shuffleBag = mutableListOf<Int>()
     private var quickMenuVisible = false
@@ -556,7 +563,7 @@ class PhotoTvView(
 
     fun exportSettingsJson(): String {
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", SETTINGS_SCHEMA_VERSION)
         root.put("durationSeconds", durationSeconds)
         root.put("fixedImage", fixedImage)
         root.put("loop", loop)
@@ -572,6 +579,11 @@ class PhotoTvView(
         root.put("dateFormatIndex", dateFormatIndex)
         root.put("time24h", time24h)
         root.put("showSeconds", showSeconds)
+        root.put("nightModeEnabled", nightModeEnabled)
+        root.put("nightStartHour", nightStartHour)
+        root.put("nightEndHour", nightEndHour)
+        root.put("nightDimPercent", nightDimPercent)
+        root.put("nightHideOverlays", nightHideOverlays)
         root.put("weatherLocation", weatherLocation)
         root.put("imageMode", imageMode)
         root.put("gridSnap", gridSnap)
@@ -585,6 +597,11 @@ class PhotoTvView(
         root.put("albumSort", albumSort)
         root.put("videoSound", videoSound)
         root.put("albumRules", albumRulesJson())
+        root.put("networkSources", NetworkSourceStore.exportJson(context))
+        val networkPrefs = context.getSharedPreferences("photo_tv_network_settings", Context.MODE_PRIVATE)
+        root.put("networkCacheMb", networkPrefs.getInt("cache_mb", 512))
+        root.put("networkCacheTtlHours", networkPrefs.getInt("ttl_hours", 24))
+        root.put("networkRefreshMinutes", networkPrefs.getInt("refresh_minutes", 15))
 
         fun strings(values: Collection<String>): JSONArray =
             JSONArray().apply { values.forEach { put(it) } }
@@ -615,6 +632,10 @@ class PhotoTvView(
     fun importSettingsJson(raw: String): Boolean {
         return runCatching {
             val root = JSONObject(raw)
+            val schemaVersion = root.optInt("version", 1)
+            require(schemaVersion in 1..SETTINGS_SCHEMA_VERSION) {
+                "Version de réglages non prise en charge: $schemaVersion"
+            }
             durationSeconds = root.optInt("durationSeconds", durationSeconds).coerceIn(2, 120)
             fixedImage = root.optBoolean("fixedImage", fixedImage)
             loop = root.optBoolean("loop", loop)
@@ -630,6 +651,11 @@ class PhotoTvView(
             dateFormatIndex = root.optInt("dateFormatIndex", dateFormatIndex).coerceIn(0, 2)
             time24h = root.optBoolean("time24h", time24h)
             showSeconds = root.optBoolean("showSeconds", showSeconds)
+            nightModeEnabled = root.optBoolean("nightModeEnabled", nightModeEnabled)
+            nightStartHour = root.optInt("nightStartHour", nightStartHour).coerceIn(0, 23)
+            nightEndHour = root.optInt("nightEndHour", nightEndHour).coerceIn(0, 23)
+            nightDimPercent = root.optInt("nightDimPercent", nightDimPercent).coerceIn(0, 85)
+            nightHideOverlays = root.optBoolean("nightHideOverlays", nightHideOverlays)
             weatherLocation = root.optString("weatherLocation", weatherLocation)
             imageMode = root.optInt("imageMode", imageMode).coerceIn(0, 3)
             gridSnap = root.optBoolean("gridSnap", gridSnap)
@@ -642,6 +668,18 @@ class PhotoTvView(
             albumSearch = root.optString("albumSearch", albumSearch)
             albumSort = root.optInt("albumSort", albumSort).coerceIn(0, 1)
             videoSound = root.optBoolean("videoSound", videoSound)
+            root.optJSONArray("networkSources")?.let { NetworkSourceStore.importJson(context, it) }
+            val networkPrefs = context.getSharedPreferences("photo_tv_network_settings", Context.MODE_PRIVATE)
+            val importedCacheMb = root.optInt("networkCacheMb", networkPrefs.getInt("cache_mb", 512)).coerceIn(64, 2048)
+            val importedTtl = root.optInt("networkCacheTtlHours", networkPrefs.getInt("ttl_hours", 24)).coerceIn(1, 168)
+            val importedRefresh = root.optInt("networkRefreshMinutes", networkPrefs.getInt("refresh_minutes", 15)).coerceIn(5, 60)
+            networkPrefs.edit()
+                .putInt("cache_mb", importedCacheMb)
+                .putInt("ttl_hours", importedTtl)
+                .putInt("refresh_minutes", importedRefresh)
+                .apply()
+            NetworkLibrary.configureCache(importedCacheMb, importedTtl)
+
             root.optJSONObject("albumRules")?.let {
                 albumRules.clear()
                 restoreAlbumRules(it.toString())
@@ -1222,6 +1260,18 @@ class PhotoTvView(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         frameCount++
+        val animated = slideshow && (transitionProgress < 1f || kenBurns)
+        if (animated) {
+            val nowNs = System.nanoTime()
+            if (lastAnimatedFrameNs > 0L) {
+                val frameMs = (nowNs - lastAnimatedFrameNs) / 1_000_000.0
+                if (frameMs > 34.0) slowFrameCount++
+            }
+            lastAnimatedFrameNs = nowNs
+            animatedFrameCount++
+        } else {
+            lastAnimatedFrameNs = 0L
+        }
         val nowFps = android.os.SystemClock.uptimeMillis()
         val elapsedFps = nowFps - fpsWindowStarted
         if (elapsedFps >= 1000L) {
@@ -2166,7 +2216,8 @@ class PhotoTvView(
         val total = cacheHits + cacheMisses
         val hitRate = if (total == 0L) 0 else (cacheHits * 100L / total)
         val avgDecode = if (decodeCount == 0L) 0L else decodeTotalMs / decodeCount
-        return "RAM $usedMb/$maxMb Mo • mini $thumbMb Mo ($thumbCount) • HD $hdMb Mo ($hdCount) • cache $hitRate% • décod. ${avgDecode} ms • ${format1(measuredFps)} fps"
+        val jankRate = if (animatedFrameCount == 0L) 0L else slowFrameCount * 100L / animatedFrameCount
+        return "RAM $usedMb/$maxMb Mo • mini $thumbMb Mo ($thumbCount) • HD $hdMb Mo ($hdCount) • cache $hitRate% • décod. ${avgDecode} ms • ${format1(measuredFps)} fps • jank $jankRate% ($slowFrameCount)"
     }
 
     private fun appVersionName(): String = runCatching {
