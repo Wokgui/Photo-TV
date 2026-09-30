@@ -171,6 +171,9 @@ class PhotoTvView(
     private val hiddenAlbums = linkedSetOf<String>()
     private val excludedUris = linkedSetOf<String>()
     private val sessionExcludedUris = linkedSetOf<String>()
+    private val failedMediaUris = linkedSetOf<String>()
+    private var decodeFailureCount = 0
+    private var lastDecodeFailure = ""
     private val history = mutableListOf<Int>()
     private val shuffleBag = mutableListOf<Int>()
     private var quickMenuVisible = false
@@ -741,7 +744,8 @@ class PhotoTvView(
             "editorElement=$editorElement editorControl=$editorControl editorMoveMode=$editorMoveMode " +
             "settingsCategory=$settingsCategory settingsColumn=$settingsColumn settingsControl=$settingsControl " +
             "rulesOpen=$advancedRulesOpen diagnostics=$interactionDiagnostics " +
-            "slideshow=$slideshow paused=$paused quickMenu=$quickMenuVisible"
+            "slideshow=$slideshow paused=$paused quickMenu=$quickMenuVisible " +
+            "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size}"
 
     fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection") {
         synchronized(bitmapCache) {
@@ -763,6 +767,9 @@ class PhotoTvView(
         softBitmap?.let { if (!it.isRecycled) it.recycle() }
         softBitmap = null
 
+        failedMediaUris.clear()
+        decodeFailureCount = 0
+        lastDecodeFailure = ""
         library = items
         this.exactAlbums = exactAlbums
         this.sourceName = sourceName
@@ -794,7 +801,7 @@ class PhotoTvView(
     private fun preload(uris: List<Uri>) {
         uris.distinct().forEach { uri ->
             val key = uri.toString()
-            if (bitmapCache.containsKey(key)) return@forEach
+            if (failedMediaUris.contains(key) || bitmapCache.containsKey(key)) return@forEach
             executor.execute {
                 val bmp = decodeThumb(uri)
                 if (bmp != null) {
@@ -813,8 +820,34 @@ class PhotoTvView(
                         }
                     }
                     postInvalidate()
+                } else {
+                    registerDecodeFailure(uri, "Image illisible ou format non pris en charge")
                 }
             }
+        }
+    }
+
+    private fun registerDecodeFailure(uri: Uri, reason: String) {
+        val key = uri.toString()
+        val added = synchronized(failedMediaUris) { failedMediaUris.add(key) }
+        if (!added) return
+        decodeFailureCount++
+        lastDecodeFailure = reason
+        Log.w("PhotoTVDecode", "$reason: $key")
+        post {
+            val items = activePhotos()
+            if (items.isEmpty()) {
+                if (slideshow) stopSlideshow()
+            } else {
+                currentPhoto = currentPhoto.coerceIn(0, items.lastIndex)
+                if (slideshow) {
+                    slideStartedAt = System.currentTimeMillis()
+                    preloadAroundCurrent()
+                    syncVideoPlayback()
+                    scheduleSlideshow()
+                }
+            }
+            invalidate()
         }
     }
 
@@ -880,7 +913,7 @@ class PhotoTvView(
                 val r = MediaMetadataRetriever()
                 try {
                     r.setDataSource(context, uri)
-                    r.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    r.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: demoBitmap
                 } finally {
                     runCatching { r.release() }
                 }
@@ -932,6 +965,7 @@ class PhotoTvView(
 
     private fun requestHighRes(uri: Uri) {
         val key = uri.toString()
+        if (failedMediaUris.contains(key)) return
         synchronized(highResCache) {
             if (highResCache.containsKey(key) || highResLoading.contains(key)) return
             highResLoading += key
@@ -1007,6 +1041,7 @@ class PhotoTvView(
             } &&
                 !excludedUris.contains(item.uri.toString()) &&
                 !sessionExcludedUris.contains(item.uri.toString()) &&
+                !failedMediaUris.contains(item.uri.toString()) &&
                 (!favoritesOnly || favorites.contains(item.uri.toString()))
         }
     }
@@ -1865,8 +1900,11 @@ class PhotoTvView(
 
         settingsToggle(c, "Son des vidéos", videoSound, x, y + 500f, 10)
         val albumCount = library.flatMap { it.albums }.distinct().size
-        val diag = "Photo TV ${appVersionName()} • ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués session"
-        text(c, diag, x + 22f, y + 545f, 10f, Color.rgb(135, 158, 184))
+        val diag = "Photo TV ${appVersionName()} • ${library.size} médias • $albumCount albums • ${favorites.size} favoris • ${sessionExcludedUris.size} masqués • $decodeFailureCount illisibles"
+        ellipsizedText(c, diag, x + 22f, y + 545f, 820f, 10f, Color.rgb(135, 158, 184))
+        if (lastDecodeFailure.isNotBlank()) {
+            ellipsizedText(c, "Dernière erreur : $lastDecodeFailure", x + 22f, y + 561f, 820f, 9f, Color.rgb(196, 150, 120))
+        }
     }
 
     private fun appVersionName(): String = runCatching {
