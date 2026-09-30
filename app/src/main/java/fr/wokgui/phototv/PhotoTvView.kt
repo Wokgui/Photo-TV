@@ -325,6 +325,12 @@ class PhotoTvView(
         savedSelectedAlbums.addAll(prefs.getStringSet("selected_albums", emptySet()) ?: emptySet())
         currentPhoto = prefs.getInt("resume_index", 0)
         resumeUri = prefs.getString("resume_uri", "").orEmpty()
+        resumeWasSlideshow = prefs.getBoolean("resume_slideshow", false)
+        resumeWasPaused = prefs.getBoolean("resume_paused", false)
+        runCatching {
+            val arr = JSONArray(prefs.getString("resume_shuffle", "[]") ?: "[]")
+            for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { resumeShuffleUris += it }
+        }
         runCatching {
             val arr = JSONArray(prefs.getString("recent_uris", "[]") ?: "[]")
             for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { recentUris.addLast(it) }
@@ -387,6 +393,12 @@ class PhotoTvView(
             putStringSet("selected_albums", HashSet(selectedAlbums))
             putInt("resume_index", currentPhoto)
             putString("resume_uri", currentItem()?.uri?.toString().orEmpty())
+            putBoolean("resume_slideshow", slideshow)
+            putBoolean("resume_paused", paused)
+            putString("resume_shuffle", JSONArray().apply {
+                val items = activePhotos()
+                shuffleBag.forEach { index -> items.getOrNull(index)?.uri?.toString()?.let { put(it) } }
+            }.toString())
             putString("recent_uris", JSONArray().apply { recentUris.forEach { put(it) } }.toString())
             styles.forEachIndexed { i, s ->
                 putFloat("s${i}_size", s.size)
@@ -839,7 +851,33 @@ class PhotoTvView(
         if (count > 0) currentPhoto = currentPhoto.coerceIn(0, count - 1)
         invalidate()
         scheduleInactivity()
-        if (startDirectly && count > 0) postDelayed({ if (!slideshow) startSlideshow() }, 450)
+        if (resumeWasSlideshow && count > 0) {
+            postDelayed({
+                if (!slideshow) {
+                    startSlideshow()
+                    if (resumeShuffleUris.isNotEmpty()) {
+                        val active = activePhotos()
+                        val restored = resumeShuffleUris.mapNotNull { uri ->
+                            active.indexOfFirst { it.uri.toString() == uri }.takeIf { it >= 0 }
+                        }.distinct().filter { it != currentPhoto }
+                        if (restored.isNotEmpty()) {
+                            shuffleBag.clear()
+                            shuffleBag.addAll(restored)
+                        }
+                    }
+                    if (resumeWasPaused) {
+                        paused = true
+                        scheduleSlideshow()
+                        syncVideoPlayback()
+                        invalidate()
+                    }
+                }
+                resumeWasSlideshow = false
+                resumeShuffleUris.clear()
+            }, 450)
+        } else if (startDirectly && count > 0) {
+            postDelayed({ if (!slideshow) startSlideshow() }, 450)
+        }
     }
 
     fun startAsDream(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String) {
@@ -3604,6 +3642,7 @@ class PhotoTvView(
         preloadAroundCurrent()
         syncVideoPlayback()
         inactivityHandler.removeCallbacksAndMessages(null)
+        savePrefs()
         invalidate()
         scheduleSlideshow()
     }
@@ -3624,6 +3663,7 @@ class PhotoTvView(
     private fun togglePause() {
         paused = !paused
         if (currentItem()?.mediaType == "video") onVideoPause(paused)
+        savePrefs()
         scheduleSlideshow()
         invalidate()
     }
