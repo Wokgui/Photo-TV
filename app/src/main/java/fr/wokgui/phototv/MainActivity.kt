@@ -328,6 +328,7 @@ class MainActivity : AppCompatActivity() {
             add("Réglages cache et rescan")
             add("Vider le cache réseau")
             add("Exporter diagnostic")
+            add("Gérer les sources locales")
             if (saved.isNotEmpty()) add("Supprimer une source enregistrée")
         }.toTypedArray()
 
@@ -351,10 +352,36 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "Cache réseau vidé", Toast.LENGTH_SHORT).show()
                     }
                     which == saved.size + 4 -> exportDiagnostics()
+                    which == saved.size + 5 -> manageLocalSources()
                     else -> deleteSavedNetworkSource()
                 }
             }
             .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun manageLocalSources() {
+        val labels = SourceStore.describe(this)
+        if (labels.isEmpty()) {
+            Toast.makeText(this, "Aucune source locale enregistrée", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Sources locales")
+            .setItems(labels.toTypedArray()) { _, which ->
+                val label = labels.getOrNull(which) ?: return@setItems
+                AlertDialog.Builder(this)
+                    .setTitle("Supprimer cette source ?")
+                    .setMessage(label)
+                    .setNegativeButton("Annuler", null)
+                    .setPositiveButton("Supprimer") { _, _ ->
+                        SourceStore.removeAt(this, which)
+                        ui.removeSourceByLabel(label)
+                        Toast.makeText(this, "Source supprimée", Toast.LENGTH_SHORT).show()
+                    }
+                    .show()
+            }
+            .setNegativeButton("Fermer", null)
             .show()
     }
 
