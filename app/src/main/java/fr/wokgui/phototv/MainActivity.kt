@@ -172,6 +172,21 @@ class MainActivity : AppCompatActivity() {
     fun automationStateForTest(): String =
         if (::ui.isInitialized) ui.automationStateDescription() else "PhotoTV uninitialized"
 
+    fun installAutomationLibraryForTest(count: Int) {
+        if (::ui.isInitialized) ui.installAutomationLibraryForTest(count)
+    }
+
+    fun startAutomationSlideshowForTest() {
+        if (::ui.isInitialized) ui.startAutomationSlideshowForTest()
+    }
+
+    fun advanceAutomationForTest() {
+        if (::ui.isInitialized) ui.advanceAutomationForTest()
+    }
+
+    fun importSettingsForTest(raw: String): Boolean =
+        ::ui.isInitialized && ui.importSettingsForTest(raw)
+
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
         if (uri == null) {
             runCatching { videoView.stopPlayback() }
