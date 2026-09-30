@@ -18,6 +18,8 @@ import androidx.exifinterface.media.ExifInterface
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.size.Size
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import java.text.SimpleDateFormat
 import java.net.URL
 import org.json.JSONObject
@@ -202,6 +204,9 @@ class PhotoTvView(
     private var remoteEnabled = false
     private var remoteToken = ""
     private var remoteServer: RemoteControlServer? = null
+    private var remoteQrVisible = false
+    private var remoteQrBitmap: Bitmap? = null
+    private var remoteQrUrl = ""
     private var ruleAlbumIndex = 0
     private var advancedRulesOpen = false
     private val albumRules = linkedMapOf<String, AlbumRule>()
@@ -1153,7 +1158,52 @@ class PhotoTvView(
 
         if (interactionDiagnostics) drawInteractionDiagnostics(canvas)
         loadingText?.let { drawLoading(canvas, it) }
+        if (remoteQrVisible) drawRemoteQrOverlay(canvas)
         canvas.restore()
+    }
+
+    private fun ensureRemoteQr(): Bitmap? {
+        val url = remoteServer?.url().orEmpty()
+        if (url.isBlank()) return null
+        if (remoteQrBitmap != null && remoteQrUrl == url && remoteQrBitmap?.isRecycled == false) return remoteQrBitmap
+
+        remoteQrBitmap?.let { if (!it.isRecycled) it.recycle() }
+        remoteQrUrl = url
+        val matrix = runCatching {
+            QRCodeWriter().encode(url, BarcodeFormat.QR_CODE, 240, 240)
+        }.getOrNull() ?: return null
+
+        remoteQrBitmap = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888).also { bmp ->
+            for (yy in 0 until matrix.height) {
+                for (xx in 0 until matrix.width) {
+                    bmp.setPixel(xx, yy, if (matrix[xx, yy]) Color.BLACK else Color.WHITE)
+                }
+            }
+        }
+        return remoteQrBitmap
+    }
+
+    private fun showRemoteQrIfAvailable() {
+        remoteQrVisible = remoteEnabled
+        if (remoteQrVisible) ensureRemoteQr()
+        invalidate()
+    }
+
+    private fun drawRemoteQrOverlay(c: Canvas) {
+        fill(c, 0f, 0f, 1280f, 720f, Color.argb(190, 0, 0, 0))
+        round(c, 360f, 120f, 920f, 610f, 20f, Color.rgb(12, 25, 39))
+        strokeRound(c, 360f, 120f, 920f, 610f, 20f, Color.rgb(57, 105, 151), 1.5f)
+        text(c, "Télécommande téléphone", 640f, 165f, 24f, Color.WHITE, 1, 1)
+        text(c, "Scannez ce QR code avec le téléphone connecté au même réseau.", 640f, 202f, 13f, Color.rgb(190, 204, 222), 0, 1)
+
+        val qr = ensureRemoteQr()
+        if (qr != null) {
+            c.drawBitmap(qr, null, RectF(500f, 230f, 780f, 510f), imagePaint)
+            ellipsizedText(c, remoteQrUrl, 640f, 548f, 470f, 11f, Color.rgb(150, 195, 235), 0, 1)
+        } else {
+            text(c, "Connexion réseau locale indisponible", 640f, 365f, 16f, Color.rgb(255, 183, 120), 1, 1)
+        }
+        text(c, "OK, Retour ou appui sur l’écran pour fermer", 640f, 580f, 12f, Color.rgb(163, 179, 198), 0, 1)
     }
 
     private fun drawInteractionDiagnostics(c: Canvas) {
@@ -2858,6 +2908,17 @@ class PhotoTvView(
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         markInteraction()
 
+        if (remoteQrVisible) {
+            return when (keyCode) {
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    remoteQrVisible = false
+                    invalidate()
+                    true
+                }
+                else -> true
+            }
+        }
+
         if (page == 2 && event?.isCtrlPressed == true) {
             when (keyCode) {
                 KeyEvent.KEYCODE_Z -> {
@@ -3236,6 +3297,7 @@ class PhotoTvView(
                 13 -> {
                     remoteEnabled = !remoteEnabled
                     updateRemoteServer()
+                    if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
                 }
             }
         }
@@ -3328,6 +3390,7 @@ class PhotoTvView(
                         13 -> {
                             remoteEnabled = !remoteEnabled
                             updateRemoteServer()
+                            if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
                         }
                         else -> adjustSettings(1)
                     }
@@ -3857,6 +3920,7 @@ class PhotoTvView(
                     settingsControl = 13
                     remoteEnabled = !remoteEnabled
                     updateRemoteServer()
+                    if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
                 }
                 x in 825f..1030f && y in 77f..125f -> {
                     settingsControl = 12
@@ -3897,6 +3961,14 @@ class PhotoTvView(
         val y = event.y / sy
         diagnosticTouchX = x
         diagnosticTouchY = y
+
+        if (remoteQrVisible) {
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                remoteQrVisible = false
+                invalidate()
+            }
+            return true
+        }
 
         if (page == 2 && !slideshow && !quickMenuVisible && !infoPanelVisible) {
             when (event.actionMasked) {
@@ -3990,6 +4062,8 @@ class PhotoTvView(
     override fun onDetachedFromWindow() {
         remoteServer?.stop()
         remoteServer = null
+        remoteQrBitmap?.let { if (!it.isRecycled) it.recycle() }
+        remoteQrBitmap = null
         super.onDetachedFromWindow()
         handler.removeCallbacksAndMessages(null)
         inactivityHandler.removeCallbacksAndMessages(null)
