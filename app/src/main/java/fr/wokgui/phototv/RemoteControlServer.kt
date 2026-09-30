@@ -110,7 +110,7 @@ class RemoteControlServer(
 
             if (path == "/action") {
                 val cmd = params["cmd"].orEmpty()
-                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev", "sources", "album_select", "source_select", "search")) {
+                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev", "sources", "album_select", "source_select", "search", "network_prepare")) {
                     val value = params["value"].orEmpty()
                     onCommand(if (value.isBlank()) cmd else cmd + "|" + value)
                     respond(s, 200, "application/json; charset=utf-8", "{\"ok\":true}")
@@ -158,6 +158,14 @@ small{display:block;margin-top:18px;color:#9fb3c8}
 <select id="album" onchange="sendValue('album_select',this.value)" style="grid-column:1/-1;padding:14px;border-radius:12px;font-size:17px"></select>
 <select id="source" onchange="sendValue('source_select',this.value)" style="grid-column:1/-1;padding:14px;border-radius:12px;font-size:17px"></select>
 <div style="grid-column:1/-1;display:flex;gap:8px"><input id="search" placeholder="Rechercher un album" style="flex:1;padding:14px;border-radius:12px;border:0;font-size:17px"><button onclick="sendValue('search',document.getElementById('search').value)" style="padding:14px">Rechercher</button></div>
+<details style="grid-column:1/-1;background:#0d2134;border-radius:14px;padding:14px">
+<summary>Ajouter une source réseau</summary>
+<div style="display:grid;gap:8px;margin-top:12px">
+<select id="netKind" style="padding:12px;border-radius:10px"><option value="WEBDAV">WebDAV</option><option value="SMB">SMB / NAS</option></select>
+<input id="netUrl" placeholder="Adresse de la source" style="padding:12px;border-radius:10px;border:0">
+<input id="netUser" placeholder="Utilisateur (facultatif)" style="padding:12px;border-radius:10px;border:0">
+<button onclick="prepareNetwork()">Préparer sur la TV</button>
+</div></details>
 <div id="status" style="grid-column:1/-1;background:#0d2134;border-radius:14px;padding:16px"></div>
 </div>
 <small>Réseau local uniquement. Le lien secret est affiché dans Photo TV.</small>
@@ -176,6 +184,13 @@ function fillSelect(id,values,current,allLabel){
   el.innerHTML='';
   wanted.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o);});
   el.value=current||old||allLabel;
+}
+function prepareNetwork(){
+  const kind=document.getElementById('netKind').value;
+  const url=document.getElementById('netUrl').value.trim();
+  const user=document.getElementById('netUser').value.trim();
+  if(!url)return;
+  sendValue('network_prepare',kind+'\t'+url+'\t'+user);
 }
 function refresh(){
   fetch('/status?t='+encodeURIComponent(t))
