@@ -1001,7 +1001,7 @@ class PhotoTvView(
     }
 
     private fun openMediaStream(uri: Uri): java.io.InputStream? =
-        if (NetworkLibrary.isNetworkUri(uri)) NetworkLibrary.open(uri)
+        if (NetworkLibrary.isNetworkUri(uri)) NetworkLibrary.open(context, uri)
         else context.contentResolver.openInputStream(uri)
 
     private fun decodeThumb(uri: Uri): Bitmap? {
