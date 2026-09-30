@@ -316,6 +316,7 @@ class PhotoTvView(
         excludedUris.addAll(prefs.getStringSet("excluded_uris", emptySet()) ?: emptySet())
         savedSelectedAlbums.addAll(prefs.getStringSet("selected_albums", emptySet()) ?: emptySet())
         currentPhoto = prefs.getInt("resume_index", 0)
+        resumeUri = prefs.getString("resume_uri", "").orEmpty()
         styles.forEachIndexed { i, s ->
             s.size = prefs.getFloat("s${i}_size", s.size)
             s.x = prefs.getFloat("s${i}_x", s.x)
@@ -373,6 +374,7 @@ class PhotoTvView(
             putStringSet("excluded_uris", HashSet(excludedUris))
             putStringSet("selected_albums", HashSet(selectedAlbums))
             putInt("resume_index", currentPhoto)
+            putString("resume_uri", currentItem()?.uri?.toString().orEmpty())
             styles.forEachIndexed { i, s ->
                 putFloat("s${i}_size", s.size)
                 putFloat("s${i}_x", s.x)
@@ -811,6 +813,11 @@ class PhotoTvView(
         }
         if (selectedAlbums.isEmpty()) selectedAlbums.addAll(allAlbums)
         currentPhoto = prefs.getInt("resume_index", 0).coerceAtLeast(0)
+        val activeNow = activePhotos()
+        if (resumeUri.isNotBlank()) {
+            val restored = activeNow.indexOfFirst { it.uri.toString() == resumeUri }
+            if (restored >= 0) currentPhoto = restored
+        }
         albumFocus = 0
         photoFocus = 0
         loadingText = null
@@ -3563,17 +3570,61 @@ class PhotoTvView(
     private fun preloadAroundCurrent() {
         val items = activePhotos()
         if (items.isEmpty()) return
+
+        val rt = Runtime.getRuntime()
+        val freeRatio = ((rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())).toDouble() /
+            rt.maxMemory().coerceAtLeast(1L).toDouble()).coerceIn(0.0, 1.0)
+        val seconds = ruleForItem(currentItem())?.durationSeconds?.takeIf { it > 0 } ?: durationSeconds
+        val ahead = when {
+            freeRatio < .18 -> 1
+            seconds <= 4 -> 2
+            seconds >= 20 && freeRatio > .40 -> 8
+            freeRatio > .35 -> 5
+            else -> 3
+        }
+        val hdAhead = when {
+            freeRatio < .22 -> 1
+            freeRatio > .45 -> min(4, ahead + 1)
+            else -> min(2, ahead)
+        }
+
         val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
             buildList {
                 add(currentPhoto)
-                shuffleBag.take(5).forEach { if (it in items.indices) add(it) }
+                shuffleBag.take(ahead).forEach { if (it in items.indices) add(it) }
             }
         } else {
-            (0..5).map { (currentPhoto + it) % items.size }
+            (0..ahead).map { (currentPhoto + it) % items.size }
         }
         val orderedUris = indices.distinct().mapNotNull { items.getOrNull(it)?.uri }
         preload(orderedUris)
-        orderedUris.take(3).forEach { requestHighRes(it) }
+        orderedUris.take(hdAhead).forEach { requestHighRes(it) }
+    }
+
+    fun onMemoryPressure(level: Int) {
+        val aggressive = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+        synchronized(highResCache) {
+            val keep = if (aggressive) 1 else 2
+            while (highResCache.size > keep) {
+                val first = highResCache.entries.firstOrNull() ?: break
+                highResCacheBytes -= first.value.allocationByteCount.toLong()
+                if (!first.value.isRecycled) first.value.recycle()
+                highResCache.remove(first.key)
+            }
+        }
+        synchronized(bitmapCache) {
+            val keep = if (aggressive) 2 else 6
+            while (bitmapCache.size > keep) {
+                val first = bitmapCache.entries.firstOrNull() ?: break
+                bitmapCacheBytes -= first.value.allocationByteCount.toLong()
+                if (!first.value.isRecycled) first.value.recycle()
+                bitmapCache.remove(first.key)
+            }
+        }
+        softBitmap?.let { if (!it.isRecycled) it.recycle() }
+        softBitmap = null
+        softSource = null
+        postInvalidate()
     }
 
     private fun slideshowNext(dir: Int) {
