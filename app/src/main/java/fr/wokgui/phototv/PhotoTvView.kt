@@ -829,7 +829,8 @@ class PhotoTvView(
         drawSourceCard(c, 828f, sourceY, 410f, 102f, "Sélectionner des photos", "Choisir plusieurs fichiers", 2, sourceFocus == 2 && !navFocus, false)
 
         val albums = albumPairs()
-        text(c, "Mes albums Google Photos", 45f, 250f, 19f, Color.WHITE, 1)
+        val albumsTitle = if (library.isEmpty() || exactAlbums) "Mes albums Google Photos" else "Albums et dossiers"
+        text(c, albumsTitle, 45f, 250f, 19f, Color.WHITE, 1)
         text(c, "${albums.size} albums", 1235f, 250f, 13f, Color.rgb(186, 196, 210), 0, 2)
 
         val albumY = 270f
@@ -1213,8 +1214,12 @@ class PhotoTvView(
 
         val status = when {
             library.isEmpty() -> "Aucune photothèque connectée."
-            exactAlbums -> "${library.size} médias • ${library.flatMap { it.albums }.distinct().size} albums exacts"
-            else -> "${library.size} médias • noms d'albums non disponibles"
+            exactAlbums -> "$sourceName • ${library.size} médias • ${library.flatMap { it.albums }.distinct().size} albums exacts"
+            sourceName.contains("Takeout", ignoreCase = true) ->
+                "$sourceName • ${library.size} médias • certains noms exacts sont absents"
+            sourceName.contains("Dossier", ignoreCase = true) ->
+                "$sourceName • ${library.size} médias • noms de dossiers utilisés"
+            else -> "$sourceName • ${library.size} médias • album Google Photos non garanti"
         }
         text(c, status, x + 22f, y + 215f, 14f, if (exactAlbums) Color.rgb(91, 213, 145) else Color.rgb(187, 198, 212))
 
