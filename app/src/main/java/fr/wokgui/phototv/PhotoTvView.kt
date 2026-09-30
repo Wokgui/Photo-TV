@@ -11,8 +11,10 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.util.Log
+import android.text.TextUtils
 import android.media.MediaMetadataRetriever
 import androidx.core.graphics.drawable.toBitmap
+import androidx.exifinterface.media.ExifInterface
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.size.Size
@@ -77,7 +79,12 @@ class PhotoTvView(
     private val inactivityHandler = Handler(Looper.getMainLooper())
     private val clockHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
-    private val bitmapCache = LinkedHashMap<String, Bitmap>()
+    private val bitmapCache = LinkedHashMap<String, Bitmap>(32, .75f, true)
+    private var bitmapCacheBytes = 0L
+    private val bitmapCacheLimitBytes: Long by lazy {
+        val adaptive = Runtime.getRuntime().maxMemory() / 8L
+        adaptive.coerceIn(24L * 1024L * 1024L, 96L * 1024L * 1024L)
+    }
     private val gifCache = LinkedHashMap<String, Movie>()
     private val gifLoading = linkedSetOf<String>()
     private var softSource: Bitmap? = null
@@ -732,6 +739,7 @@ class PhotoTvView(
         synchronized(bitmapCache) {
             bitmapCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
             bitmapCache.clear()
+            bitmapCacheBytes = 0L
         }
         synchronized(gifCache) {
             gifCache.clear()
@@ -777,10 +785,16 @@ class PhotoTvView(
                 val bmp = decodeThumb(uri)
                 if (bmp != null) {
                     synchronized(bitmapCache) {
+                        bitmapCache.remove(key)?.let { old ->
+                            bitmapCacheBytes -= old.allocationByteCount.toLong()
+                            if (!old.isRecycled) old.recycle()
+                        }
                         bitmapCache[key] = bmp
-                        while (bitmapCache.size > 80) {
+                        bitmapCacheBytes += bmp.allocationByteCount.toLong()
+                        while (bitmapCacheBytes > bitmapCacheLimitBytes && bitmapCache.size > 1) {
                             val first = bitmapCache.entries.firstOrNull() ?: break
-                            first.value.recycle()
+                            bitmapCacheBytes -= first.value.allocationByteCount.toLong()
+                            if (!first.value.isRecycled) first.value.recycle()
                             bitmapCache.remove(first.key)
                         }
                     }
@@ -862,9 +876,48 @@ class PhotoTvView(
                 var sample = 1
                 while (bounds.outWidth / sample > 1200 || bounds.outHeight / sample > 900) sample *= 2
                 val opt = BitmapFactory.Options().apply { inSampleSize = max(1, sample) }
-                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opt) }
+                val decoded = context.contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it, null, opt)
+                } ?: return@runCatching null
+                applyExifOrientation(uri, decoded)
             }
         }.getOrNull()
+    }
+
+    private fun applyExifOrientation(uri: Uri, source: Bitmap): Bitmap {
+        val orientation = runCatching {
+            context.contentResolver.openInputStream(uri)?.use {
+                ExifInterface(it).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            } ?: ExifInterface.ORIENTATION_NORMAL
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+        if (orientation == ExifInterface.ORIENTATION_NORMAL ||
+            orientation == ExifInterface.ORIENTATION_UNDEFINED
+        ) return source
+
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.setRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.setRotate(-90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
+            else -> return source
+        }
+        val rotated = Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+        if (rotated !== source && !source.isRecycled) source.recycle()
+        return rotated
     }
 
     private fun activePhotos(): List<PhotoItem> {
@@ -1026,8 +1079,8 @@ class PhotoTvView(
         val item = currentItem()
         val title = item?.title ?: "001. Opéra d'Oslo"
         val album = albumDisplay(item)
-        text(c, title, 78f, 568f, 31f, Color.WHITE, 1)
-        text(c, album, 78f, 607f, 19f, Color.WHITE, 0)
+        ellipsizedText(c, title, 78f, 568f, 930f, 31f, Color.WHITE, 1)
+        ellipsizedText(c, album, 78f, 607f, 930f, 19f, Color.WHITE, 0)
 
         val count = activePhotos().size
         val countText = if (count > 0) "${currentPhoto + 1} / $count" else "3 / 142"
@@ -2161,7 +2214,7 @@ class PhotoTvView(
         if (selected) strokeRound(c, x, y, x + w, y + h, 12f, Color.rgb(49, 177, 255), 2f)
         else strokeRound(c, x, y, x + w, y + h, 12f, Color.rgb(37, 53, 71), 1f)
         if (focused) strokeRound(c, x - 3f, y - 3f, x + w + 3f, y + h + 3f, 14f, Color.WHITE, 2f)
-        text(c, name, x + 8f, y + 154f, 13f, Color.WHITE, 1)
+        ellipsizedText(c, name, x + 8f, y + 154f, w - 16f, 13f, Color.WHITE, 1)
         val hidden = hiddenAlbums.contains(name)
         text(
             c,
@@ -2205,8 +2258,8 @@ class PhotoTvView(
         if (focused) strokeRound(c, x - 3f, y - 3f, x + w + 3f, y + h + 3f, 14f, Color.WHITE, 2f)
         round(c, x + 14f, y + 19f, x + 42f, y + 47f, 7f, Color.rgb(10, 124, 255))
         text(c, "✓", x + 28f, y + 39f, 15f, Color.WHITE, 1, 1)
-        text(c, name, x + 58f, y + 29f, 14f, Color.WHITE, 1)
-        text(c, value, x + 58f, y + 53f, 11f, Color.rgb(221, 228, 238))
+        ellipsizedText(c, name, x + 58f, y + 29f, w - 70f, 14f, Color.WHITE, 1)
+        ellipsizedText(c, value, x + 58f, y + 53f, w - 70f, 11f, Color.rgb(221, 228, 238))
     }
 
     private fun drawTransitionCards(c: Canvas, x: Float, y: Float, focused: Boolean) {
@@ -2264,7 +2317,7 @@ class PhotoTvView(
     private fun controlBox(c: Canvas, x: Float, y: Float, w: Float, h: Float, value: String, focused: Boolean) {
         round(c, x, y, x + w, y + h, 6f, Color.rgb(8, 20, 31))
         strokeRound(c, x, y, x + w, y + h, 6f, if (focused) Color.rgb(60, 157, 255) else Color.rgb(50, 72, 94), if (focused) 2f else 1f)
-        text(c, value, x + 10f, y + h * .66f, 11f, Color.WHITE)
+        ellipsizedText(c, value, x + 10f, y + h * .66f, w - 20f, 11f, Color.WHITE)
     }
 
     private fun drawSliderRow(c: Canvas, label: String, value: Float, minV: Float, maxV: Float, x: Float, y: Float, w: Float, focused: Boolean) {
@@ -2471,6 +2524,23 @@ class PhotoTvView(
         p.textAlign = when (align) { 1 -> Paint.Align.CENTER; 2 -> Paint.Align.RIGHT; else -> Paint.Align.LEFT }
         p.clearShadowLayer()
         c.drawText(s, x, y, p)
+    }
+
+    private fun ellipsizedText(
+        c: Canvas,
+        s: String,
+        x: Float,
+        y: Float,
+        maxWidth: Float,
+        size: Float,
+        color: Int,
+        weight: Int = 0,
+        align: Int = 0
+    ) {
+        p.textSize = size
+        p.typeface = Typeface.create("sans-serif", if (weight == 1) Typeface.BOLD else Typeface.NORMAL)
+        val safe = TextUtils.ellipsize(s, p, maxWidth.coerceAtLeast(1f), TextUtils.TruncateAt.END).toString()
+        text(c, safe, x, y, size, color, weight, align)
     }
 
     private fun fill(c: Canvas, l: Float, t: Float, r: Float, b: Float, color: Int) {
@@ -3127,12 +3197,15 @@ class PhotoTvView(
     private fun preloadAroundCurrent() {
         val items = activePhotos()
         if (items.isEmpty()) return
-        val uris = mutableListOf<Uri>()
-        for (offset in 0..5) {
-            val idx = if (items.isEmpty()) 0 else (currentPhoto + offset) % items.size
-            items.getOrNull(idx)?.let { uris += it.uri }
+        val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
+            buildList {
+                add(currentPhoto)
+                shuffleBag.take(5).forEach { if (it in items.indices) add(it) }
+            }
+        } else {
+            (0..5).map { (currentPhoto + it) % items.size }
         }
-        preload(uris)
+        preload(indices.distinct().mapNotNull { items.getOrNull(it)?.uri })
     }
 
     private fun slideshowNext(dir: Int) {
