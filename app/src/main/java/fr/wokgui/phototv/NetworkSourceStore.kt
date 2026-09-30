@@ -75,6 +75,35 @@ object NetworkSourceStore {
         save(context, list(context).filterNot { it.id == id })
     }
 
+    fun exportJson(context: Context): JSONArray {
+        val arr = JSONArray()
+        list(context).forEach { source ->
+            arr.put(JSONObject().apply {
+                put("kind", source.kind.name)
+                put("baseUrl", source.baseUrl)
+                put("username", source.username)
+                put("label", source.label)
+            })
+        }
+        return arr
+    }
+
+    fun importJson(context: Context, array: JSONArray) {
+        for (i in 0 until array.length()) {
+            val o = array.optJSONObject(i) ?: continue
+            val kind = runCatching { NetworkLibrary.Kind.valueOf(o.optString("kind")) }.getOrNull() ?: continue
+            val baseUrl = o.optString("baseUrl").trim()
+            if (baseUrl.isBlank()) continue
+            upsert(
+                context = context,
+                kind = kind,
+                baseUrl = baseUrl,
+                username = o.optString("username"),
+                label = o.optString("label")
+            )
+        }
+    }
+
     private fun save(context: Context, items: List<SavedNetworkSource>) {
         val arr = JSONArray()
         items.forEach { source ->
