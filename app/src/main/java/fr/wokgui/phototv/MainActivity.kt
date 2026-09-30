@@ -229,6 +229,55 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun requestNetworkCacheSettings() {
+        val prefs = getSharedPreferences("photo_tv_network_settings", MODE_PRIVATE)
+        val cacheMb = intArrayOf(128, 256, 512, 1024, 2048)
+        val ttlHours = intArrayOf(6, 12, 24, 48, 168)
+        val refreshMinutes = intArrayOf(5, 15, 30, 60)
+        var cacheIndex = cacheMb.indexOf(prefs.getInt("cache_mb", 512)).coerceAtLeast(0)
+        var ttlIndex = ttlHours.indexOf(prefs.getInt("ttl_hours", 24)).coerceAtLeast(0)
+        var refreshIndex = refreshMinutes.indexOf(prefs.getInt("refresh_minutes", 15)).coerceAtLeast(0)
+
+        val labels = arrayOf("Taille du cache", "Durée de conservation", "Rescan automatique")
+        fun openChoice(which: Int) {
+            val values = when (which) {
+                0 -> cacheMb.map { value -> value.toString() + " Mo" }.toTypedArray()
+                1 -> ttlHours.map { value -> if (value < 24) value.toString() + " h" else (value / 24).toString() + " j" }.toTypedArray()
+                else -> refreshMinutes.map { value -> value.toString() + " min" }.toTypedArray()
+            }
+            val checked = when (which) { 0 -> cacheIndex; 1 -> ttlIndex; else -> refreshIndex }
+            AlertDialog.Builder(this)
+                .setTitle(labels[which])
+                .setSingleChoiceItems(values, checked) { dialog, index ->
+                    when (which) {
+                        0 -> cacheIndex = index
+                        1 -> ttlIndex = index
+                        else -> refreshIndex = index
+                    }
+                    dialog.dismiss()
+                    prefs.edit()
+                        .putInt("cache_mb", cacheMb[cacheIndex])
+                        .putInt("ttl_hours", ttlHours[ttlIndex])
+                        .putInt("refresh_minutes", refreshMinutes[refreshIndex])
+                        .apply()
+                    networkRefreshMinutes = refreshMinutes[refreshIndex]
+                    NetworkLibrary.configureCache(cacheMb[cacheIndex], ttlHours[ttlIndex])
+                    scheduleNetworkRefresh()
+                }
+                .setNegativeButton("Annuler", null)
+                .show()
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Cache et synchronisation réseau")
+            .setItems(arrayOf(
+                "Cache : " + cacheMb[cacheIndex] + " Mo",
+                "Conservation : " + ttlHours[ttlIndex] + " h",
+                "Rescan : " + refreshMinutes[refreshIndex] + " min"
+            )) { _, which -> openChoice(which) }
+            .setNegativeButton("Fermer", null)
+            .show()
+    }
     private fun deleteSavedNetworkSource() {
         val saved = NetworkSourceStore.list(this)
         if (saved.isEmpty()) return
@@ -332,6 +381,33 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun scheduleNetworkRefresh() {
+        networkRefreshHandler.removeCallbacksAndMessages(null)
+        if (!NetworkLibrary.isConfigured()) return
+        networkRefreshHandler.postDelayed({
+            Thread {
+                val result = runCatching { NetworkLibrary.reload() }
+                runOnUiThread {
+                    result.getOrNull()?.takeIf { items -> items.isNotEmpty() }?.let { items ->
+                        ui.setLibrary(items, exactAlbums = false, sourceName = currentNetworkSourceName)
+                    }
+                    scheduleNetworkRefresh()
+                }
+            }.start()
+        }, networkRefreshMinutes.coerceAtLeast(5) * 60_000L)
+    }
+
+    private fun exportDiagnostics() {
+        pendingDiagnosticText = ui.diagnosticReport()
+        startActivityForResult(
+            Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                type = "text/plain"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_TITLE, "Photo-TV-diagnostic.txt")
+            },
+            REQ_EXPORT_DIAGNOSTICS
+        )
+    }
     private fun requestAlbumSearch() {
         val input = EditText(this).apply {
             hint = "Nom de l'album"
