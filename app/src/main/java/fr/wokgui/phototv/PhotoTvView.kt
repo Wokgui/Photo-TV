@@ -2130,6 +2130,31 @@ class PhotoTvView(
         }
     }
 
+    fun diagnosticReport(): String {
+        val cache = NetworkLibrary.cacheStats(context)
+        val albums = library.flatMap { it.albums }.distinct().size
+        return buildString {
+            appendLine("Photo TV diagnostic")
+            appendLine("Version: " + appVersionName())
+            appendLine("Source: " + sourceName)
+            appendLine("Médias: " + library.size)
+            appendLine("Albums: " + albums)
+            appendLine("Diaporama: " + slideshow)
+            appendLine("Pause: " + paused)
+            appendLine("Photo courante: " + currentPhoto)
+            appendLine("Mode aléatoire: " + randomOrder)
+            appendLine("Transition: " + transitions[transitionIndex.coerceIn(0, transitions.lastIndex)])
+            appendLine("Mode image: " + imageModeLabel())
+            appendLine("Fichiers illisibles: " + decodeFailureCount)
+            appendLine("Dernière erreur: " + lastDecodeFailure)
+            appendLine("Historique: " + recentUris.size)
+            appendLine("Mémoire: " + memoryDiagnostics())
+            appendLine("Cache réseau: " + cache.first + " fichiers • " + (cache.second / (1024L * 1024L)) + " Mo")
+            appendLine("Télécommande: " + remoteEnabled)
+            appendLine("Mode nuit actif: " + isNightModeActive())
+            appendLine("État UI: " + automationStateDescription())
+        }
+    }
     private fun memoryDiagnostics(): String {
         val rt = Runtime.getRuntime()
         val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024L * 1024L)
@@ -3741,6 +3766,9 @@ class PhotoTvView(
         val orderedUris = indices.distinct().mapNotNull { items.getOrNull(it)?.uri }
         preload(orderedUris)
         orderedUris.take(hdAhead).forEach { requestHighRes(it) }
+        if (orderedUris.any { NetworkLibrary.isNetworkUri(it) }) {
+            executor.execute { NetworkLibrary.prefetch(context, orderedUris.take(ahead + 1)) }
+        }
     }
 
     fun onMemoryPressure(level: Int) {
