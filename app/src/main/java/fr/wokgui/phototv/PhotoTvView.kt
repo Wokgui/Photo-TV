@@ -1100,6 +1100,116 @@ class PhotoTvView(
     private fun currentTextForElement(): String =
         metadataValues().getOrElse(editorElement) { "—" }
 
+    private fun captureEditorSnapshot(): EditorSnapshot =
+        EditorSnapshot(
+            styles = styles.map { it.copy() },
+            showDate = showDate,
+            showTime = showTime,
+            showTemp = showTemp,
+            layoutPreset = layoutPreset
+        )
+
+    private fun restoreEditorSnapshot(snapshot: EditorSnapshot) {
+        snapshot.styles.forEachIndexed { i, st ->
+            if (i in styles.indices) {
+                styles[i].size = st.size
+                styles[i].x = st.x
+                styles[i].y = st.y
+                styles[i].font = st.font
+                styles[i].color = st.color
+                styles[i].align = st.align
+                styles[i].shadow = st.shadow
+                styles[i].visible = st.visible
+            }
+        }
+        showDate = snapshot.showDate
+        showTime = snapshot.showTime
+        showTemp = snapshot.showTemp
+        layoutPreset = snapshot.layoutPreset
+    }
+
+    private fun recordEditorState() {
+        val snapshot = captureEditorSnapshot()
+        val last = editorUndo.peekLast()
+        if (last == snapshot) return
+        editorUndo.addLast(snapshot)
+        while (editorUndo.size > 60) editorUndo.removeFirst()
+        editorRedo.clear()
+    }
+
+    private fun undoEditor() {
+        if (editorUndo.isEmpty()) return
+        editorRedo.addLast(captureEditorSnapshot())
+        restoreEditorSnapshot(editorUndo.removeLast())
+        savePrefs()
+        invalidate()
+    }
+
+    private fun redoEditor() {
+        if (editorRedo.isEmpty()) return
+        editorUndo.addLast(captureEditorSnapshot())
+        restoreEditorSnapshot(editorRedo.removeLast())
+        savePrefs()
+        invalidate()
+    }
+
+    private fun defaultEditorStyle(index: Int): Style = when (index) {
+        0 -> Style(31f, 7f, 76f, font = 0, color = Color.WHITE)
+        1 -> Style(19f, 7f, 84f, font = 0, color = Color.WHITE)
+        2 -> Style(11f, 73f, 10f, font = 0, color = Color.WHITE, align = 2)
+        3 -> Style(26f, 80f, 15f, font = 0, color = Color.WHITE, align = 2)
+        4 -> Style(18f, 80f, 5f, font = 0, color = Color.WHITE, align = 2)
+        5 -> Style(14f, 7f, 90f, font = 0, color = Color.WHITE, visible = false)
+        6 -> Style(13f, 7f, 94f, font = 0, color = Color.WHITE, visible = false)
+        7 -> Style(12f, 72f, 90f, font = 0, color = Color.WHITE, align = 2, visible = false)
+        8 -> Style(12f, 72f, 94f, font = 0, color = Color.WHITE, align = 2, visible = false)
+        else -> Style(12f, 72f, 98f, font = 0, color = Color.WHITE, align = 2, visible = false)
+    }
+
+    private fun resetEditorElement() {
+        recordEditorState()
+        val d = defaultEditorStyle(editorElement)
+        val st = styles[editorElement]
+        st.size = d.size
+        st.x = d.x
+        st.y = d.y
+        st.font = d.font
+        st.color = d.color
+        st.align = d.align
+        st.shadow = d.shadow
+        st.visible = d.visible
+        when (editorElement) {
+            2 -> showDate = true
+            3 -> showTime = true
+            4 -> showTemp = true
+        }
+        layoutPreset = 0
+        savePrefs()
+        invalidate()
+    }
+
+    private fun resetEditorAll() {
+        recordEditorState()
+        styles.indices.forEach { i ->
+            val d = defaultEditorStyle(i)
+            val st = styles[i]
+            st.size = d.size
+            st.x = d.x
+            st.y = d.y
+            st.font = d.font
+            st.color = d.color
+            st.align = d.align
+            st.shadow = d.shadow
+            st.visible = d.visible
+        }
+        showDate = true
+        showTime = true
+        showTemp = true
+        layoutPreset = 0
+        savePrefs()
+        invalidate()
+    }
+
     private fun drawSettings(c: Canvas) {
         drawAppBackground(c)
         drawBrand(c, 50f, 20f, "RÉGLAGES")
