@@ -192,35 +192,43 @@ object TakeoutLibrary {
             }
         }
 
+        fun combine(existing: PhotoItem, item: PhotoItem): PhotoItem =
+            existing.copy(
+                albums = LinkedHashSet<String>().apply {
+                    addAll(existing.albums)
+                    addAll(item.albums)
+                },
+                description = existing.description.ifBlank { item.description },
+                location = existing.location.ifBlank { item.location },
+                camera = existing.camera.ifBlank { item.camera },
+                width = if (existing.width > 0) existing.width else item.width,
+                height = if (existing.height > 0) existing.height else item.height,
+                sourceCopies = existing.sourceCopies + item.sourceCopies,
+                sourceId = existing.sourceId.ifBlank { item.sourceId }
+            )
+
         val merged = mutableListOf<PhotoItem>()
         roughGroups.values.forEach { group ->
-            if (group.size == 1) {
-                merged += group.first()
-            } else {
-                val byFingerprint = LinkedHashMap<String, PhotoItem>()
-                group.forEachIndexed { index, item ->
-                    val fingerprint = mediaFingerprint(context, item.uri)
-                        ?: "unhashed:${item.uri}:$index"
-                    val existing = byFingerprint[fingerprint]
-                    if (existing == null) {
-                        byFingerprint[fingerprint] = item
-                    } else {
-                        byFingerprint[fingerprint] = existing.copy(
-                            albums = LinkedHashSet<String>().apply {
-                                addAll(existing.albums)
-                                addAll(item.albums)
-                            },
-                            description = existing.description.ifBlank { item.description },
-                            location = existing.location.ifBlank { item.location },
-                            camera = existing.camera.ifBlank { item.camera },
-                            width = if (existing.width > 0) existing.width else item.width,
-                            height = if (existing.height > 0) existing.height else item.height,
-                            sourceCopies = existing.sourceCopies + item.sourceCopies,
-                            sourceId = existing.sourceId.ifBlank { item.sourceId }
-                        )
-                    }
+            when {
+                group.size == 1 -> merged += group.first()
+
+                group.first().sourceId.isNotBlank() -> {
+                    // A Google Photos URL is already a stable identity. Avoid hashing full
+                    // image/video copies, which can make large Takeout imports very slow.
+                    merged += group.drop(1).fold(group.first(), ::combine)
                 }
-                merged += byFingerprint.values
+
+                else -> {
+                    val byFingerprint = LinkedHashMap<String, PhotoItem>()
+                    group.forEachIndexed { index, item ->
+                        val fingerprint = mediaFingerprint(context, item.uri)
+                            ?: "unhashed:${item.uri}:$index"
+                        val existing = byFingerprint[fingerprint]
+                        byFingerprint[fingerprint] =
+                            if (existing == null) item else combine(existing, item)
+                    }
+                    merged += byFingerprint.values
+                }
             }
         }
         return merged
