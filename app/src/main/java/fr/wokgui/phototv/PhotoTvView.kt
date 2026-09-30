@@ -325,9 +325,9 @@ class PhotoTvView(
             val result = runCatching {
                 val encoded = if (weatherLocation.isBlank()) "" else java.net.URLEncoder.encode(weatherLocation, "UTF-8")
                 val url = if (encoded.isBlank()) {
-                    "https://wttr.in/?format=j1"
+                    "https://wttr.in/?format=j1&lang=fr"
                 } else {
-                    "https://wttr.in/$encoded?format=j1"
+                    "https://wttr.in/$encoded?format=j1&lang=fr"
                 }
                 val connection = URL(url).openConnection().apply {
                     connectTimeout = 5000
