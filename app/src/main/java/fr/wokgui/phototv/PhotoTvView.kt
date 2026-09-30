@@ -3342,7 +3342,19 @@ class PhotoTvView(
         remoteServer?.stop()
         remoteServer = null
         if (!remoteEnabled || !supportsVideoPlayback) return
-        remoteServer = RemoteControlServer(token = remoteToken) { command ->
+        remoteServer = RemoteControlServer(
+            token = remoteToken,
+            stateProvider = {
+                val item = currentItem()
+                RemoteControlState(
+                    title = item?.title ?: "Photo TV",
+                    album = albumDisplay(item),
+                    slideshow = slideshow,
+                    paused = paused,
+                    durationSeconds = durationSeconds
+                )
+            }
+        ) { command ->
             post { handleRemoteCommand(command) }
         }.also { it.start() }
     }
@@ -3372,6 +3384,18 @@ class PhotoTvView(
                     }
                     invalidate()
                 }
+            }
+            "duration_down" -> {
+                durationSeconds = (durationSeconds - 1).coerceIn(2, 120)
+                savePrefs()
+                scheduleSlideshow()
+                invalidate()
+            }
+            "duration_up" -> {
+                durationSeconds = (durationSeconds + 1).coerceIn(2, 120)
+                savePrefs()
+                scheduleSlideshow()
+                invalidate()
             }
         }
     }
