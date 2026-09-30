@@ -12,6 +12,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.view.KeyEvent
 import androidx.appcompat.app.AppCompatActivity
 
 data class PhotoItem(
@@ -67,6 +68,8 @@ class MainActivity : AppCompatActivity() {
 
         videoView = VideoView(this).apply {
             visibility = View.GONE
+            isFocusable = false
+            isFocusableInTouchMode = false
         }
 
         ui = PhotoTvView(
@@ -108,6 +111,11 @@ class MainActivity : AppCompatActivity() {
         } else {
             restoreSavedSource()
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (::ui.isInitialized && ui.dispatchKeyEvent(event)) return true
+        return super.dispatchKeyEvent(event)
     }
 
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
