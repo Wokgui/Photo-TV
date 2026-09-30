@@ -819,6 +819,12 @@ class PhotoTvView(
         text(c, countText, 1215f, 607f, 15f, Color.WHITE, 0, 2)
     }
 
+    private fun windowStart(index: Int, total: Int, pageSize: Int = 6): Int {
+        if (total <= pageSize) return 0
+        val safe = index.coerceIn(0, total - 1)
+        return (safe / pageSize) * pageSize
+    }
+
     private fun drawPhotos(c: Canvas) {
         drawAppBackground(c)
         drawBrand(c, 58f, 20f, "PHOTOS ET ALBUMS")
@@ -837,20 +843,26 @@ class PhotoTvView(
         val cardW = 185f
         val cardH = 198f
         val gap = 14f
-        albums.take(6).forEachIndexed { i, pair ->
-            val x = 47f + i * (cardW + gap)
-            val focused = photosRow == 1 && albumFocus == i && !navFocus
-            drawAlbumCard(c, x, albumY, cardW, cardH, pair.first, pair.second, i, focused)
+        if (albums.isNotEmpty()) albumFocus = albumFocus.coerceIn(0, albums.lastIndex)
+        val albumStart = windowStart(albumFocus, albums.size)
+        albums.drop(albumStart).take(6).forEachIndexed { slot, pair ->
+            val absoluteIndex = albumStart + slot
+            val x = 47f + slot * (cardW + gap)
+            val focused = photosRow == 1 && albumFocus == absoluteIndex && !navFocus
+            drawAlbumCard(c, x, albumY, cardW, cardH, pair.first, pair.second, absoluteIndex, focused)
         }
 
         text(c, "Photos de l'album sélectionné", 45f, 500f, 19f, Color.WHITE, 1)
         val thumbs = currentAlbumPhotos()
+        if (thumbs.isNotEmpty()) photoFocus = photoFocus.coerceIn(0, thumbs.lastIndex)
+        val photoStart = windowStart(photoFocus, thumbs.size)
         val py = 522f
         val tw = 185f
-        thumbs.take(6).forEachIndexed { i, item ->
-            val x = 47f + i * (tw + gap)
-            val focused = photosRow == 2 && photoFocus == i && !navFocus
-            drawPhotoThumb(c, x, py, tw, 104f, item, focused, i)
+        thumbs.drop(photoStart).take(6).forEachIndexed { slot, item ->
+            val absoluteIndex = photoStart + slot
+            val x = 47f + slot * (tw + gap)
+            val focused = photosRow == 2 && photoFocus == absoluteIndex && !navFocus
+            drawPhotoThumb(c, x, py, tw, 104f, item, focused, slot)
         }
 
     }
@@ -1786,11 +1798,19 @@ class PhotoTvView(
     private fun albumBitmap(name: String, index: Int): Bitmap? {
         if (library.isEmpty()) return mockAlbumBitmaps[index] ?: demoBitmap
         val item = library.firstOrNull { it.albums.contains(name) } ?: return demoBitmap
-        return synchronized(bitmapCache) { bitmapCache[item.uri.toString()] } ?: demoBitmap
+        val cached = synchronized(bitmapCache) { bitmapCache[item.uri.toString()] }
+        if (cached == null) preload(listOf(item.uri))
+        return cached ?: demoBitmap
     }
 
     private fun drawPhotoThumb(c: Canvas, x: Float, y: Float, w: Float, h: Float, item: PhotoItem?, focused: Boolean, demoIndex: Int = 0) {
-        val bmp = if (item == null) mockAlbumBitmaps[demoIndex] ?: demoBitmap else synchronized(bitmapCache) { bitmapCache[item.uri.toString()] } ?: demoBitmap
+        val bmp = if (item == null) {
+            mockAlbumBitmaps[demoIndex] ?: demoBitmap
+        } else {
+            val cached = synchronized(bitmapCache) { bitmapCache[item.uri.toString()] }
+            if (cached == null) preload(listOf(item.uri))
+            cached ?: demoBitmap
+        }
         round(c, x, y, x + w, y + h, 9f, Color.rgb(11, 22, 32))
         drawBitmapCenterCrop(c, bmp, x, y, w, h, 9f)
         strokeRound(c, x, y, x + w, y + h, 9f, if (focused) Color.WHITE else Color.rgb(39, 58, 77), if (focused) 2f else 1f)
@@ -2332,8 +2352,18 @@ class PhotoTvView(
             0 -> if (activePhotos().isNotEmpty()) previewNext(dir)
             1 -> when (photosRow) {
                 0 -> sourceFocus = (sourceFocus + dir).coerceIn(0, 2)
-                1 -> albumFocus = (albumFocus + dir).coerceIn(0, max(0, albumPairs().size.coerceAtMost(6) - 1))
-                2 -> photoFocus = (photoFocus + dir).coerceIn(0, max(0, currentAlbumPhotos().size.coerceAtMost(6) - 1))
+                1 -> {
+                    val size = albumPairs().size
+                    val next = (albumFocus + dir).coerceIn(0, max(0, size - 1))
+                    if (next != albumFocus) {
+                        albumFocus = next
+                        photoFocus = 0
+                    }
+                }
+                2 -> {
+                    val size = currentAlbumPhotos().size
+                    photoFocus = (photoFocus + dir).coerceIn(0, max(0, size - 1))
+                }
                 else -> navFocus = true
             }
             2 -> {
@@ -2762,22 +2792,31 @@ class PhotoTvView(
                 }
             }
             y in 270f..468f -> {
-                val i = ((x - 47f) / 199f).toInt()
+                val slot = ((x - 47f) / 199f).toInt()
                 val albums = albumPairs()
-                if (i in 0 until min(6, albums.size) && x >= 47f + i * 199f && x <= 232f + i * 199f) {
-                    albumFocus = i
-                    val name = albums[i].first
+                val start = windowStart(albumFocus, albums.size)
+                val index = start + slot
+                if (slot in 0 until min(6, albums.size - start) && index in albums.indices &&
+                    x >= 47f + slot * 199f && x <= 232f + slot * 199f
+                ) {
+                    albumFocus = index
+                    photoFocus = 0
+                    val name = albums[index].first
                     if (library.isNotEmpty()) {
                         if (selectedAlbums.contains(name)) selectedAlbums.remove(name) else selectedAlbums.add(name)
                     }
                 }
             }
             y in 522f..626f -> {
-                val i = ((x - 47f) / 199f).toInt()
+                val slot = ((x - 47f) / 199f).toInt()
                 val photos = currentAlbumPhotos()
-                if (i in 0 until min(6, photos.size) && x >= 47f + i * 199f && x <= 232f + i * 199f) {
-                    photoFocus = i
-                    photos.getOrNull(i)?.let { item ->
+                val start = windowStart(photoFocus, photos.size)
+                val index = start + slot
+                if (slot in 0 until min(6, photos.size - start) && index in photos.indices &&
+                    x >= 47f + slot * 199f && x <= 232f + slot * 199f
+                ) {
+                    photoFocus = index
+                    photos.getOrNull(index)?.let { item ->
                         val active = activePhotos()
                         val idx = active.indexOfFirst { it.uri == item.uri }
                         if (idx >= 0) {
