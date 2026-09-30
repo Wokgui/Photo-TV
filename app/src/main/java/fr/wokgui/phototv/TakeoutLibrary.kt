@@ -87,6 +87,7 @@ object TakeoutLibrary {
             var description = ""
             var location = info.location
             var camera = info.camera
+            var sourceId = ""
 
             if (rootJson != null) {
                 rootJson.optJSONObject("photoTakenTime")
@@ -95,6 +96,7 @@ object TakeoutLibrary {
                     ?.let { takenAt = it * 1000L }
 
                 description = rootJson.optString("description").trim()
+                sourceId = rootJson.optString("url").trim()
 
                 val geo = rootJson.optJSONObject("geoDataExif")
                     ?: rootJson.optJSONObject("geoData")
@@ -126,7 +128,8 @@ object TakeoutLibrary {
                     mime.startsWith("video/") -> "video"
                     mime.equals("image/gif", true) -> "gif"
                     else -> "image"
-                }
+                },
+                sourceId = sourceId
             )
         }
 
@@ -161,14 +164,18 @@ object TakeoutLibrary {
 
     private fun mergeAlbumMemberships(context: Context, raw: List<PhotoItem>): List<PhotoItem> {
         val roughGroups = raw.groupBy { item ->
-            buildString {
-                append(item.title.lowercase())
-                append('|')
-                append(item.width)
-                append('x')
-                append(item.height)
-                append('|')
-                append(item.mediaType)
+            if (item.sourceId.isNotBlank()) {
+                "source:" + item.sourceId
+            } else {
+                buildString {
+                    append(item.title.lowercase())
+                    append('|')
+                    append(item.width)
+                    append('x')
+                    append(item.height)
+                    append('|')
+                    append(item.mediaType)
+                }
             }
         }
 
@@ -195,7 +202,8 @@ object TakeoutLibrary {
                             camera = existing.camera.ifBlank { item.camera },
                             width = if (existing.width > 0) existing.width else item.width,
                             height = if (existing.height > 0) existing.height else item.height,
-                            sourceCopies = existing.sourceCopies + item.sourceCopies
+                            sourceCopies = existing.sourceCopies + item.sourceCopies,
+                            sourceId = existing.sourceId.ifBlank { item.sourceId }
                         )
                     }
                 }
