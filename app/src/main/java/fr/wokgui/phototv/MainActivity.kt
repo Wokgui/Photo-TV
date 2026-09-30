@@ -144,6 +144,9 @@ class MainActivity : AppCompatActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    fun automationStateForTest(): String =
+        if (::ui.isInitialized) ui.automationStateDescription() else "PhotoTV uninitialized"
+
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
         if (uri == null) {
             runCatching { videoView.stopPlayback() }
