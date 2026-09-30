@@ -87,6 +87,7 @@ class PhotoTvView(
 
     private var library: List<PhotoItem> = emptyList()
     private var exactAlbums = false
+    private var sourceName = "Démo"
     private var page = 0
     private var navFocus = false
     private var currentPhoto = 0
@@ -599,9 +600,22 @@ class PhotoTvView(
         invalidate()
     }
 
-    fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean) {
+    fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection") {
+        synchronized(bitmapCache) {
+            bitmapCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
+            bitmapCache.clear()
+        }
+        synchronized(gifCache) {
+            gifCache.clear()
+            gifLoading.clear()
+        }
+        softSource = null
+        softBitmap?.let { if (!it.isRecycled) it.recycle() }
+        softBitmap = null
+
         library = items
         this.exactAlbums = exactAlbums
+        this.sourceName = sourceName
         selectedAlbums.clear()
         val allAlbums = items.flatMap { it.albums }.distinct()
         if (savedSelectedAlbums.isNotEmpty()) {
@@ -620,8 +634,8 @@ class PhotoTvView(
         if (startDirectly && count > 0) postDelayed({ if (!slideshow) startSlideshow() }, 450)
     }
 
-    fun startAsDream(items: List<PhotoItem>) {
-        setLibrary(items, exactAlbums = true)
+    fun startAsDream(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String) {
+        setLibrary(items, exactAlbums = exactAlbums, sourceName = sourceName)
         if (activePhotos().isNotEmpty()) {
             postDelayed({ startSlideshow() }, 150)
         }
