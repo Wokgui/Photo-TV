@@ -3461,7 +3461,9 @@ class PhotoTvView(
                     album = albumDisplay(item),
                     slideshow = slideshow,
                     paused = paused,
-                    durationSeconds = durationSeconds
+                    durationSeconds = durationSeconds,
+                    transition = transitions[transitionIndex.coerceIn(0, transitions.lastIndex)],
+                    imageMode = imageModeLabel()
                 )
             }
         ) { command ->
@@ -3474,6 +3476,7 @@ class PhotoTvView(
             "prev" -> if (slideshow) slideshowNext(-1) else previewNext(-1)
             "next" -> if (slideshow) slideshowNext(1) else previewNext(1)
             "pause" -> if (slideshow) togglePause() else startSlideshow()
+            "stop" -> if (slideshow) stopSlideshow()
             "favorite" -> currentItem()?.let { item ->
                 val key = item.uri.toString()
                 if (favorites.contains(key)) favorites.remove(key) else favorites.add(key)
@@ -3506,6 +3509,36 @@ class PhotoTvView(
                 savePrefs()
                 scheduleSlideshow()
                 invalidate()
+            }
+            "transition_next" -> {
+                transitionIndex = (transitionIndex + 1) % transitions.size
+                savePrefs()
+                invalidate()
+            }
+            "mode_next" -> {
+                imageMode = (imageMode + 1) % 4
+                savePrefs()
+                invalidate()
+            }
+            "history_prev" -> goToRecentPrevious()
+            "album_next" -> {
+                val albums = albumPairs().map { it.first }
+                if (albums.isNotEmpty()) {
+                    val currentAlbum = currentItem()?.albums?.firstOrNull()
+                    val currentIndex = albums.indexOf(currentAlbum).coerceAtLeast(-1)
+                    val nextAlbum = albums[(currentIndex + 1 + albums.size) % albums.size]
+                    val items = activePhotos()
+                    val idx = items.indexOfFirst { it.albums.contains(nextAlbum) }
+                    if (idx >= 0) {
+                        previousPhoto = currentPhoto
+                        currentPhoto = idx
+                        rememberCurrentUri()
+                        preloadAroundCurrent()
+                        syncVideoPlayback()
+                        savePrefs()
+                        invalidate()
+                    }
+                }
             }
         }
     }
