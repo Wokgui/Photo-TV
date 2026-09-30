@@ -63,6 +63,8 @@ class MainActivity : AppCompatActivity() {
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        val automationMode = intent.getBooleanExtra("phototv_test_mode", false)
+
         videoView = VideoView(this).apply {
             visibility = View.GONE
         }
@@ -78,7 +80,8 @@ class MainActivity : AppCompatActivity() {
             onAlbumSearch = { requestAlbumSearch() },
             onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) },
             onVideoPause = { pause -> handleVideoPause(pause) },
-            supportsVideoPlayback = true
+            supportsVideoPlayback = true,
+            automationMode = automationMode
         )
 
         val root = FrameLayout(this).apply {
@@ -100,7 +103,11 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
-        restoreSavedSource()
+        if (automationMode) {
+            ui.setAutomationPage(intent.getIntExtra("phototv_test_page", 0))
+        } else {
+            restoreSavedSource()
+        }
     }
 
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
