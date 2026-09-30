@@ -27,6 +27,7 @@ object NetworkLibrary {
     enum class Kind { WEBDAV, SMB }
 
     private data class Config(
+        val key: String,
         val kind: Kind,
         val baseUrl: String,
         val username: String,
@@ -35,6 +36,7 @@ object NetworkLibrary {
 
     private data class Entry(
         val id: String,
+        val sourceKey: String,
         val remoteUrl: String,
         val title: String,
         val album: String,
@@ -53,7 +55,7 @@ object NetworkLibrary {
         .followSslRedirects(true)
         .build()
 
-    @Volatile private var config: Config? = null
+    private val configs = linkedMapOf<String, Config>()
     private val entries = linkedMapOf<String, Entry>()
 
     private const val MAX_NETWORK_ITEMS = 5000
@@ -69,27 +71,20 @@ object NetworkLibrary {
         password: String
     ): List<PhotoItem> {
         val clean = normalizeBase(kind, baseUrl)
-        val cfg = Config(kind, clean, username.trim(), password)
+        val cleanUser = username.trim()
+        val cfg = Config(sourceKey(kind, clean, cleanUser), kind, clean, cleanUser, password)
         val discovered = when (kind) {
             Kind.WEBDAV -> listWebDavRecursive(cfg)
             Kind.SMB -> listSmbRecursive(cfg)
         }.take(MAX_NETWORK_ITEMS)
 
         synchronized(entries) {
-            entries.clear()
+            entries.entries.removeAll { it.value.sourceKey == cfg.key }
             discovered.forEach { entries[it.id] = it }
-            config = cfg
+            configs[cfg.key] = cfg
         }
 
-        return discovered.map { e ->
-            PhotoItem(
-                uri = Uri.parse("phototv-network://" + e.id),
-                title = e.title,
-                albums = linkedSetOf(e.album),
-                mediaType = e.mediaType,
-                sourceId = e.remoteUrl
-            )
-        }
+        return discovered.map(::toPhotoItem)
     }
 
     fun open(context: Context, uri: Uri): InputStream? {
@@ -97,8 +92,8 @@ object NetworkLibrary {
 
         val id = uri.host ?: uri.schemeSpecificPart.removePrefix("//")
         val pair = synchronized(entries) {
-            val cfg = config ?: return null
             val entry = entries[id] ?: return null
+            val cfg = configs[entry.sourceKey] ?: return null
             cfg to entry
         }
 
@@ -148,7 +143,7 @@ object NetworkLibrary {
 
     fun isNetworkUri(uri: Uri): Boolean = uri.scheme == "phototv-network"
 
-    fun isConfigured(): Boolean = config != null
+    fun isConfigured(): Boolean = synchronized(entries) { configs.isNotEmpty() }
 
     fun configureCache(maxMb: Int, ttlHours: Int) {
         cacheMaxBytes = maxMb.coerceIn(64, 2048).toLong() * 1024L * 1024L
@@ -173,26 +168,24 @@ object NetworkLibrary {
     }
 
     fun reload(): List<PhotoItem>? {
-        val cfg = config ?: return null
-        val discovered = when (cfg.kind) {
-            Kind.WEBDAV -> listWebDavRecursive(cfg)
-            Kind.SMB -> listSmbRecursive(cfg)
-        }.take(MAX_NETWORK_ITEMS)
+        val snapshot = synchronized(entries) { configs.values.toList() }
+        if (snapshot.isEmpty()) return null
+
+        val all = mutableListOf<Entry>()
+        snapshot.forEach { cfg ->
+            val discovered = when (cfg.kind) {
+                Kind.WEBDAV -> listWebDavRecursive(cfg)
+                Kind.SMB -> listSmbRecursive(cfg)
+            }.take(MAX_NETWORK_ITEMS)
+            all += discovered
+        }
 
         synchronized(entries) {
             entries.clear()
-            discovered.forEach { entries[it.id] = it }
+            all.forEach { entries[it.id] = it }
         }
 
-        return discovered.map { e ->
-            PhotoItem(
-                uri = Uri.parse("phototv-network://" + e.id),
-                title = e.title,
-                albums = linkedSetOf(e.album),
-                mediaType = e.mediaType,
-                sourceId = e.remoteUrl
-            )
-        }
+        return all.map(::toPhotoItem)
     }
 
     fun clearDiskCache(context: Context) {
@@ -255,6 +248,7 @@ object NetworkLibrary {
                 val type = mediaType(name, node.contentType) ?: continue
                 out += Entry(
                     id = stableId(cfg.kind, node.url),
+                    sourceKey = cfg.key,
                     remoteUrl = node.url,
                     title = stripExtension(name),
                     album = pending.albumPath.ifBlank { rootAlbum },
@@ -361,6 +355,7 @@ object NetworkLibrary {
 
                 out += Entry(
                     id = stableId(cfg.kind, remote),
+                    sourceKey = cfg.key,
                     remoteUrl = remote,
                     title = stripExtension(name),
                     album = albumPath.ifBlank { rootAlbum },
@@ -436,6 +431,18 @@ object NetworkLibrary {
             first.delete()
         }
     }
+
+    private fun toPhotoItem(e: Entry): PhotoItem =
+        PhotoItem(
+            uri = Uri.parse("phototv-network://" + e.id),
+            title = e.title,
+            albums = linkedSetOf(e.album),
+            mediaType = e.mediaType,
+            sourceId = e.remoteUrl
+        )
+
+    private fun sourceKey(kind: Kind, baseUrl: String, username: String): String =
+        stableId(kind, baseUrl + "|" + username.lowercase())
 
     private fun stableId(kind: Kind, remoteUrl: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
