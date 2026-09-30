@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,6 +83,40 @@ jobs:
           `;
           new Function(prelude + js + checks)();
           NODE
+
+      - name: Setup visual regression tools
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet pillow
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Visual regression against approved mockup
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf visual-results
+          python3 -m http.server 4173 --directory docs >/tmp/photo-tv-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173/ >/dev/null
+          node visual/capture.mjs http://127.0.0.1:4173/ visual-results
+          python3 visual/compare.py
+
+      - name: Upload visual regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Photo-TV-Visual-Regression
+          path: visual-results
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Run JVM tests
         run: gradle --no-daemon --stacktrace testDebugUnitTest
