@@ -59,8 +59,8 @@ object NetworkLibrary {
     private const val MAX_NETWORK_ITEMS = 5000
     private const val MAX_RECURSION_DEPTH = 8
     private const val CACHE_MAX_FILES = 300
-    private const val CACHE_MAX_BYTES = 512L * 1024L * 1024L
-    private const val CACHE_FRESH_MS = 24L * 60L * 60L * 1000L
+    @Volatile private var cacheMaxBytes = 512L * 1024L * 1024L
+    @Volatile private var cacheFreshMs = 24L * 60L * 60L * 1000L
 
     fun load(
         kind: Kind,
@@ -106,7 +106,7 @@ object NetworkLibrary {
         val cached = File(cacheDir, pair.second.id + ".bin")
         val now = System.currentTimeMillis()
 
-        if (cached.isFile && cached.length() > 0L && now - cached.lastModified() <= CACHE_FRESH_MS) {
+        if (cached.isFile && cached.length() > 0L && now - cached.lastModified() <= cacheFreshMs) {
             cached.setLastModified(now)
             return cached.inputStream()
         }
@@ -147,6 +147,53 @@ object NetworkLibrary {
     }
 
     fun isNetworkUri(uri: Uri): Boolean = uri.scheme == "phototv-network"
+
+    fun isConfigured(): Boolean = config != null
+
+    fun configureCache(maxMb: Int, ttlHours: Int) {
+        cacheMaxBytes = maxMb.coerceIn(64, 2048).toLong() * 1024L * 1024L
+        cacheFreshMs = ttlHours.coerceIn(1, 168).toLong() * 60L * 60L * 1000L
+    }
+
+    fun cacheStats(context: Context): Pair<Int, Long> {
+        val files = File(context.cacheDir, "network-media")
+            .listFiles()
+            ?.filter { it.isFile && it.extension == "bin" }
+            .orEmpty()
+        return files.size to files.sumOf { it.length() }
+    }
+
+    fun prefetch(context: Context, uris: List<Uri>) {
+        uris.filter(::isNetworkUri).distinct().forEach { uri ->
+            runCatching { open(context, uri)?.use { input ->
+                val buffer = ByteArray(8 * 1024)
+                while (input.read(buffer) > 0) Unit
+            } }
+        }
+    }
+
+    fun reload(): List<PhotoItem>? {
+        val cfg = config ?: return null
+        val discovered = when (cfg.kind) {
+            Kind.WEBDAV -> listWebDavRecursive(cfg)
+            Kind.SMB -> listSmbRecursive(cfg)
+        }.take(MAX_NETWORK_ITEMS)
+
+        synchronized(entries) {
+            entries.clear()
+            discovered.forEach { entries[it.id] = it }
+        }
+
+        return discovered.map { e ->
+            PhotoItem(
+                uri = Uri.parse("phototv-network://" + e.id),
+                title = e.title,
+                albums = linkedSetOf(e.album),
+                mediaType = e.mediaType,
+                sourceId = e.remoteUrl
+            )
+        }
+    }
 
     fun clearDiskCache(context: Context) {
         File(context.cacheDir, "network-media")
@@ -383,7 +430,7 @@ object NetworkLibrary {
             ?: return
 
         var totalBytes = files.sumOf { it.length() }
-        while (files.size > CACHE_MAX_FILES || totalBytes > CACHE_MAX_BYTES) {
+        while (files.size > CACHE_MAX_FILES || totalBytes > cacheMaxBytes) {
             val first = files.removeFirstOrNull() ?: break
             totalBytes -= first.length()
             first.delete()
