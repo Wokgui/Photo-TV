@@ -2376,6 +2376,19 @@ class PhotoTvView(
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         markInteraction()
 
+        if (page == 2 && event?.isCtrlPressed == true) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_Z -> {
+                    undoEditor()
+                    return true
+                }
+                KeyEvent.KEYCODE_Y -> {
+                    redoEditor()
+                    return true
+                }
+            }
+        }
+
         if ((keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) &&
             (event?.repeatCount ?: 0) >= 2 && !longActionLatched
         ) {
@@ -2777,7 +2790,14 @@ class PhotoTvView(
                     2 -> {
                         val st = styles[editorElement]
                         when (editorControl) {
-                            7 -> st.shadow = !st.shadow
+                            7 -> {
+                                recordEditorState()
+                                st.shadow = !st.shadow
+                            }
+                            8 -> undoEditor()
+                            9 -> redoEditor()
+                            10 -> resetEditorElement()
+                            11 -> resetEditorAll()
                         }
                     }
                 }
@@ -3073,34 +3093,53 @@ class PhotoTvView(
             y in 126f..171f -> editorControl = 0
             y in 170f..218f -> {
                 editorControl = 1
+                recordEditorState()
                 st.font = (st.font + 1) % 4
             }
             y in 220f..268f -> {
                 editorControl = 2
+                recordEditorState()
                 val t = ((x - 1051f) / 126f).coerceIn(0f, 1f)
                 st.size = 12f + t * 68f
             }
             y in 280f..330f -> {
                 editorControl = 3
+                recordEditorState()
                 val colors = listOf(Color.WHITE, Color.rgb(173,196,255), Color.rgb(255,224,112), Color.rgb(255,126,126), Color.rgb(137,230,173))
                 val idx = colors.indexOf(st.color).coerceAtLeast(0)
                 st.color = colors[(idx + 1) % colors.size]
             }
             y in 326f..378f -> {
                 editorControl = 4
+                recordEditorState()
                 st.x = (((x - 1051f) / 126f) * 100f).coerceIn(0f, 100f)
             }
             y in 387f..439f -> {
                 editorControl = 5
+                recordEditorState()
                 st.y = (((x - 1051f) / 126f) * 100f).coerceIn(0f, 100f)
             }
             y in 454f..506f -> {
                 editorControl = 6
+                recordEditorState()
                 st.align = (((x - 1048f) / 42f).toInt()).coerceIn(0, 2)
             }
             y in 516f..568f -> {
                 editorControl = 7
+                recordEditorState()
                 st.shadow = !st.shadow
+            }
+            y in 580f..625f -> {
+                val i = ((x - 956f) / 67f).toInt()
+                if (i in 0..3) {
+                    editorControl = 8 + i
+                    when (i) {
+                        0 -> undoEditor()
+                        1 -> redoEditor()
+                        2 -> resetEditorElement()
+                        3 -> resetEditorAll()
+                    }
+                }
             }
         }
         savePrefs()
@@ -3291,6 +3330,8 @@ class PhotoTvView(
                 MotionEvent.ACTION_DOWN -> {
                     if (x in 370f..918f && y in 64f..638f) {
                         touchDraggingEditor = true
+                        editorGestureRecorded = true
+                        recordEditorState()
                         editorColumn = 1
                         moveSelectedEditorElementTo(x, y)
                         invalidate()
@@ -3305,6 +3346,7 @@ class PhotoTvView(
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (touchDraggingEditor) {
                     moveSelectedEditorElementTo(x, y)
                     touchDraggingEditor = false
+                    editorGestureRecorded = false
                     savePrefs()
                     invalidate()
                     return true
