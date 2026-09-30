@@ -21,7 +21,7 @@ input{display:none}
 </div>
 <script>
 const cv=document.getElementById('tv'),ctx=cv.getContext('2d');
-let page=0,slideshow=false,focusNav=false,albumSel=0,editorElement=0,settingsCat=0,previewIndex=0,folderMode="exact";
+let page=0,slideshow=false,focusNav=false,albumSel=0,editorElement=0,settingsCat=0,previewIndex=0,folderMode="exact",editorDrag=false;
 let albumPage=0,photoPage=0,slideLastAt=Date.now(),webAlbumFiles=[],webMediaCount=142,webSourceExact=true,webSourceLabel="Google Photos / Takeout";
 const fileUrlCache=new WeakMap();
 const photoTitles=["001. Opéra d'Oslo","Fjord norvégien","Montagne","Lac","Paysage","Copenhague"];
@@ -145,7 +145,9 @@ function applyWebPreset(next){layoutPreset=next;const title=editorStyles[0],albu
 function promptAlbumSearch(){const v=prompt("Rechercher un album",albumSearch);if(v!==null){albumSearch=v.trim();toast(albumSearch?"Recherche : "+albumSearch:"Recherche effacée");draw()}}
 function promptWeather(){const v=prompt("Ville météo",weatherCity);if(v!==null){weatherCity=v.trim();toast(weatherCity?"Ville météo : "+weatherCity:"Météo automatique");draw()}}
 
-function mouse(e){const {x,y}=canvasPoint(e);
+function snapEditorValue(v){if(!gridSnap)return Math.max(0,Math.min(100,v));const nearest=Math.round(v/5)*5;return Math.abs(v-nearest)<=1.4?nearest:Math.max(0,Math.min(100,v))}
+function moveEditorElementTo(x,y){const st=editorStyles[editorElement];st.x=snapEditorValue((x-370)/548*100);st.y=snapEditorValue((y-64)/574*100);draw()}
+function mouse(e){if(editorDrag)return;const {x,y}=canvasPoint(e);
 if(slideshow){if(x<426){advanceWebPhoto(-1);toast("Photo précédente")}else if(x>854){advanceWebPhoto(1);toast("Photo suivante")}else{slideshow=false;toast("Retour à l'aperçu");draw()}return}
 if(y>=638&&x>=218&&x<=1090){page=Math.max(0,Math.min(3,Math.floor((x-218)/218)));draw();return}
 
@@ -164,7 +166,7 @@ if(page===1){
 if(page===2){
  const first=Math.max(0,Math.min(elemNames.length-5,editorElement-2));
  if(x>=32&&x<=352&&y>=120&&y<=642){const slot=Math.floor((y-120)/87),i=first+slot;if(slot>=0&&slot<5&&i<elemNames.length){editorElement=i;draw();return}}
- if(x>=370&&x<=918&&y>=64&&y<=638){toast("Zone de placement sélectionnée");return}
+ if(x>=370&&x<=918&&y>=64&&y<=638){moveEditorElementTo(x,y);toast("Élément déplacé");return}
  if(x>=940&&x<=1248){
    const st=editorStyles[editorElement];
    if(y>=126&&y<=171){toast("Texte sélectionné")}
@@ -244,6 +246,10 @@ if(page===3){
 }
 }
 
+cv.addEventListener("pointerdown",e=>{const {x,y}=canvasPoint(e);if(!slideshow&&page===2&&x>=370&&x<=918&&y>=64&&y<=638){editorDrag=true;cv.setPointerCapture?.(e.pointerId);moveEditorElementTo(x,y);e.preventDefault()}});
+cv.addEventListener("pointermove",e=>{if(!editorDrag)return;const {x,y}=canvasPoint(e);moveEditorElementTo(Math.max(370,Math.min(918,x)),Math.max(64,Math.min(638,y)));e.preventDefault()});
+cv.addEventListener("pointerup",e=>{if(editorDrag){editorDrag=false;cv.releasePointerCapture?.(e.pointerId);persistWebState();e.preventDefault()}});
+cv.addEventListener("pointercancel",()=>{editorDrag=false});
 cv.addEventListener("click",mouse);
 cv.addEventListener("wheel",e=>{if(page!==1)return;const {y}=canvasPoint(e);if(y>=250&&y<=480){const shown=visibleAlbums(),pages=Math.max(1,Math.ceil(shown.length/6));if(pages<=1)return;e.preventDefault();albumPage=Math.max(0,Math.min(pages-1,albumPage+(e.deltaY>0?1:-1)));draw();return}if(y>=500&&y<=632){const pages=Math.max(1,Math.ceil(photoUrls.length/6));if(pages<=1)return;e.preventDefault();photoPage=Math.max(0,Math.min(pages-1,photoPage+(e.deltaY>0?1:-1)));draw()}},{passive:false});
 document.getElementById("folderInput").addEventListener("change",e=>loadFolderFiles(e.target.files));
