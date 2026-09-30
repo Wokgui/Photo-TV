@@ -442,6 +442,12 @@ class MainActivity : AppCompatActivity() {
             .setItems(saved.map { it.label }.toTypedArray()) { _, which ->
                 saved.getOrNull(which)?.let { source ->
                     NetworkSourceStore.delete(this, source.id)
+                    val activeLabel = NetworkLibrary.removeSource(
+                        source.kind,
+                        source.baseUrl,
+                        source.username
+                    ) ?: source.label
+                    ui.removeSourceByLabel(activeLabel)
                     Toast.makeText(this, "Source supprimée", Toast.LENGTH_SHORT).show()
                 }
             }
