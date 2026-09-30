@@ -361,11 +361,13 @@ class MainActivity : AppCompatActivity() {
                                     baseUrl = address,
                                     username = user.text?.toString().orEmpty()
                                 )
-                                currentNetworkSourceName = if (kind == NetworkLibrary.Kind.WEBDAV) "WebDAV" else "SMB / NAS"
-                                ui.setLibrary(
-                                    items,
+                                currentNetworkSourceName = items.firstOrNull()?.sourceLabel
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: if (kind == NetworkLibrary.Kind.WEBDAV) "WebDAV" else "SMB / NAS"
+                                ui.upsertSourceLibrary(
+                                    items = items,
                                     exactAlbums = false,
-                                    sourceName = currentNetworkSourceName
+                                    fallbackSourceName = currentNetworkSourceName
                                 )
                                 scheduleNetworkRefresh()
                                 Toast.makeText(this, "${items.size} médias réseau chargés", Toast.LENGTH_SHORT).show()
@@ -392,7 +394,7 @@ class MainActivity : AppCompatActivity() {
                 val result = runCatching { NetworkLibrary.reload() }
                 runOnUiThread {
                     result.getOrNull()?.takeIf { items -> items.isNotEmpty() }?.let { items ->
-                        ui.setLibrary(items, exactAlbums = false, sourceName = currentNetworkSourceName)
+                        ui.replaceNetworkLibraries(items)
                     }
                     scheduleNetworkRefresh()
                 }
