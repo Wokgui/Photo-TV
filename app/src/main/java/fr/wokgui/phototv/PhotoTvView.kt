@@ -3531,6 +3531,14 @@ class PhotoTvView(
             "next" -> if (slideshow) slideshowNext(1) else previewNext(1)
             "pause" -> if (slideshow) togglePause() else startSlideshow()
             "stop" -> if (slideshow) stopSlideshow()
+            "sources" -> {
+                if (slideshow) stopSlideshow()
+                page = 1
+                photosRow = 0
+                sourceFocus = 0
+                navFocus = false
+                invalidate()
+            }
             "favorite" -> currentItem()?.let { item ->
                 val key = item.uri.toString()
                 if (favorites.contains(key)) favorites.remove(key) else favorites.add(key)
