@@ -332,7 +332,7 @@ class PhotoTvView(
                 val connection = URL(url).openConnection().apply {
                     connectTimeout = 5000
                     readTimeout = 5000
-                    setRequestProperty("User-Agent", "PhotoTV/0.4")
+                    setRequestProperty("User-Agent", "PhotoTV/" + appVersionName())
                 }
                 val json = connection.getInputStream().bufferedReader().use { it.readText() }
                 val root = JSONObject(json)
