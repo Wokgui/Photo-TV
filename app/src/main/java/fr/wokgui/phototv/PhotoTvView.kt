@@ -237,6 +237,7 @@ class PhotoTvView(
     private var remoteQrVisible = false
     private var remoteQrBitmap: Bitmap? = null
     private var remoteQrUrl = ""
+    private var remoteSourceFilter: String? = null
     private var ruleAlbumIndex = 0
     private var ruleSourceIndex = 0
     private var rulesBySource = false
@@ -1356,7 +1357,8 @@ class PhotoTvView(
         if (library.isEmpty()) return emptyList()
         val now = java.util.Calendar.getInstance()
         return library.filter { item ->
-            sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
+            (remoteSourceFilter == null || item.sourceLabel.ifBlank { "Source" } == remoteSourceFilter) &&
+                sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
                 item.albums.any {
                     selectedAlbums.contains(it) &&
                         !hiddenAlbums.contains(it) &&
@@ -3787,7 +3789,10 @@ class PhotoTvView(
                     paused = paused,
                     durationSeconds = durationSeconds,
                     transition = transitions[transitionIndex.coerceIn(0, transitions.lastIndex)],
-                    imageMode = imageModeLabel()
+                    imageMode = imageModeLabel(),
+                    albums = albumPairs().map { it.first },
+                    sources = sourceLabels(),
+                    sourceFilter = remoteSourceFilter
                 )
             }
         ) { command ->
@@ -3796,7 +3801,9 @@ class PhotoTvView(
     }
 
     private fun handleRemoteCommand(command: String) {
-        when (command) {
+        val commandName = command.substringBefore('|')
+        val commandValue = command.substringAfter('|', "").trim()
+        when (commandName) {
             "prev" -> if (slideshow) slideshowNext(-1) else previewNext(-1)
             "next" -> if (slideshow) slideshowNext(1) else previewNext(1)
             "pause" -> if (slideshow) togglePause() else startSlideshow()
@@ -3807,6 +3814,39 @@ class PhotoTvView(
                 photosRow = 0
                 sourceFocus = 0
                 navFocus = false
+                invalidate()
+            }
+            "album_select" -> {
+                val all = library.flatMap { it.albums }.distinct()
+                selectedAlbums.clear()
+                if (commandValue.isBlank() || commandValue == "Tous les albums") {
+                    selectedAlbums.addAll(all)
+                } else if (all.contains(commandValue)) {
+                    selectedAlbums += commandValue
+                } else {
+                    selectedAlbums.addAll(all)
+                }
+                currentPhoto = 0
+                preloadAroundCurrent()
+                savePrefs()
+                invalidate()
+            }
+            "source_select" -> {
+                remoteSourceFilter = commandValue.takeUnless {
+                    it.isBlank() || it == "Toutes les sources"
+                }
+                currentPhoto = 0
+                preloadAroundCurrent()
+                invalidate()
+            }
+            "search" -> {
+                albumSearch = commandValue
+                page = 1
+                photosRow = 1
+                navFocus = false
+                albumFocus = 0
+                photoFocus = 0
+                savePrefs()
                 invalidate()
             }
             "favorite" -> currentItem()?.let { item ->
