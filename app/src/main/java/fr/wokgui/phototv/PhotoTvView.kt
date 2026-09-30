@@ -36,6 +36,9 @@ class PhotoTvView(
     private val onFolderSource: () -> Unit = {},
     private val onPickPhotos: () -> Unit,
     private val onNetworkSource: () -> Unit = {},
+    private val onSettingsPin: () -> Unit = {},
+    private val canOpenSettings: () -> Boolean = { true },
+    private val onUnlockSettings: () -> Unit = {},
     private val onWeatherLocation: () -> Unit = {},
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
@@ -915,6 +918,15 @@ class PhotoTvView(
 
     fun showLoading(message: String) {
         loadingText = message.takeIf { it.isNotBlank() }
+        invalidate()
+    }
+
+    fun openSettingsAfterUnlock() {
+        page = 3
+        navFocus = false
+        settingsCategory = 0
+        settingsControl = 0
+        settingsColumn = 0
         invalidate()
     }
 
@@ -2297,6 +2309,7 @@ class PhotoTvView(
     }
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        controlBox(c, x + 118f, y + 8f, 92f, 38f, "PIN", settingsColumn == 1 && settingsControl == 14 && !navFocus)
         controlBox(c, x + 225f, y + 8f, 205f, 38f, if (remoteEnabled) "Télécommande : ON" else "Télécommande : OFF", settingsColumn == 1 && settingsControl == 13 && !navFocus)
         controlBox(c, x + 445f, y + 8f, 205f, 38f, if (interactionDiagnostics) "Zones : ON" else "Zones : OFF", settingsColumn == 1 && settingsControl == 12 && !navFocus)
         controlBox(c, x + 665f, y + 8f, 190f, 38f, "Règles albums/sources", settingsColumn == 1 && settingsControl == 11 && !navFocus)
@@ -3436,7 +3449,12 @@ class PhotoTvView(
 
     private fun moveHorizontal(dir: Int) {
         if (navFocus) {
-            page = (page + dir + 4) % 4
+            val target = (page + dir + 4) % 4
+            if (target == 3 && !canOpenSettings()) {
+                onUnlockSettings()
+                return
+            }
+            page = target
             invalidate()
             return
         }
@@ -3507,7 +3525,7 @@ class PhotoTvView(
         4 -> 9
         5 -> 2
         6 -> 7
-        else -> if (advancedRulesOpen) 9 else 13
+        else -> if (advancedRulesOpen) 9 else 14
     }
 
     private fun adjustEditor(dir: Int) {
@@ -3674,6 +3692,7 @@ class PhotoTvView(
                     updateRemoteServer()
                     if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
                 }
+                14 -> onSettingsPin()
             }
         }
         scheduleSlideshow()
@@ -3765,6 +3784,7 @@ class PhotoTvView(
                             updateRemoteServer()
                             if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
                         }
+                        14 -> onSettingsPin()
                         else -> adjustSettings(1)
                     }
                 }
@@ -4461,6 +4481,10 @@ class PhotoTvView(
                     }
                 }
             } else when {
+                x in 498f..590f && y in 77f..125f -> {
+                    settingsControl = 14
+                    onSettingsPin()
+                }
                 x in 605f..810f && y in 77f..125f -> {
                     settingsControl = 13
                     remoteEnabled = !remoteEnabled
@@ -4571,7 +4595,12 @@ class PhotoTvView(
         }
 
         if (y >= 638f && x >= 218f && x <= 1090f) {
-            page = ((x - 218f) / 218f).toInt().coerceIn(0, 3)
+            val target = ((x - 218f) / 218f).toInt().coerceIn(0, 3)
+            if (target == 3 && !canOpenSettings()) {
+                onUnlockSettings()
+                return true
+            }
+            page = target
             navFocus = false
             editorMoveMode = false
             invalidate()
