@@ -318,6 +318,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
+            bash -lc '
             set -euo pipefail
             adb shell wm size ${{ matrix.resolution }}
             adb install -r Photo-TV.apk
@@ -341,6 +342,7 @@ jobs:
             print(f"Verified {actual[0]}x{actual[1]}")
             PY
             adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime.*fr.wokgui.phototv" && exit 1 || true
+            '
 
       - name: Upload ${{ matrix.label }} screenshot
         if: always()
