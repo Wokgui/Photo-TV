@@ -60,6 +60,25 @@ object SourceStore {
 
     fun load(context: Context): PhotoSourceSpec? = loadAll(context).firstOrNull()
 
+    fun describe(context: Context): List<String> =
+        loadAll(context).map { source ->
+            when (source) {
+                is PhotoSourceSpec.Tree -> {
+                    val decoded = Uri.decode(source.uri.lastPathSegment.orEmpty())
+                    val name = decoded.substringAfterLast(':').substringAfterLast('/').ifBlank { "Dossier" }
+                    (if (source.exactMode) "Takeout • " else "Dossier • ") + name
+                }
+                is PhotoSourceSpec.Picked -> "Sélection de photos • " + source.uris.size + " fichier(s)"
+            }
+        }
+
+    fun removeAt(context: Context, index: Int) {
+        val current = loadAll(context).toMutableList()
+        if (index !in current.indices) return
+        current.removeAt(index)
+        saveAll(context, current)
+    }
+
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .remove(KEY_SOURCES_V2)
