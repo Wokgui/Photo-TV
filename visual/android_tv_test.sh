@@ -67,7 +67,16 @@ assert_foreground() {
 }
 
 key() {
-  adb shell input keyevent "$1"
+  local code="$1"
+  case "$code" in
+    KEYCODE_DPAD_UP) code=19 ;;
+    KEYCODE_DPAD_DOWN) code=20 ;;
+    KEYCODE_DPAD_LEFT) code=21 ;;
+    KEYCODE_DPAD_RIGHT) code=22 ;;
+    KEYCODE_DPAD_CENTER|KEYCODE_ENTER) code=23 ;;
+    KEYCODE_BACK) code=4 ;;
+  esac
+  adb shell input keyevent "$code"
   sleep 0.25
   assert_foreground
 }
@@ -81,7 +90,7 @@ repeat_key() {
 }
 
 long_center() {
-  adb shell input keyevent --longpress KEYCODE_DPAD_CENTER
+  adb shell input keyevent --longpress 23
   sleep 0.45
   assert_foreground
 }
