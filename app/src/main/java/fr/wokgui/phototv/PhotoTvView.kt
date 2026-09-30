@@ -155,6 +155,7 @@ class PhotoTvView(
     private var inactivityToken = 0L
     private var editorMoveMode = false
     private var longActionLatched = false
+    private var touchDraggingEditor = false
     private var layoutPreset = 0
     private var albumSearch = ""
     private var albumSort = 0
@@ -2895,7 +2896,7 @@ class PhotoTvView(
     }
 
     private fun handleEditorTap(x: Float, y: Float) {
-        val visibleCount = 6
+        val visibleCount = 5
         val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
 
         if (x in 32f..352f && y in 120f..642f) {
@@ -3131,11 +3132,40 @@ class PhotoTvView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action != MotionEvent.ACTION_UP) return true
         markInteraction()
 
-        val x = event.x / (width / 1280f)
-        val y = event.y / (height / 720f)
+        val sx = if (width > 0) width / 1280f else 1f
+        val sy = if (height > 0) height / 720f else 1f
+        val x = event.x / sx
+        val y = event.y / sy
+
+        if (page == 2 && !slideshow && !quickMenuVisible && !infoPanelVisible) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (x in 370f..918f && y in 64f..638f) {
+                        touchDraggingEditor = true
+                        editorColumn = 1
+                        moveSelectedEditorElementTo(x, y)
+                        invalidate()
+                        return true
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> if (touchDraggingEditor) {
+                    moveSelectedEditorElementTo(x, y)
+                    invalidate()
+                    return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (touchDraggingEditor) {
+                    moveSelectedEditorElementTo(x, y)
+                    touchDraggingEditor = false
+                    savePrefs()
+                    invalidate()
+                    return true
+                }
+            }
+        }
+
+        if (event.actionMasked != MotionEvent.ACTION_UP) return true
 
         if (quickMenuVisible) {
             if (x in 855f..1225f && y in 241f..476f) {
@@ -3183,6 +3213,16 @@ class PhotoTvView(
         }
 
         return true
+    }
+
+    private fun moveSelectedEditorElementTo(x: Float, y: Float) {
+        val st = styles[editorElement]
+        st.x = (((x - 370f) / 548f) * 100f).coerceIn(0f, 100f)
+        st.y = (((y - 64f) / 574f) * 100f).coerceIn(0f, 100f)
+        if (gridSnap) {
+            st.x = snapPercent(st.x)
+            st.y = snapPercent(st.y)
+        }
     }
 
     override fun onDetachedFromWindow() {
