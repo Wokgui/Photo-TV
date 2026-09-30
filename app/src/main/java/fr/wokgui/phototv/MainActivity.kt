@@ -121,6 +121,12 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
+        getSharedPreferences("photo_tv_network_settings", MODE_PRIVATE).let { prefs ->
+            val cacheMb = prefs.getInt("cache_mb", 512)
+            val ttlHours = prefs.getInt("ttl_hours", 24)
+            networkRefreshMinutes = prefs.getInt("refresh_minutes", 15).coerceAtLeast(5)
+            NetworkLibrary.configureCache(cacheMb, ttlHours)
+        }
         if (automationMode) {
             ui.setAutomationPage(intent.getIntExtra("phototv_test_page", 0))
         } else {
