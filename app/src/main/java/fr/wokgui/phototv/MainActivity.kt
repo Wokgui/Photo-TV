@@ -184,29 +184,68 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestNetworkSource() {
-        val labels = arrayOf("WebDAV", "SMB / NAS")
+        val saved = NetworkSourceStore.list(this)
+        val labels = buildList {
+            saved.forEach { add("↻ " + it.label) }
+            add("＋ Ajouter WebDAV")
+            add("＋ Ajouter SMB / NAS")
+            if (saved.isNotEmpty()) add("Supprimer une source enregistrée")
+        }.toTypedArray()
+
         AlertDialog.Builder(this)
-            .setTitle("Source réseau")
+            .setTitle("Sources réseau")
             .setItems(labels) { _, which ->
-                val kind = if (which == 0) NetworkLibrary.Kind.WEBDAV else NetworkLibrary.Kind.SMB
-                requestNetworkCredentials(kind)
+                when {
+                    which < saved.size -> {
+                        val source = saved[which]
+                        requestNetworkCredentials(
+                            kind = source.kind,
+                            initialUrl = source.baseUrl,
+                            initialUser = source.username
+                        )
+                    }
+                    which == saved.size -> requestNetworkCredentials(NetworkLibrary.Kind.WEBDAV)
+                    which == saved.size + 1 -> requestNetworkCredentials(NetworkLibrary.Kind.SMB)
+                    else -> deleteSavedNetworkSource()
+                }
             }
             .setNegativeButton("Annuler", null)
             .show()
     }
 
-    private fun requestNetworkCredentials(kind: NetworkLibrary.Kind) {
+    private fun deleteSavedNetworkSource() {
+        val saved = NetworkSourceStore.list(this)
+        if (saved.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Supprimer une source")
+            .setItems(saved.map { it.label }.toTypedArray()) { _, which ->
+                saved.getOrNull(which)?.let { source ->
+                    NetworkSourceStore.delete(this, source.id)
+                    Toast.makeText(this, "Source supprimée", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun requestNetworkCredentials(
+        kind: NetworkLibrary.Kind,
+        initialUrl: String = "",
+        initialUser: String = ""
+    ) {
         val url = EditText(this).apply {
             hint = if (kind == NetworkLibrary.Kind.WEBDAV) {
                 "https://nas.exemple/photos/"
             } else {
                 "smb://192.168.1.20/photos/"
             }
+            setText(initialUrl)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine(true)
         }
         val user = EditText(this).apply {
             hint = "Utilisateur (facultatif)"
+            setText(initialUser)
             inputType = InputType.TYPE_CLASS_TEXT
             setSingleLine(true)
         }
@@ -250,6 +289,12 @@ class MainActivity : AppCompatActivity() {
                                 ui.showLoading("")
                                 Toast.makeText(this, "Aucune photo compatible trouvée", Toast.LENGTH_LONG).show()
                             } else {
+                                NetworkSourceStore.upsert(
+                                    context = this,
+                                    kind = kind,
+                                    baseUrl = address,
+                                    username = user.text?.toString().orEmpty()
+                                )
                                 ui.setLibrary(
                                     items,
                                     exactAlbums = false,
