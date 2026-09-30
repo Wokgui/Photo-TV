@@ -1095,6 +1095,23 @@ class PhotoTvView(
 
         text(c, "Ombre", x + 16f, y + 478f, 12f, Color.WHITE)
         drawToggle(c, x + 205f, y + 464f, s.shadow, editorControl == 7 && editorColumn == 2 && !navFocus)
+
+        val actionY = y + 520f
+        val actionW = 62f
+        val actionGap = 5f
+        val actions = listOf("↶", "↷", "Réinit.", "Tout")
+        actions.forEachIndexed { i, label ->
+            val ax = x + 16f + i * (actionW + actionGap)
+            controlBox(
+                c,
+                ax,
+                actionY,
+                actionW,
+                34f,
+                label,
+                editorControl == 8 + i && editorColumn == 2 && !navFocus
+            )
+        }
     }
 
     private fun currentTextForElement(): String =
@@ -1539,6 +1556,7 @@ class PhotoTvView(
         listOf("Standard", "Minimal", "Cinéma", "Horloge")[i.coerceIn(0, 3)]
 
     private fun applyPreset(index: Int) {
+        recordEditorState()
         layoutPreset = index.coerceIn(0, 3)
         when (layoutPreset) {
             1 -> {
@@ -2508,7 +2526,7 @@ class PhotoTvView(
                 } else if (editorColumn == 0) {
                     editorElement = (editorElement + dir).coerceIn(0, elementNames.lastIndex)
                 } else if (editorColumn == 2) {
-                    editorControl = (editorControl + dir).coerceIn(0, 7)
+                    editorControl = (editorControl + dir).coerceIn(0, 11)
                 } else if (dir > 0) {
                     navFocus = true
                 }
@@ -2571,6 +2589,8 @@ class PhotoTvView(
     }
 
     private fun moveEditorByPixels(dx: Int, dy: Int) {
+        if (dx == 0 && dy == 0) return
+        recordEditorState()
         val st = styles[editorElement]
         if (dx != 0) {
             st.x = (st.x + dx * (100f / 1280f)).coerceIn(0f, 100f)
@@ -2601,6 +2621,8 @@ class PhotoTvView(
     }
 
     private fun adjustEditor(dir: Int) {
+        if (editorControl !in 1..6) return
+        recordEditorState()
         val s = styles[editorElement]
         when (editorControl) {
             1 -> s.font = (s.font + dir + 4) % 4
@@ -2819,6 +2841,7 @@ class PhotoTvView(
     }
 
     private fun toggleElement(i: Int) {
+        recordEditorState()
         when (i) {
             2 -> showDate = !showDate
             3 -> showTime = !showTime
