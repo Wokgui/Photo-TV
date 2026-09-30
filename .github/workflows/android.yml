@@ -13,6 +13,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PHOTO_TV_RELEASE_KEYSTORE_B64: ${{ secrets.PHOTO_TV_RELEASE_KEYSTORE_B64 }}
+      PHOTO_TV_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_TV_RELEASE_STORE_PASSWORD }}
+      PHOTO_TV_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_TV_RELEASE_KEY_ALIAS }}
+      PHOTO_TV_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_TV_RELEASE_KEY_PASSWORD }}
+      PHOTO_TV_RELEASE_CERT_SHA256: ${{ secrets.PHOTO_TV_RELEASE_CERT_SHA256 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,6 +40,25 @@ jobs:
           python3 -m pip install --disable-pip-version-check --quiet cryptography
           python3 tools/generate_stable_signer.py build-keys/photo-tv-stable.p12
           keytool -list -v -storetype PKCS12             -keystore build-keys/photo-tv-stable.p12             -storepass phototv-stable             -alias phototv | grep -E "SHA256|Owner|Valid from" || true
+
+      - name: Prepare secure release signer when configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          if [ -n "${PHOTO_TV_RELEASE_KEYSTORE_B64:-}" ] &&
+             [ -n "${PHOTO_TV_RELEASE_STORE_PASSWORD:-}" ] &&
+             [ -n "${PHOTO_TV_RELEASE_KEY_ALIAS:-}" ] &&
+             [ -n "${PHOTO_TV_RELEASE_KEY_PASSWORD:-}" ]; then
+            mkdir -p build-keys
+            printf '%s' "$PHOTO_TV_RELEASE_KEYSTORE_B64" | base64 --decode > build-keys/photo-tv-release.keystore
+            echo "PHOTO_TV_RELEASE_KEYSTORE_PATH=$PWD/build-keys/photo-tv-release.keystore" >> "$GITHUB_ENV"
+            echo "PHOTO_TV_BUILD_VARIANT=release" >> "$GITHUB_ENV"
+            echo "secure release signer configured"
+          else
+            echo "PHOTO_TV_BUILD_VARIANT=debug" >> "$GITHUB_ENV"
+            echo "secure release signer not configured; using stable development signer"
+          fi
 
       - name: Verify web preview
         shell: bash
@@ -128,31 +153,57 @@ jobs:
       - name: Run JVM tests
         run: gradle --no-daemon --stacktrace testDebugUnitTest
 
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
-
-      - name: Verify stable APK signature
+      - name: Build APK
         shell: bash
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee stable-signature.txt
-          EXPECTED="8480f37e2123c7c93ada4dbedef25e0f0f80ec689575c9e75ddc174c43c62d06"
-          ACTUAL="$(sed -n -E 's/^.*certificate SHA-256 digest: //p' stable-signature.txt | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ': ')"
-          test "$ACTUAL" = "$EXPECTED" || {
-            echo "Unexpected signer: $ACTUAL" >&2
-            exit 1
-          }
+          if [ "${PHOTO_TV_BUILD_VARIANT:-debug}" = "release" ]; then
+            gradle --no-daemon --stacktrace assembleRelease
+          else
+            gradle --no-daemon --stacktrace assembleDebug
+          fi
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Photo-TV.apk
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ "${PHOTO_TV_BUILD_VARIANT:-debug}" = "release" ]; then
+            APK="app/build/outputs/apk/release/app-release.apk"
+            MODE="secure-release"
+          else
+            APK="app/build/outputs/apk/debug/app-debug.apk"
+            MODE="stable-development"
+          fi
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signature.txt
+          ACTUAL="$(sed -n -E 's/^.*certificate SHA-256 digest: //p' signature.txt | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ': ')"
+          test -n "$ACTUAL"
+
+          if [ "$MODE" = "stable-development" ]; then
+            EXPECTED="8480f37e2123c7c93ada4dbedef25e0f0f80ec689575c9e75ddc174c43c62d06"
+            test "$ACTUAL" = "$EXPECTED" || {
+              echo "Unexpected stable development signer: $ACTUAL" >&2
+              exit 1
+            }
+          elif [ -n "${PHOTO_TV_RELEASE_CERT_SHA256:-}" ]; then
+            EXPECTED="$(printf '%s' "$PHOTO_TV_RELEASE_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ': ')"
+            test "$ACTUAL" = "$EXPECTED" || {
+              echo "Unexpected secure release signer: $ACTUAL" >&2
+              exit 1
+            }
+          fi
+
+          printf 'mode=%s\ncertificate_sha256=%s\n' "$MODE" "$ACTUAL" > signing-mode.txt
+          cp "$APK" Photo-TV.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Photo-TV-APK
-          path: Photo-TV.apk
+          path: |
+            Photo-TV.apk
+            signing-mode.txt
           if-no-files-found: error
           retention-days: 30
 
