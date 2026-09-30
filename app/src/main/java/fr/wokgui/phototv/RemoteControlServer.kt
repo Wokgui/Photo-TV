@@ -12,9 +12,18 @@ import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.concurrent.Executors
 
+data class RemoteControlState(
+    val title: String,
+    val album: String,
+    val slideshow: Boolean,
+    val paused: Boolean,
+    val durationSeconds: Int
+)
+
 class RemoteControlServer(
     private val port: Int = 8765,
     private val token: String,
+    private val stateProvider: () -> RemoteControlState,
     private val onCommand: (String) -> Unit
 ) {
     private val executor = Executors.newCachedThreadPool()
@@ -62,9 +71,15 @@ class RemoteControlServer(
             val path = target.substringBefore('?')
             val params = parseQuery(target.substringAfter('?', ""))
             if (params["t"] != token) { respond(s, 403, "text/plain; charset=utf-8", "Accès refusé"); return }
+            if (path == "/status") {
+                val st = stateProvider()
+                val json = """{"title":"${jsonEscape(st.title)}","album":"${jsonEscape(st.album)}","slideshow":${st.slideshow},"paused":${st.paused},"duration":${st.durationSeconds}}"""
+                respond(s, 200, "application/json; charset=utf-8", json)
+                return
+            }
             if (path == "/action") {
                 val cmd = params["cmd"].orEmpty()
-                if (cmd in setOf("prev", "next", "pause", "favorite", "hide")) {
+                if (cmd in setOf("prev", "next", "pause", "favorite", "hide", "duration_down", "duration_up")) {
                     onCommand(cmd)
                     respond(s, 200, "application/json; charset=utf-8", "{\"ok\":true}")
                 } else respond(s, 400, "application/json; charset=utf-8", "{\"ok\":false}")
@@ -85,8 +100,17 @@ button.wide{grid-column:1/-1}small{display:block;margin-top:18px;color:#9fb3c8}
 <button onclick="send('prev')">◀ Précédente</button><button onclick="send('next')">Suivante ▶</button>
 <button class="wide" onclick="send('pause')">Pause / reprise</button>
 <button onclick="send('favorite')">★ Favori</button><button onclick="send('hide')">Masquer</button>
+<button onclick="send('duration_down')">− Durée</button><button onclick="send('duration_up')">+ Durée</button>
+<div class="wide" id="status" style="grid-column:1/-1;background:#0d2134;border-radius:14px;padding:16px"></div>
 </div><small>Réseau local uniquement. Le lien secret est affiché dans Photo TV.</small>
-<script>const t=new URLSearchParams(location.search).get('t');function send(cmd){fetch('/action?t='+encodeURIComponent(t)+'&cmd='+encodeURIComponent(cmd)).catch(()=>{});}</script>
+<script>
+const t=new URLSearchParams(location.search).get('t');
+function send(cmd){fetch('/action?t='+encodeURIComponent(t)+'&cmd='+encodeURIComponent(cmd)).then(refresh).catch(()=>{});}
+function refresh(){fetch('/status?t='+encodeURIComponent(t)).then(r=>r.json()).then(s=>{
+document.getElementById('status').textContent=s.title+' • '+s.album+' • '+s.duration+' s'+(s.paused?' • pause':'');
+}).catch(()=>{});}
+refresh();setInterval(refresh,2000);
+</script>
 </main></body></html>
 """.trimIndent()
 
@@ -102,6 +126,9 @@ button.wide{grid-column:1/-1}small{display:block;margin-top:18px;color:#9fb3c8}
         socket.getOutputStream().write(bytes)
         socket.getOutputStream().flush()
     }
+
+    private fun jsonEscape(value: String): String =
+        value.replace("\\", "\\\\").replace(""", "\\"").replace("\n", " ")
 
     private fun parseQuery(raw: String): Map<String, String> = raw.split('&').mapNotNull {
         if (it.isBlank()) return@mapNotNull null
