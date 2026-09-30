@@ -59,8 +59,8 @@ assert_foreground() {
 }
 
 key() {
-  adb shell input dpad keyevent "$1"
-  sleep 0.3
+  adb shell input keyevent "$1"
+  sleep 0.35
   assert_foreground
 }
 
@@ -89,7 +89,7 @@ assert_state "page=1"
 start_page 2
 key 22
 assert_state "editorColumn=1"
-adb shell input dpad keyevent --longpress KEYCODE_DPAD_CENTER || true
+adb shell input keyevent --longpress KEYCODE_DPAD_CENTER || true
 sleep 0.4
 assert_foreground
 assert_state "editorMoveMode=true"
