@@ -2249,56 +2249,55 @@ class PhotoTvView(
     }
 
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
-        text(c, "Règles par album", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        controlBox(c, x + w - 190f, y + 10f, 165f, 38f, "Retour avancés", settingsColumn == 1 && settingsControl == 8 && !navFocus)
-        val albums = albumPairs()
-        if (albums.isEmpty()) {
-            text(c, "Chargez d'abord une photothèque.", x + 22f, y + 85f, 14f, Color.rgb(174, 188, 205))
+        text(c, if (rulesBySource) "Règles par source" else "Règles par album", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        controlBox(c, x + w - 385f, y + 10f, 175f, 38f, if (rulesBySource) "Voir albums" else "Voir sources", settingsColumn == 1 && settingsControl == 9 && !navFocus)
+        controlBox(c, x + w - 195f, y + 10f, 170f, 38f, "Retour avancés", settingsColumn == 1 && settingsControl == 8 && !navFocus)
+
+        if (rulesBySource) {
+            val sources = sourceLabels()
+            if (sources.isEmpty()) {
+                text(c, "Chargez d’abord une photothèque.", x + 22f, y + 85f, 14f, Color.rgb(174, 188, 205))
+                return
+            }
+            ruleSourceIndex = ruleSourceIndex.coerceIn(0, sources.lastIndex)
+            val source = sources[ruleSourceIndex]
+            val rule = sourceRules.getOrPut(source) { SourceRule() }
+            val seasons = listOf("Toute l’année", "Hiver", "Printemps", "Été", "Automne")
+            settingsChoice(c, "Source", source, x, y + 55f, 0)
+            settingsToggle(c, "Activer une règle pour cette source", rule.enabled, x, y + 113f, 1)
+            settingsChoice(c, "Saison", seasons[rule.seasonMode.coerceIn(0, 4)], x, y + 171f, 2)
+            settingsChoice(c, "À partir de", "%02d:00".format(rule.startHour), x, y + 229f, 3)
+            settingsChoice(c, "Jusqu’à", if (rule.endHour == 24) "24:00" else "%02d:00".format(rule.endHour), x, y + 287f, 4)
+            settingsChoice(c, "Durée par photo", if (rule.durationSeconds <= 0) "Réglage global" else rule.durationSeconds.toString() + " s", x, y + 345f, 5)
+            settingsChoice(c, "Transition", if (rule.transitionIndex < 0) "Réglage global" else transitions[rule.transitionIndex], x, y + 403f, 6)
+            settingsToggle(c, "Afficher les métadonnées", rule.showMetadata, x, y + 461f, 7)
+            text(c, "La saison et la plage horaire peuvent limiter automatiquement cette source.", x + 22f, y + 528f, 10.5f, Color.rgb(128, 151, 178))
             return
         }
 
+        val albums = albumPairs()
+        if (albums.isEmpty()) {
+            text(c, "Chargez d’abord une photothèque.", x + 22f, y + 85f, 14f, Color.rgb(174, 188, 205))
+            return
+        }
         ruleAlbumIndex = ruleAlbumIndex.coerceIn(0, albums.lastIndex)
         val albumName = albums[ruleAlbumIndex].first
         val rule = albumRules.getOrPut(albumName) { AlbumRule() }
-
         settingsChoice(c, "Album", albumName, x, y + 55f, 0)
         settingsToggle(c, "Activer une règle pour cet album", rule.enabled, x, y + 113f, 1)
         settingsSegment(c, "Jours", listOf("Tous", "Semaine", "Week-end"), rule.daysMode, x, y + 171f, 2)
         settingsChoice(c, "À partir de", "%02d:00".format(rule.startHour), x, y + 229f, 3)
-        settingsChoice(c, "Jusqu'à", if (rule.endHour == 24) "24:00" else "%02d:00".format(rule.endHour), x, y + 287f, 4)
-        settingsChoice(
-            c,
-            "Durée par photo",
-            if (rule.durationSeconds <= 0) "Réglage global" else "${rule.durationSeconds} s",
-            x,
-            y + 345f,
-            5
-        )
-        settingsChoice(
-            c,
-            "Transition",
-            if (rule.transitionIndex < 0) "Réglage global" else transitions[rule.transitionIndex],
-            x,
-            y + 403f,
-            6
-        )
+        settingsChoice(c, "Jusqu’à", if (rule.endHour == 24) "24:00" else "%02d:00".format(rule.endHour), x, y + 287f, 4)
+        settingsChoice(c, "Durée par photo", if (rule.durationSeconds <= 0) "Réglage global" else rule.durationSeconds.toString() + " s", x, y + 345f, 5)
+        settingsChoice(c, "Transition", if (rule.transitionIndex < 0) "Réglage global" else transitions[rule.transitionIndex], x, y + 403f, 6)
         settingsToggle(c, "Afficher les métadonnées", rule.showMetadata, x, y + 461f, 7)
-
-        text(
-            c,
-            "Une photo présente dans plusieurs albums reste visible si au moins une règle autorise son affichage.",
-            x + 22f,
-            y + 528f,
-            10.5f,
-            Color.rgb(128, 151, 178)
-        )
+        text(c, "Une photo multi-albums reste visible si au moins une règle autorise son affichage.", x + 22f, y + 528f, 10.5f, Color.rgb(128, 151, 178))
     }
-
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         controlBox(c, x + 225f, y + 8f, 205f, 38f, if (remoteEnabled) "Télécommande : ON" else "Télécommande : OFF", settingsColumn == 1 && settingsControl == 13 && !navFocus)
         controlBox(c, x + 445f, y + 8f, 205f, 38f, if (interactionDiagnostics) "Zones : ON" else "Zones : OFF", settingsColumn == 1 && settingsControl == 12 && !navFocus)
-        controlBox(c, x + 665f, y + 8f, 190f, 38f, "Règles par album", settingsColumn == 1 && settingsControl == 11 && !navFocus)
+        controlBox(c, x + 665f, y + 8f, 190f, 38f, "Règles albums/sources", settingsColumn == 1 && settingsControl == 11 && !navFocus)
         settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 50f, 0)
         settingsToggle(c, "Grille et magnétisme de l'éditeur", gridSnap, x, y + 103f, 1)
         settingsToggle(c, "Protection OLED (micro-déplacement)", oledProtection, x, y + 156f, 2)
@@ -3506,7 +3505,7 @@ class PhotoTvView(
         4 -> 9
         5 -> 2
         6 -> 7
-        else -> if (advancedRulesOpen) 8 else 13
+        else -> if (advancedRulesOpen) 9 else 13
     }
 
     private fun adjustEditor(dir: Int) {
@@ -3529,19 +3528,60 @@ class PhotoTvView(
     }
 
     private fun adjustAlbumRule(dir: Int) {
-        val albums = albumPairs()
-        if (albums.isEmpty()) return
-
         if (settingsControl == 8) {
             advancedRulesOpen = false
             settingsControl = 0
             return
         }
+        if (settingsControl == 9) {
+            rulesBySource = !rulesBySource
+            settingsControl = 0
+            return
+        }
+
+        if (rulesBySource) {
+            val sources = sourceLabels()
+            if (sources.isEmpty()) return
+            if (settingsControl == 0) {
+                ruleSourceIndex = (ruleSourceIndex + dir + sources.size) % sources.size
+                return
+            }
+            val sourceName = sources[ruleSourceIndex.coerceIn(0, sources.lastIndex)]
+            val rule = sourceRules.getOrPut(sourceName) { SourceRule() }
+            when (settingsControl) {
+                1 -> rule.enabled = !rule.enabled
+                2 -> rule.seasonMode = (rule.seasonMode + dir + 5) % 5
+                3 -> rule.startHour = (rule.startHour + dir + 24) % 24
+                4 -> {
+                    var next = rule.endHour + dir
+                    if (next < 1) next = 24
+                    if (next > 24) next = 1
+                    rule.endHour = next
+                }
+                5 -> {
+                    rule.durationSeconds = if (dir > 0) {
+                        if (rule.durationSeconds == 0) 5 else (rule.durationSeconds + 5).coerceAtMost(120)
+                    } else {
+                        if (rule.durationSeconds <= 5) 0 else rule.durationSeconds - 5
+                    }
+                }
+                6 -> {
+                    val size = transitions.size + 1
+                    var encoded = rule.transitionIndex + 1
+                    encoded = (encoded + dir + size) % size
+                    rule.transitionIndex = encoded - 1
+                }
+                7 -> rule.showMetadata = !rule.showMetadata
+            }
+            return
+        }
+
+        val albums = albumPairs()
+        if (albums.isEmpty()) return
         if (settingsControl == 0) {
             ruleAlbumIndex = (ruleAlbumIndex + dir + albums.size) % albums.size
             return
         }
-
         val albumName = albums[ruleAlbumIndex.coerceIn(0, albums.lastIndex)].first
         val rule = albumRules.getOrPut(albumName) { AlbumRule() }
         when (settingsControl) {
@@ -3555,10 +3595,10 @@ class PhotoTvView(
                 rule.endHour = next
             }
             5 -> {
-                if (dir > 0) {
-                    rule.durationSeconds = if (rule.durationSeconds == 0) 5 else (rule.durationSeconds + 5).coerceAtMost(120)
+                rule.durationSeconds = if (dir > 0) {
+                    if (rule.durationSeconds == 0) 5 else (rule.durationSeconds + 5).coerceAtMost(120)
                 } else {
-                    rule.durationSeconds = if (rule.durationSeconds <= 5) 0 else rule.durationSeconds - 5
+                    if (rule.durationSeconds <= 5) 0 else rule.durationSeconds - 5
                 }
             }
             6 -> {
@@ -3570,7 +3610,6 @@ class PhotoTvView(
             7 -> rule.showMetadata = !rule.showMetadata
         }
     }
-
     private fun adjustSettings(dir: Int) {
         when (settingsCategory) {
             0 -> when (settingsControl) {
@@ -3710,10 +3749,7 @@ class PhotoTvView(
                         7 -> onNetworkSource()
                     }
                     7 -> if (advancedRulesOpen) {
-                        if (settingsControl == 8) {
-                            advancedRulesOpen = false
-                            settingsControl = 0
-                        } else adjustAlbumRule(1)
+                        adjustAlbumRule(1)
                     } else when (settingsControl) {
                         8 -> onExportSettings()
                         9 -> onImportSettings()
@@ -4368,13 +4404,21 @@ class PhotoTvView(
             }
 
             7 -> if (advancedRulesOpen) {
-                if (x >= 1030f && y in 75f..125f) {
-                    advancedRulesOpen = false
-                    settingsControl = 0
-                } else {
-                    val control = (((y - 120f) / 58f).toInt()).coerceIn(0, 7)
-                    settingsControl = control
-                    adjustAlbumRule(1)
+                when {
+                    x in 855f..1045f && y in 75f..125f -> {
+                        settingsControl = 9
+                        rulesBySource = !rulesBySource
+                        settingsControl = 0
+                    }
+                    x >= 1045f && y in 75f..125f -> {
+                        advancedRulesOpen = false
+                        settingsControl = 0
+                    }
+                    else -> {
+                        val control = (((y - 120f) / 58f).toInt()).coerceIn(0, 7)
+                        settingsControl = control
+                        adjustAlbumRule(1)
+                    }
                 }
             } else when {
                 x in 605f..810f && y in 77f..125f -> {
