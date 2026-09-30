@@ -79,8 +79,6 @@ assert_state "page=1 navFocus=true"
 # Photos: album row navigation and OK.
 start_page 1
 key 20
-assert_state "page=1"
-key 20
 assert_state "photosRow=1"
 key 22
 assert_state "page=1"
@@ -91,15 +89,19 @@ assert_state "page=1"
 start_page 2
 key 22
 assert_state "editorColumn=1"
-key 22
-assert_state "page=2"
-key 20
-assert_state "page=2"
-key 23
-assert_state "page=2"
 adb shell input keyevent --longpress 23 || true
 sleep 0.4
 assert_foreground
+assert_state "editorMoveMode=true"
+
+start_page 2
+key 22
+assert_state "editorColumn=1"
+key 22
+assert_state "editorColumn=2"
+key 20
+assert_state "editorControl=1"
+key 23
 assert_state "page=2"
 
 # Settings: enter panel, move control, activate, Back.
@@ -115,7 +117,9 @@ assert_state "page=0"
 
 # Reinstall the same signed APK in-place. This catches signer instability immediately.
 adb install -r "$APK"
-assert_foreground || true
+start_page 0
+assert_foreground
+assert_state "page=0"
 
 # No crash/fatal exception from our package during the navigation run.
 if adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime" | grep -Fq "$PACKAGE"; then
