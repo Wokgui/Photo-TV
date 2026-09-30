@@ -26,7 +26,8 @@ data class PhotoItem(
     val width: Int = 0,
     val height: Int = 0,
     val mediaType: String = "image",
-    val sourceCopies: Int = 1
+    val sourceCopies: Int = 1,
+    val sourceId: String = ""
 ) {
     val album: String
         get() = albums.firstOrNull() ?: "Album"
