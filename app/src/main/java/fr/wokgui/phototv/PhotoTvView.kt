@@ -723,8 +723,9 @@ class PhotoTvView(
     fun automationStateDescription(): String =
         "PhotoTV page=$page navFocus=$navFocus photosRow=$photosRow sourceFocus=$sourceFocus " +
             "albumFocus=$albumFocus photoFocus=$photoFocus editorColumn=$editorColumn " +
-            "editorElement=$editorElement editorControl=$editorControl settingsCategory=$settingsCategory " +
-            "settingsColumn=$settingsColumn settingsControl=$settingsControl slideshow=$slideshow paused=$paused"
+            "editorElement=$editorElement editorControl=$editorControl editorMoveMode=$editorMoveMode " +
+            "settingsCategory=$settingsCategory settingsColumn=$settingsColumn settingsControl=$settingsControl " +
+            "slideshow=$slideshow paused=$paused quickMenu=$quickMenuVisible"
 
     fun setLibrary(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String = if (exactAlbums) "Google Photos / Takeout" else "Sélection") {
         synchronized(bitmapCache) {
