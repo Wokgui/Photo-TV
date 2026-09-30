@@ -9,6 +9,26 @@ android {
         versionCode=7
         versionName="0.7"
     }
+    signingConfigs {
+        create("stableDevelopment") {
+            val stableStore = rootProject.file("build-keys/photo-tv-stable.p12")
+            if (stableStore.exists()) {
+                storeFile = stableStore
+                storePassword = "phototv-stable"
+                keyAlias = "phototv"
+                keyPassword = "phototv-stable"
+                storeType = "PKCS12"
+            }
+        }
+    }
+    buildTypes {
+        getByName("debug") {
+            val stableStore = rootProject.file("build-keys/photo-tv-stable.p12")
+            if (stableStore.exists()) {
+                signingConfig = signingConfigs.getByName("stableDevelopment")
+            }
+        }
+    }
     compileOptions {
         sourceCompatibility=JavaVersion.VERSION_17
         targetCompatibility=JavaVersion.VERSION_17
