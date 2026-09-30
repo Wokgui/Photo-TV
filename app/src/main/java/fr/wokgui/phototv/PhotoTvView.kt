@@ -79,6 +79,16 @@ class PhotoTvView(
         var showMetadata: Boolean = true
     )
 
+    private data class SourceRule(
+        var enabled: Boolean = false,
+        var seasonMode: Int = 0,
+        var startHour: Int = 0,
+        var endHour: Int = 24,
+        var durationSeconds: Int = 0,
+        var transitionIndex: Int = -1,
+        var showMetadata: Boolean = true
+    )
+
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -228,8 +238,11 @@ class PhotoTvView(
     private var remoteQrBitmap: Bitmap? = null
     private var remoteQrUrl = ""
     private var ruleAlbumIndex = 0
+    private var ruleSourceIndex = 0
+    private var rulesBySource = false
     private var advancedRulesOpen = false
     private val albumRules = linkedMapOf<String, AlbumRule>()
+    private val sourceRules = linkedMapOf<String, SourceRule>()
 
     private val transitions = listOf(
         "Fondu", "Glissement", "Zoom", "Ken Burns", "Dissolution", "Cube 3D",
@@ -330,6 +343,7 @@ class PhotoTvView(
         }
         interactionDiagnostics = prefs.getBoolean("interaction_diagnostics", false)
         restoreAlbumRules(prefs.getString("album_rules", null))
+        restoreSourceRules(prefs.getString("source_rules", null))
         favoritesOnly = prefs.getBoolean("favorites_only", false)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         hiddenAlbums.addAll(prefs.getStringSet("hidden_albums", emptySet()) ?: emptySet())
@@ -398,6 +412,7 @@ class PhotoTvView(
             putString("remote_token", remoteToken)
             putBoolean("interaction_diagnostics", interactionDiagnostics)
             putString("album_rules", albumRulesJson().toString())
+            putString("source_rules", sourceRulesJson().toString())
             putBoolean("favorites_only", favoritesOnly)
             putStringSet("favorites", HashSet(favorites))
             putStringSet("hidden_albums", HashSet(hiddenAlbums))
@@ -597,6 +612,7 @@ class PhotoTvView(
         root.put("albumSort", albumSort)
         root.put("videoSound", videoSound)
         root.put("albumRules", albumRulesJson())
+        root.put("sourceRules", sourceRulesJson())
         root.put("networkSources", NetworkSourceStore.exportJson(context))
         val networkPrefs = context.getSharedPreferences("photo_tv_network_settings", Context.MODE_PRIVATE)
         root.put("networkCacheMb", networkPrefs.getInt("cache_mb", 512))
@@ -679,6 +695,11 @@ class PhotoTvView(
                 .putInt("refresh_minutes", importedRefresh)
                 .apply()
             NetworkLibrary.configureCache(importedCacheMb, importedTtl)
+
+            root.optJSONObject("sourceRules")?.let {
+                sourceRules.clear()
+                restoreSourceRules(it.toString())
+            }
 
             root.optJSONObject("albumRules")?.let {
                 albumRules.clear()
@@ -765,6 +786,91 @@ class PhotoTvView(
         }
     }
 
+    private fun sourceRulesJson(): JSONObject {
+        val root = JSONObject()
+        sourceRules.forEach { (name, rule) ->
+            root.put(
+                name,
+                JSONObject()
+                    .put("enabled", rule.enabled)
+                    .put("seasonMode", rule.seasonMode)
+                    .put("startHour", rule.startHour)
+                    .put("endHour", rule.endHour)
+                    .put("durationSeconds", rule.durationSeconds)
+                    .put("transitionIndex", rule.transitionIndex)
+                    .put("showMetadata", rule.showMetadata)
+            )
+        }
+        return root
+    }
+
+    private fun restoreSourceRules(raw: String?) {
+        if (raw.isNullOrBlank()) return
+        runCatching {
+            val root = JSONObject(raw)
+            val names = root.keys()
+            while (names.hasNext()) {
+                val name = names.next()
+                val o = root.optJSONObject(name) ?: continue
+                sourceRules[name] = SourceRule(
+                    enabled = o.optBoolean("enabled", false),
+                    seasonMode = o.optInt("seasonMode", 0).coerceIn(0, 4),
+                    startHour = o.optInt("startHour", 0).coerceIn(0, 23),
+                    endHour = o.optInt("endHour", 24).coerceIn(1, 24),
+                    durationSeconds = o.optInt("durationSeconds", 0).coerceIn(0, 120),
+                    transitionIndex = o.optInt("transitionIndex", -1).coerceIn(-1, transitions.lastIndex),
+                    showMetadata = o.optBoolean("showMetadata", true),
+                )
+            }
+        }
+    }
+
+    private fun sourceLabels(): List<String> =
+        library.map { it.sourceLabel.ifBlank { "Source" } }.distinct().sorted()
+
+    private fun sourceAllowed(label: String, now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
+        val rule = sourceRules[label] ?: return true
+        if (!rule.enabled) return true
+
+        val month = now.get(java.util.Calendar.MONTH) + 1
+        val seasonAllowed = when (rule.seasonMode) {
+            1 -> month == 12 || month == 1 || month == 2
+            2 -> month in 3..5
+            3 -> month in 6..8
+            4 -> month in 9..11
+            else -> true
+        }
+        if (!seasonAllowed) return false
+
+        val hour = now.get(java.util.Calendar.HOUR_OF_DAY)
+        return when {
+            rule.startHour == 0 && rule.endHour == 24 -> true
+            rule.startHour < rule.endHour -> hour in rule.startHour until rule.endHour
+            else -> hour >= rule.startHour || hour < rule.endHour
+        }
+    }
+
+    private fun sourceRuleForItem(item: PhotoItem?): SourceRule? {
+        if (item == null) return null
+        val label = item.sourceLabel.ifBlank { "Source" }
+        return sourceRules[label]?.takeIf { it.enabled }
+    }
+
+    private fun effectiveDuration(item: PhotoItem?): Int {
+        val source = sourceRuleForItem(item)?.durationSeconds?.takeIf { it > 0 }
+        val album = ruleForItem(item)?.durationSeconds?.takeIf { it > 0 }
+        return source ?: album ?: durationSeconds
+    }
+
+    private fun effectiveTransition(item: PhotoItem?): Int {
+        val source = sourceRuleForItem(item)?.transitionIndex?.takeIf { it >= 0 }
+        val album = ruleForItem(item)?.transitionIndex?.takeIf { it >= 0 }
+        return source ?: album ?: transitionIndex
+    }
+
+    private fun effectiveShowMetadata(item: PhotoItem?): Boolean =
+        (sourceRuleForItem(item)?.showMetadata ?: true) &&
+            (ruleForItem(item)?.showMetadata ?: true)
     private fun albumAllowed(album: String, now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
         val rule = albumRules[album] ?: return true
         if (!rule.enabled) return true
@@ -1250,11 +1356,12 @@ class PhotoTvView(
         if (library.isEmpty()) return emptyList()
         val now = java.util.Calendar.getInstance()
         return library.filter { item ->
-            item.albums.any {
-                selectedAlbums.contains(it) &&
-                    !hiddenAlbums.contains(it) &&
-                    albumAllowed(it, now)
-            } &&
+            sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
+                item.albums.any {
+                    selectedAlbums.contains(it) &&
+                        !hiddenAlbums.contains(it) &&
+                        albumAllowed(it, now)
+                } &&
                 !excludedUris.contains(item.uri.toString()) &&
                 !sessionExcludedUris.contains(item.uri.toString()) &&
                 !failedMediaUris.contains(item.uri.toString()) &&
@@ -2329,7 +2436,7 @@ class PhotoTvView(
             synchronized(bitmapCache) { bitmapCache[key] } ?: current
         } else current
 
-        val localTransition = ruleForItem(item)?.transitionIndex?.takeIf { it >= 0 } ?: transitionIndex
+        val localTransition = effectiveTransition(item)
         val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
         if (item?.mediaType == "video" && supportsVideoPlayback) {
             c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
@@ -2456,7 +2563,7 @@ class PhotoTvView(
 
         drawBottomGradient(c, 0f, 0f, 1280f, 720f)
         val vals = metadataValues(item)
-        val ruleAllowsMetadata = ruleForItem(item)?.showMetadata ?: true
+        val ruleAllowsMetadata = effectiveShowMetadata(item)
         val nightActive = isNightModeActive()
         val hideOverlays = !ruleAllowsMetadata || (nightActive && nightHideOverlays) || (overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L)
         val shift = oledShift()
@@ -2487,7 +2594,7 @@ class PhotoTvView(
 
     private fun drawKenBurns(c: Canvas, bmp: Bitmap?, item: PhotoItem?) {
         if (bmp == null || bmp.isRecycled) return
-        val localDuration = ruleForItem(item)?.durationSeconds?.takeIf { it > 0 } ?: durationSeconds
+        val localDuration = effectiveDuration(item)
         val elapsed = (System.currentTimeMillis() - slideStartedAt).coerceAtLeast(0L)
         val t = (elapsed.toFloat() / (localDuration * 1000f)).coerceIn(0f, 1f)
         val strength = when (zoomLevel) {
@@ -3822,7 +3929,7 @@ class PhotoTvView(
     private fun scheduleSlideshow() {
         handler.removeCallbacksAndMessages(null)
         if (!slideshow || paused || fixedImage || quickMenuVisible || infoPanelVisible) return
-        val seconds = ruleForItem(currentItem())?.durationSeconds?.takeIf { it > 0 } ?: durationSeconds
+        val seconds = effectiveDuration(currentItem())
         handler.postDelayed({ slideshowNext(1) }, seconds * 1000L)
     }
 
@@ -3839,7 +3946,7 @@ class PhotoTvView(
         val rt = Runtime.getRuntime()
         val freeRatio = ((rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())).toDouble() /
             rt.maxMemory().coerceAtLeast(1L).toDouble()).coerceIn(0.0, 1.0)
-        val seconds = ruleForItem(currentItem())?.durationSeconds?.takeIf { it > 0 } ?: durationSeconds
+        val seconds = effectiveDuration(currentItem())
         val ahead = when {
             freeRatio < .18 -> 1
             seconds <= 4 -> 2
