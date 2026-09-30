@@ -246,18 +246,31 @@ class MainActivity : AppCompatActivity() {
             }
 
             REQ_EXPORT_SETTINGS -> data.data?.let { uri ->
-                runCatching {
+                val ok = runCatching {
                     contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use {
                         it.write(ui.exportSettingsJson())
-                    }
-                }
+                    } ?: error("Flux de sortie indisponible")
+                }.isSuccess
+                Toast.makeText(
+                    this,
+                    if (ok) "Réglages exportés." else "Échec de l'export des réglages.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
 
             REQ_IMPORT_SETTINGS -> data.data?.let { uri ->
-                runCatching {
-                    val raw = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
-                    ui.importSettingsJson(raw)
-                }
+                val ok = runCatching {
+                    val raw = contentResolver.openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use { it.readText() }
+                        .orEmpty()
+                    raw.isNotBlank() && ui.importSettingsJson(raw)
+                }.getOrDefault(false)
+                Toast.makeText(
+                    this,
+                    if (ok) "Réglages importés." else "Fichier de réglages invalide.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
 
             REQ_PHOTOS -> {
