@@ -114,7 +114,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (::ui.isInitialized && ui.dispatchKeyEvent(event)) return true
+        if (::ui.isInitialized) {
+            val tvKey = when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_LEFT,
+                KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_CENTER,
+                KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                KeyEvent.KEYCODE_BACK -> true
+                else -> false
+            }
+
+            if (tvKey) {
+                return when (event.action) {
+                    KeyEvent.ACTION_DOWN -> {
+                        val handled = ui.onKeyDown(event.keyCode, event)
+                        if (handled) true else super.dispatchKeyEvent(event)
+                    }
+                    KeyEvent.ACTION_UP -> {
+                        ui.onKeyUp(event.keyCode, event)
+                        true
+                    }
+                    else -> true
+                }
+            }
+        }
         return super.dispatchKeyEvent(event)
     }
 
