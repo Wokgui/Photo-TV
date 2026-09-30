@@ -1,6 +1,5 @@
 package fr.wokgui.phototv
 
-import android.net.Uri
 import android.service.dreams.DreamService
 import android.view.View
 
@@ -25,23 +24,34 @@ class PhotoDreamService : DreamService() {
         ui = renderer
         setContentView(renderer)
 
-        val prefs = getSharedPreferences("photo_tv", MODE_PRIVATE)
-        val saved = prefs.getString("takeout_tree", null)
-        val exactMode = prefs.getBoolean("takeout_tree_exact", true)
-        if (saved != null) {
-            val uri = runCatching { Uri.parse(saved) }.getOrNull()
-            if (uri != null) {
-                Thread {
-                    val loaded = TakeoutLibrary.load(this, uri, exactMode = exactMode)
-                    renderer.post {
-                        renderer.startAsDream(
-                            loaded.items,
-                            exactAlbums = loaded.exactAlbums,
-                            sourceName = if (exactMode) "Google Photos / Takeout" else "Dossier local"
-                        )
-                    }
-                }.start()
-            }
+        when (val source = SourceStore.load(this)) {
+            is PhotoSourceSpec.Tree -> Thread {
+                val loaded = TakeoutLibrary.load(
+                    this,
+                    source.uri,
+                    exactMode = source.exactMode
+                )
+                renderer.post {
+                    renderer.startAsDream(
+                        loaded.items,
+                        exactAlbums = loaded.exactAlbums,
+                        sourceName = if (source.exactMode) "Google Photos / Takeout" else "Dossier local"
+                    )
+                }
+            }.start()
+
+            is PhotoSourceSpec.Picked -> Thread {
+                val items = PickedLibrary.load(this, source.uris)
+                renderer.post {
+                    renderer.startAsDream(
+                        items,
+                        exactAlbums = false,
+                        sourceName = "Sélection de photos"
+                    )
+                }
+            }.start()
+
+            null -> Unit
         }
     }
 
