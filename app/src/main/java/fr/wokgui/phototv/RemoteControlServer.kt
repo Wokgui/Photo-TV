@@ -17,7 +17,9 @@ data class RemoteControlState(
     val album: String,
     val slideshow: Boolean,
     val paused: Boolean,
-    val durationSeconds: Int
+    val durationSeconds: Int,
+    val transition: String,
+    val imageMode: String
 )
 
 class RemoteControlServer(
@@ -85,14 +87,14 @@ class RemoteControlServer(
 
             if (path == "/status") {
                 val st = stateProvider()
-                val json = """{"title":"${jsonEscape(st.title)}","album":"${jsonEscape(st.album)}","slideshow":${st.slideshow},"paused":${st.paused},"duration":${st.durationSeconds}}"""
+                val json = """{"title":"${jsonEscape(st.title)}","album":"${jsonEscape(st.album)}","slideshow":${st.slideshow},"paused":${st.paused},"duration":${st.durationSeconds},"transition":"${jsonEscape(st.transition)}","imageMode":"${jsonEscape(st.imageMode)}"}"""
                 respond(s, 200, "application/json; charset=utf-8", json)
                 return
             }
 
             if (path == "/action") {
                 val cmd = params["cmd"].orEmpty()
-                if (cmd in setOf("prev", "next", "pause", "favorite", "hide", "duration_down", "duration_up")) {
+                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev")) {
                     onCommand(cmd)
                     respond(s, 200, "application/json; charset=utf-8", "{\"ok\":true}")
                 } else {
@@ -131,6 +133,11 @@ small{display:block;margin-top:18px;color:#9fb3c8}
 <button onclick="send('hide')">Masquer</button>
 <button onclick="send('duration_down')">− Durée</button>
 <button onclick="send('duration_up')">+ Durée</button>
+<button onclick="send('transition_next')">Transition</button>
+<button onclick="send('mode_next')">Affichage</button>
+<button onclick="send('album_next')">Album suivant</button>
+<button onclick="send('history_prev')">Historique</button>
+<button class="wide" onclick="send('stop')">Arrêter le diaporama</button>
 <div id="status" style="grid-column:1/-1;background:#0d2134;border-radius:14px;padding:16px"></div>
 </div>
 <small>Réseau local uniquement. Le lien secret est affiché dans Photo TV.</small>
@@ -144,7 +151,7 @@ function refresh(){
     .then(r=>r.json())
     .then(s=>{
       document.getElementById('status').textContent=
-        s.title+' • '+s.album+' • '+s.duration+' s'+(s.paused?' • pause':'');
+        s.title+' • '+s.album+' • '+s.duration+' s • '+s.transition+' • '+s.imageMode+(s.paused?' • pause':'');
     })
     .catch(()=>{});
 }
