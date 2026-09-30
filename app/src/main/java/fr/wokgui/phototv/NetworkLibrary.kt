@@ -133,6 +133,8 @@ object NetworkLibrary {
             false
         }
 
+        if (!downloaded) offlineUntilMs = now + 60_000L
+
         return when {
             downloaded && cached.isFile -> cached.inputStream()
             staleExists -> {
@@ -141,7 +143,6 @@ object NetworkLibrary {
             }
             else -> {
                 tmp.delete()
-                offlineUntilMs = now + 60_000L
                 null
             }
         }
