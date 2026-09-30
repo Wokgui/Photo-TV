@@ -139,7 +139,7 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee stable-signature.txt
           EXPECTED="8480f37e2123c7c93ada4dbedef25e0f0f80ec689575c9e75ddc174c43c62d06"
-          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' stable-signature.txt | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ': ')"
+          ACTUAL="$(sed -n -E 's/^.*certificate SHA-256 digest: //p' stable-signature.txt | head -n 1 | tr '[:upper:]' '[:lower:]' | tr -d ': ')"
           test "$ACTUAL" = "$EXPECTED" || {
             echo "Unexpected signer: $ACTUAL" >&2
             exit 1
