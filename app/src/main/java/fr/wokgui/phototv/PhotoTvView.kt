@@ -3,6 +3,7 @@ package fr.wokgui.phototv
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.*
+import android.os.Build
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Handler
@@ -953,21 +954,48 @@ class PhotoTvView(
         context.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, bounds)
         }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= targetWidth &&
-            bounds.outHeight / (sample * 2) >= targetHeight
-        ) {
-            sample *= 2
+
+        if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= targetWidth &&
+                bounds.outHeight / (sample * 2) >= targetHeight
+            ) {
+                sample *= 2
+            }
+            val opt = BitmapFactory.Options().apply {
+                inSampleSize = max(1, sample)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val decoded = context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opt)
+            }
+            if (decoded != null) return applyExifOrientation(uri, decoded)
         }
-        val opt = BitmapFactory.Options().apply {
-            inSampleSize = max(1, sample)
-            inPreferredConfig = Bitmap.Config.ARGB_8888
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            val decoded = runCatching {
+                ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                    val srcW = info.size.width.coerceAtLeast(1)
+                    val srcH = info.size.height.coerceAtLeast(1)
+                    val scale = min(
+                        1f,
+                        min(
+                            targetWidth.toFloat() / srcW.toFloat(),
+                            targetHeight.toFloat() / srcH.toFloat()
+                        )
+                    )
+                    val outW = max(1, (srcW * scale).toInt())
+                    val outH = max(1, (srcH * scale).toInt())
+                    decoder.setTargetSize(outW, outH)
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    decoder.isMutableRequired = false
+                }
+            }.getOrNull()
+            if (decoded != null) return decoded
         }
-        val decoded = context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, opt)
-        } ?: return null
-        return applyExifOrientation(uri, decoded)
+
+        return null
     }
 
     private fun highResTarget(): Pair<Int, Int> {
