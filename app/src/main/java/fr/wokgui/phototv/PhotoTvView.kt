@@ -35,6 +35,7 @@ class PhotoTvView(
     private val onExactSource: () -> Unit,
     private val onFolderSource: () -> Unit = {},
     private val onPickPhotos: () -> Unit,
+    private val onNetworkSource: () -> Unit = {},
     private val onWeatherLocation: () -> Unit = {},
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
@@ -948,7 +949,7 @@ class PhotoTvView(
         }
         executor.execute {
             val movie = runCatching {
-                context.contentResolver.openInputStream(uri)?.use { Movie.decodeStream(it) }
+                openMediaStream(uri)?.use { Movie.decodeStream(it) }
             }.getOrNull()
             synchronized(gifCache) {
                 gifLoading.remove(key)
@@ -995,6 +996,10 @@ class PhotoTvView(
         return true
     }
 
+    private fun openMediaStream(uri: Uri): java.io.InputStream? =
+        if (NetworkLibrary.isNetworkUri(uri)) NetworkLibrary.open(uri)
+        else context.contentResolver.openInputStream(uri)
+
     private fun decodeThumb(uri: Uri): Bitmap? {
         return runCatching {
             val mime = context.contentResolver.getType(uri).orEmpty()
@@ -1016,7 +1021,7 @@ class PhotoTvView(
         val decodeStarted = android.os.SystemClock.elapsedRealtime()
         try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use {
+        openMediaStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, bounds)
         }
 
@@ -1031,13 +1036,13 @@ class PhotoTvView(
                 inSampleSize = max(1, sample)
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
-            val decoded = context.contentResolver.openInputStream(uri)?.use {
+            val decoded = openMediaStream(uri)?.use {
                 BitmapFactory.decodeStream(it, null, opt)
             }
             if (decoded != null) return applyExifOrientation(uri, decoded)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (!NetworkLibrary.isNetworkUri(uri) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val source = ImageDecoder.createSource(context.contentResolver, uri)
             val decoded = runCatching {
                 ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
@@ -1118,7 +1123,7 @@ class PhotoTvView(
 
     private fun applyExifOrientation(uri: Uri, source: Bitmap): Bitmap {
         val orientation = runCatching {
-            context.contentResolver.openInputStream(uri)?.use {
+            openMediaStream(uri)?.use {
                 ExifInterface(it).getAttributeInt(
                     ExifInterface.TAG_ORIENTATION,
                     ExifInterface.ORIENTATION_NORMAL
@@ -2014,6 +2019,15 @@ class PhotoTvView(
             c,
             "Masquées : ${excludedUris.size} permanentes • ${sessionExcludedUris.size} session • ${hiddenAlbums.size} albums",
             x + 22f, y + 458f, 11f, Color.rgb(130, 154, 181)
+        )
+        controlBox(
+            c,
+            x + 22f,
+            y + 475f,
+            300f,
+            39f,
+            "Réseau • WebDAV / SMB",
+            settingsColumn == 1 && settingsControl == 7 && !navFocus
         )
         controlBox(
             c,
@@ -3257,7 +3271,7 @@ class PhotoTvView(
         3 -> transitions.lastIndex
         4 -> 9
         5 -> 2
-        6 -> 6
+        6 -> 7
         else -> if (advancedRulesOpen) 8 else 13
     }
 
@@ -3358,6 +3372,7 @@ class PhotoTvView(
                 3 -> albumSort = (albumSort + dir + 2) % 2
                 5 -> toggleAllAlbums()
                 6 -> clearAllMasks()
+                7 -> onNetworkSource()
             }
             7 -> if (advancedRulesOpen) {
                 adjustAlbumRule(dir)
@@ -3458,6 +3473,7 @@ class PhotoTvView(
                         4 -> onAlbumSearch()
                         5 -> toggleAllAlbums()
                         6 -> clearAllMasks()
+                        7 -> onNetworkSource()
                     }
                     7 -> if (advancedRulesOpen) {
                         if (settingsControl == 8) {
@@ -4095,6 +4111,10 @@ class PhotoTvView(
                 y in 425f..490f -> {
                     settingsControl = 5
                     toggleAllAlbums()
+                }
+                y in 545f..610f && x < 730f -> {
+                    settingsControl = 7
+                    onNetworkSource()
                 }
                 y in 545f..610f -> {
                     settingsControl = 6
