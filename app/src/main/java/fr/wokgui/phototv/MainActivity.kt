@@ -144,6 +144,16 @@ class MainActivity : AppCompatActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (::ui.isInitialized) ui.onMemoryPressure(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        if (::ui.isInitialized) ui.onMemoryPressure(android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
     fun automationStateForTest(): String =
         if (::ui.isInitialized) ui.automationStateDescription() else "PhotoTV uninitialized"
 
