@@ -34,7 +34,11 @@ class PhotoDreamService : DreamService() {
                 Thread {
                     val loaded = TakeoutLibrary.load(this, uri, exactMode = exactMode)
                     renderer.post {
-                        renderer.startAsDream(loaded.items)
+                        renderer.startAsDream(
+                            loaded.items,
+                            exactAlbums = loaded.exactAlbums,
+                            sourceName = if (exactMode) "Google Photos / Takeout" else "Dossier local"
+                        )
                     }
                 }.start()
             }
