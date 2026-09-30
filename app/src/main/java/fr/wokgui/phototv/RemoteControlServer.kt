@@ -34,13 +34,16 @@ class RemoteControlServer(
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var running = false
     private var serverSocket: ServerSocket? = null
+    @Volatile private var bindAddress: Inet4Address? = null
 
     fun start() {
         if (running) return
+        val address = localIpv4Address() ?: return
+        bindAddress = address
         running = true
         executor.execute {
             runCatching {
-                ServerSocket(port).use { server ->
+                ServerSocket(port, 20, address).use { server ->
                     serverSocket = server
                     while (running) {
                         val socket = runCatching { server.accept() }.getOrNull() ?: break
@@ -57,11 +60,12 @@ class RemoteControlServer(
         running = false
         runCatching { serverSocket?.close() }
         serverSocket = null
+        bindAddress = null
         executor.shutdownNow()
     }
 
-    fun url(): String? = localIpv4()?.let { ip ->
-        "http://$ip:$port/?t=$token"
+    fun url(): String? = bindAddress?.hostAddress?.let { ip ->
+        "http://$ip:$port/#t=$token"
     }
 
     private fun handle(socket: Socket) {
@@ -83,6 +87,10 @@ class RemoteControlServer(
             val target = parts[1]
             val path = target.substringBefore('?')
             val params = parseQuery(target.substringAfter('?', ""))
+            if (path == "/") {
+                respond(s, 200, "text/html; charset=utf-8", page())
+                return
+            }
             if (params["t"] != token) {
                 respond(s, 403, "text/plain; charset=utf-8", "Accès refusé")
                 return
@@ -170,7 +178,8 @@ small{display:block;margin-top:18px;color:#9fb3c8}
 </div>
 <small>Réseau local uniquement. Le lien secret est affiché dans Photo TV.</small>
 <script>
-const t=new URLSearchParams(location.search).get('t');
+const t=new URLSearchParams(location.hash.slice(1)).get('t');
+if(t){history.replaceState(null,'',location.pathname);}
 function send(cmd){
   fetch('/action?t='+encodeURIComponent(t)+'&cmd='+encodeURIComponent(cmd)).then(refresh).catch(()=>{});
 }
@@ -216,6 +225,7 @@ setInterval(refresh,2000);
             200 -> "OK"
             400 -> "Bad Request"
             403 -> "Forbidden"
+            404 -> "Not Found"
             405 -> "Method Not Allowed"
             else -> "Error"
         }
@@ -247,7 +257,7 @@ setInterval(refresh,2000);
             }
             .toMap()
 
-    private fun localIpv4(): String? {
+    private fun localIpv4Address(): Inet4Address? {
         val interfaces = runCatching {
             Collections.list(NetworkInterface.getNetworkInterfaces())
         }.getOrNull() ?: return null
@@ -257,11 +267,11 @@ setInterval(refresh,2000);
             .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
             .flatMap { Collections.list(it.inetAddresses).asSequence() }
             .filterIsInstance<Inet4Address>()
-            .map { it.hostAddress }
             .firstOrNull { address ->
-                address.startsWith("192.168.") ||
-                    address.startsWith("10.") ||
-                    Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\..*").matches(address)
+                val value = address.hostAddress.orEmpty()
+                value.startsWith("192.168.") ||
+                    value.startsWith("10.") ||
+                    Regex("^172\\.(1[6-9]|2[0-9]|3[01])\\..*").matches(value)
             }
     }
 }
