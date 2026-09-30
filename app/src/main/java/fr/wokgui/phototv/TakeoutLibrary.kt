@@ -1,8 +1,6 @@
 package fr.wokgui.phototv
 
 import android.content.Context
-import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONObject
@@ -83,10 +81,12 @@ object TakeoutLibrary {
             }?.second
             val rootJson = filenameRoot ?: byDeclaredTitle[mediaName]
 
-            var takenAt = file.lastModified()
+            val mime = file.type.orEmpty()
+            val info = MediaInfoReader.read(context, file.uri, mime)
+            var takenAt = info.takenAt.takeIf { it > 0 } ?: file.lastModified()
             var description = ""
-            var location = ""
-            var camera = ""
+            var location = info.location
+            var camera = info.camera
 
             if (rootJson != null) {
                 rootJson.optJSONObject("photoTakenTime")
@@ -112,8 +112,6 @@ object TakeoutLibrary {
                 ).filter { it.isNotBlank() }.joinToString(" ")
             }
 
-            val mime = file.type.orEmpty()
-            val dims = mediaDimensions(context, file.uri, mime)
             out += PhotoItem(
                 uri = file.uri,
                 title = stripExtension(mediaName),
@@ -122,8 +120,8 @@ object TakeoutLibrary {
                 description = description,
                 location = location,
                 camera = camera,
-                width = dims.first,
-                height = dims.second,
+                width = info.width,
+                height = info.height,
                 mediaType = when {
                     mime.startsWith("video/") -> "video"
                     mime.equals("image/gif", true) -> "gif"
@@ -220,28 +218,6 @@ object TakeoutLibrary {
             } ?: return@runCatching null
             digest.digest().joinToString("") { "%02x".format(it) }
         }.getOrNull()
-    }
-
-    private fun mediaDimensions(context: Context, uri: Uri, mime: String): Pair<Int, Int> {
-        return if (mime.startsWith("video/")) {
-            runCatching {
-                val retriever = MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(context, uri)
-                    val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
-                    val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-                    w to h
-                } finally {
-                    runCatching { retriever.release() }
-                }
-            }.getOrDefault(0 to 0)
-        } else {
-            runCatching {
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-                opts.outWidth to opts.outHeight
-            }.getOrDefault(0 to 0)
-        }
     }
 
     private fun stripExtension(name: String): String {
