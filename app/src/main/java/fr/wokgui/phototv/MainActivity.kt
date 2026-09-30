@@ -77,6 +77,7 @@ class MainActivity : AppCompatActivity() {
             onImportSettings = { importSettings() },
             onAlbumSearch = { requestAlbumSearch() },
             onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) },
+            onVideoPause = { pause -> handleVideoPause(pause) },
             supportsVideoPlayback = true
         )
 
@@ -115,6 +116,14 @@ class MainActivity : AppCompatActivity() {
             player.isLooping = true
             if (sound) player.setVolume(1f, 1f) else player.setVolume(0f, 0f)
             videoView.start()
+        }
+    }
+
+    private fun handleVideoPause(pause: Boolean) {
+        if (videoView.visibility != View.VISIBLE) return
+        runCatching {
+            if (pause) videoView.pause()
+            else if (!videoView.isPlaying) videoView.start()
         }
     }
 
