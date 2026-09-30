@@ -8,9 +8,12 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageEnhance
 
 ROOT = Path(__file__).resolve().parent.parent
-RESULTS = ROOT / "visual-results"
+RESULTS = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "visual-results"
 REFS = ROOT / "visual" / "reference"
+MIN_AVERAGE = float(sys.argv[2]) if len(sys.argv) > 2 else 38.0
+MIN_SCREEN = float(sys.argv[3]) if len(sys.argv) > 3 else 30.0
 NAMES = ["preview", "photos", "editor", "settings"]
+RESULTS.mkdir(parents=True, exist_ok=True)
 
 def decode_reference(name: str) -> Image.Image:
     raw = base64.b64decode((REFS / f"{name}.jpg.b64").read_text().strip())
@@ -65,5 +68,9 @@ print(f"average visual score: {average:.2f}")
 
 # This is intentionally a gross-regression gate. The detailed score/diff artifact is
 # used to tighten the threshold after deliberate visual updates to the approved mockup.
-if average < 38 or min(v["score"] for v in scores.values()) < 30:
-    raise SystemExit("Visual regression is too large compared with the approved mockup.")
+if average < MIN_AVERAGE or min(v["score"] for v in scores.values()) < MIN_SCREEN:
+    raise SystemExit(
+        f"Visual regression is too large compared with the approved mockup "
+        f"(average {average:.2f}, required {MIN_AVERAGE:.2f}; "
+        f"minimum screen {min(v['score'] for v in scores.values()):.2f}, required {MIN_SCREEN:.2f})."
+    )
