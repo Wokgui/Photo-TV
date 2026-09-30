@@ -20,6 +20,7 @@ object VisualDuplicateDetector {
 
         val output = mutableListOf<PhotoItem>()
         val fingerprints = mutableListOf<Fingerprint?>()
+        val buckets = mutableMapOf<Pair<Int, Int>, MutableList<Int>>()
 
         fun combine(existing: PhotoItem, item: PhotoItem): PhotoItem =
             existing.copy(
@@ -54,20 +55,30 @@ object VisualDuplicateDetector {
                 return@forEach
             }
 
+            val aspectBucket = (fp.aspectRatio * 20f).toInt()
+            val lumaBucket = fp.meanLuma / 8
             var duplicateIndex = -1
-            for (i in output.indices) {
-                val other = fingerprints.getOrNull(i) ?: continue
-                if (areNear(fp, other)) {
-                    duplicateIndex = i
-                    break
+
+            loop@ for (da in -1..1) {
+                for (dl in -1..1) {
+                    val candidates = buckets[(aspectBucket + da) to (lumaBucket + dl)] ?: continue
+                    for (i in candidates) {
+                        val other = fingerprints.getOrNull(i) ?: continue
+                        if (areNear(fp, other)) {
+                            duplicateIndex = i
+                            break@loop
+                        }
+                    }
                 }
             }
 
             if (duplicateIndex >= 0) {
                 output[duplicateIndex] = combine(output[duplicateIndex], item)
             } else {
+                val index = output.size
                 output += item
                 fingerprints += fp
+                buckets.getOrPut(aspectBucket to lumaBucket) { mutableListOf() }.add(index)
             }
         }
 
