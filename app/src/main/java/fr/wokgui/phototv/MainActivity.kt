@@ -337,7 +337,22 @@ class MainActivity : AppCompatActivity() {
             )
         }
         Thread {
-            val loaded = TakeoutLibrary.load(this, uri, exactMode = exactMode)
+            val loaded = TakeoutLibrary.load(
+                this,
+                uri,
+                exactMode = exactMode,
+                onProgress = if (silent) null else { folders, media ->
+                    ui.post {
+                        ui.showLoading(
+                            if (exactMode) {
+                                "Analyse Takeout… $folders dossiers • $media médias"
+                            } else {
+                                "Analyse du dossier… $folders dossiers • $media médias"
+                            }
+                        )
+                    }
+                }
+            )
             runOnUiThread {
                 val source = if (exactMode) "Google Photos / Takeout" else "Dossier local"
                 ui.setLibrary(
