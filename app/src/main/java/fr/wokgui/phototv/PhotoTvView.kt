@@ -581,9 +581,14 @@ class PhotoTvView(
 
     private fun ruleForItem(item: PhotoItem?): AlbumRule? {
         if (item == null) return null
+        val now = java.util.Calendar.getInstance()
         return item.albums
             .asSequence()
-            .filter { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) }
+            .filter {
+                selectedAlbums.contains(it) &&
+                    !hiddenAlbums.contains(it) &&
+                    albumAllowed(it, now)
+            }
             .mapNotNull { albumRules[it] }
             .firstOrNull { it.enabled }
     }
@@ -742,8 +747,13 @@ class PhotoTvView(
 
     private fun activePhotos(): List<PhotoItem> {
         if (library.isEmpty()) return emptyList()
+        val now = java.util.Calendar.getInstance()
         return library.filter { item ->
-            item.albums.any { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) && albumAllowed(it) } &&
+            item.albums.any {
+                selectedAlbums.contains(it) &&
+                    !hiddenAlbums.contains(it) &&
+                    albumAllowed(it, now)
+            } &&
                 !excludedUris.contains(item.uri.toString()) &&
                 !sessionExcludedUris.contains(item.uri.toString()) &&
                 (!favoritesOnly || favorites.contains(item.uri.toString()))
