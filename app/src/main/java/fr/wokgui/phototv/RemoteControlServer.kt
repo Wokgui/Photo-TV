@@ -19,7 +19,10 @@ data class RemoteControlState(
     val paused: Boolean,
     val durationSeconds: Int,
     val transition: String,
-    val imageMode: String
+    val imageMode: String,
+    val albums: List<String>,
+    val sources: List<String>,
+    val sourceFilter: String?
 )
 
 class RemoteControlServer(
@@ -87,15 +90,29 @@ class RemoteControlServer(
 
             if (path == "/status") {
                 val st = stateProvider()
-                val json = """{"title":"${jsonEscape(st.title)}","album":"${jsonEscape(st.album)}","slideshow":${st.slideshow},"paused":${st.paused},"duration":${st.durationSeconds},"transition":"${jsonEscape(st.transition)}","imageMode":"${jsonEscape(st.imageMode)}"}"""
+                val albumsJson = st.albums.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
+                val sourcesJson = st.sources.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
+                val filterJson = st.sourceFilter?.let { "\"" + jsonEscape(it) + "\"" } ?: "null"
+                val json = "{" +
+                    "\"title\":\"" + jsonEscape(st.title) + "\"," +
+                    "\"album\":\"" + jsonEscape(st.album) + "\"," +
+                    "\"slideshow\":" + st.slideshow + "," +
+                    "\"paused\":" + st.paused + "," +
+                    "\"duration\":" + st.durationSeconds + "," +
+                    "\"transition\":\"" + jsonEscape(st.transition) + "\"," +
+                    "\"imageMode\":\"" + jsonEscape(st.imageMode) + "\"," +
+                    "\"albums\":" + albumsJson + "," +
+                    "\"sources\":" + sourcesJson + "," +
+                    "\"sourceFilter\":" + filterJson + "}"
                 respond(s, 200, "application/json; charset=utf-8", json)
                 return
             }
 
             if (path == "/action") {
                 val cmd = params["cmd"].orEmpty()
-                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev", "sources")) {
-                    onCommand(cmd)
+                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev", "sources", "album_select", "source_select", "search")) {
+                    val value = params["value"].orEmpty()
+                    onCommand(if (value.isBlank()) cmd else cmd + "|" + value)
                     respond(s, 200, "application/json; charset=utf-8", "{\"ok\":true}")
                 } else {
                     respond(s, 400, "application/json; charset=utf-8", "{\"ok\":false}")
@@ -138,6 +155,9 @@ small{display:block;margin-top:18px;color:#9fb3c8}
 <button onclick="send('album_next')">Album suivant</button>
 <button onclick="send('history_prev')">Historique</button>
 <button onclick="send('sources')">Sources</button><button onclick="send('stop')">Arrêter</button>
+<select id="album" onchange="sendValue('album_select',this.value)" style="grid-column:1/-1;padding:14px;border-radius:12px;font-size:17px"></select>
+<select id="source" onchange="sendValue('source_select',this.value)" style="grid-column:1/-1;padding:14px;border-radius:12px;font-size:17px"></select>
+<div style="grid-column:1/-1;display:flex;gap:8px"><input id="search" placeholder="Rechercher un album" style="flex:1;padding:14px;border-radius:12px;border:0;font-size:17px"><button onclick="sendValue('search',document.getElementById('search').value)" style="padding:14px">Rechercher</button></div>
 <div id="status" style="grid-column:1/-1;background:#0d2134;border-radius:14px;padding:16px"></div>
 </div>
 <small>Réseau local uniquement. Le lien secret est affiché dans Photo TV.</small>
@@ -146,12 +166,25 @@ const t=new URLSearchParams(location.search).get('t');
 function send(cmd){
   fetch('/action?t='+encodeURIComponent(t)+'&cmd='+encodeURIComponent(cmd)).then(refresh).catch(()=>{});
 }
+function sendValue(cmd,value){
+  fetch('/action?t='+encodeURIComponent(t)+'&cmd='+encodeURIComponent(cmd)+'&value='+encodeURIComponent(value)).then(refresh).catch(()=>{});
+}
+function fillSelect(id,values,current,allLabel){
+  const el=document.getElementById(id);
+  const wanted=[allLabel].concat(values||[]);
+  const old=el.value;
+  el.innerHTML='';
+  wanted.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o);});
+  el.value=current||old||allLabel;
+}
 function refresh(){
   fetch('/status?t='+encodeURIComponent(t))
     .then(r=>r.json())
     .then(s=>{
       document.getElementById('status').textContent=
         s.title+' • '+s.album+' • '+s.duration+' s • '+s.transition+' • '+s.imageMode+(s.paused?' • pause':'');
+      fillSelect('album',s.albums,s.album,'Tous les albums');
+      fillSelect('source',s.sources,s.sourceFilter,'Toutes les sources');
     })
     .catch(()=>{});
 }
