@@ -1131,6 +1131,11 @@ class PhotoTvView(
         refreshLibraryState(resetCurrent = false)
     }
 
+    fun removeSourceByLabel(label: String) {
+        library = library.filterNot { it.sourceLabel == label }
+        refreshLibraryState(resetCurrent = false)
+    }
+
     fun replaceNetworkLibraries(items: List<PhotoItem>) {
         val retained = library.filterNot { NetworkLibrary.isNetworkUri(it.uri) }
         library = retained + items
