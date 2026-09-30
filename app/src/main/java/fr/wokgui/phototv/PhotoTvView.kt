@@ -194,6 +194,9 @@ class PhotoTvView(
     private var albumSearch = ""
     private var albumSort = 0
     private var videoSound = false
+    private var remoteEnabled = false
+    private var remoteToken = ""
+    private var remoteServer: RemoteControlServer? = null
     private var ruleAlbumIndex = 0
     private var advancedRulesOpen = false
     private val albumRules = linkedMapOf<String, AlbumRule>()
@@ -254,6 +257,7 @@ class PhotoTvView(
             forecastLines.clear()
             forecastLines += listOf("Lun  12° / 19°", "Mar  11° / 18°", "Mer  13° / 20°")
         }
+        updateRemoteServer()
         scheduleInactivity()
         scheduleClock()
     }
@@ -285,6 +289,10 @@ class PhotoTvView(
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
         videoSound = prefs.getBoolean("video_sound", false)
+        remoteEnabled = prefs.getBoolean("remote_enabled", false)
+        remoteToken = prefs.getString("remote_token", "").orEmpty().ifBlank {
+            java.util.UUID.randomUUID().toString().replace("-", "").take(20)
+        }
         interactionDiagnostics = prefs.getBoolean("interaction_diagnostics", false)
         restoreAlbumRules(prefs.getString("album_rules", null))
         favoritesOnly = prefs.getBoolean("favorites_only", false)
@@ -335,6 +343,8 @@ class PhotoTvView(
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
             putBoolean("video_sound", videoSound)
+            putBoolean("remote_enabled", remoteEnabled)
+            putString("remote_token", remoteToken)
             putBoolean("interaction_diagnostics", interactionDiagnostics)
             putString("album_rules", albumRulesJson().toString())
             putBoolean("favorites_only", favoritesOnly)
@@ -1873,6 +1883,7 @@ class PhotoTvView(
 
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        controlBox(c, x + 225f, y + 8f, 205f, 38f, if (remoteEnabled) "Télécommande : ON" else "Télécommande : OFF", settingsColumn == 1 && settingsControl == 13 && !navFocus)
         controlBox(c, x + 445f, y + 8f, 205f, 38f, if (interactionDiagnostics) "Zones : ON" else "Zones : OFF", settingsColumn == 1 && settingsControl == 12 && !navFocus)
         controlBox(c, x + 665f, y + 8f, 190f, 38f, "Règles par album", settingsColumn == 1 && settingsControl == 11 && !navFocus)
         settingsChoice(c, "Affichage de l'image", imageModeLabel(), x, y + 50f, 0)
@@ -1904,6 +1915,8 @@ class PhotoTvView(
         ellipsizedText(c, diag, x + 22f, y + 545f, 820f, 10f, Color.rgb(135, 158, 184))
         if (lastDecodeFailure.isNotBlank()) {
             ellipsizedText(c, "Dernière erreur : $lastDecodeFailure", x + 22f, y + 561f, 820f, 9f, Color.rgb(196, 150, 120))
+        } else if (remoteEnabled) {
+            ellipsizedText(c, remoteServer?.url() ?: "Télécommande : connexion réseau en attente", x + 22f, y + 561f, 820f, 9f, Color.rgb(137, 200, 173))
         }
     }
 
@@ -3011,7 +3024,7 @@ class PhotoTvView(
         4 -> 4
         5 -> 2
         6 -> 6
-        else -> if (advancedRulesOpen) 8 else 12
+        else -> if (advancedRulesOpen) 8 else 13
     }
 
     private fun adjustEditor(dir: Int) {
@@ -3127,6 +3140,10 @@ class PhotoTvView(
                     settingsControl = 0
                 }
                 12 -> interactionDiagnostics = !interactionDiagnostics
+                13 -> {
+                    remoteEnabled = !remoteEnabled
+                    updateRemoteServer()
+                }
             }
         }
         scheduleSlideshow()
@@ -3215,6 +3232,10 @@ class PhotoTvView(
                             settingsControl = 0
                         }
                         12 -> interactionDiagnostics = !interactionDiagnostics
+                        13 -> {
+                            remoteEnabled = !remoteEnabled
+                            updateRemoteServer()
+                        }
                         else -> adjustSettings(1)
                     }
                 }
@@ -3222,6 +3243,50 @@ class PhotoTvView(
         }
         savePrefs()
         invalidate()
+    }
+
+    private fun updateRemoteServer() {
+        remoteServer?.stop()
+        remoteServer = null
+        if (!remoteEnabled || !supportsVideoPlayback) return
+        remoteServer = RemoteControlServer(token = remoteToken) { command ->
+            post { handleRemoteCommand(command) }
+        }.also { it.start() }
+    }
+
+    private fun handleRemoteCommand(command: String) {
+        when (command) {
+            "prev" -> if (slideshow) slideshowNext(-1) else previewNext(-1)
+            "next" -> if (slideshow) slideshowNext(1) else previewNext(1)
+            "pause" -> if (slideshow) togglePause() else startSlideshow()
+            "favorite" -> currentItem()?.let { item ->
+                val key = item.uri.toString()
+                if (favorites.contains(key)) favorites.remove(key) else favorites.add(key)
+                savePrefs()
+                invalidate()
+            }
+            "hide" -> currentItem()?.let { item ->
+                sessionExcludedUris.add(item.uri.toString())
+                val items = activePhotos()
+                if (items.isEmpty()) {
+                    if (slideshow) stopSlideshow()
+                } else {
+                    currentPhoto = currentPhoto.coerceIn(0, items.lastIndex)
+                    preloadAroundCurrent()
+                    if (slideshow) {
+                        syncVideoPlayback()
+                        scheduleSlideshow()
+                    }
+                    invalidate()
+                }
+            }
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        remoteServer?.stop()
+        remoteServer = null
+        super.onDetachedFromWindow()
     }
 
     private fun clearAllMasks() {
@@ -3677,6 +3742,11 @@ class PhotoTvView(
                     adjustAlbumRule(1)
                 }
             } else when {
+                x in 605f..810f && y in 77f..125f -> {
+                    settingsControl = 13
+                    remoteEnabled = !remoteEnabled
+                    updateRemoteServer()
+                }
                 x in 825f..1030f && y in 77f..125f -> {
                     settingsControl = 12
                     interactionDiagnostics = !interactionDiagnostics
