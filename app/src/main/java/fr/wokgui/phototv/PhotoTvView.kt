@@ -257,6 +257,8 @@ class PhotoTvView(
     }
 
     private fun savePrefs() {
+        savedSelectedAlbums.clear()
+        savedSelectedAlbums.addAll(selectedAlbums)
         prefs.edit().apply {
             putInt("duration", durationSeconds)
             putBoolean("fixed", fixedImage)
@@ -497,6 +499,12 @@ class PhotoTvView(
             restoreSet("hiddenAlbums", hiddenAlbums)
             restoreSet("excludedUris", excludedUris)
             restoreSet("selectedAlbums", selectedAlbums)
+            val availableAlbums = library.flatMap { it.albums }.distinct()
+            if (availableAlbums.isNotEmpty()) {
+                selectedAlbums.retainAll(availableAlbums.toSet())
+                if (selectedAlbums.isEmpty()) selectedAlbums.addAll(availableAlbums)
+                hiddenAlbums.retainAll(availableAlbums.toSet())
+            }
 
             root.optJSONArray("styles")?.let { arr ->
                 for (i in 0 until min(arr.length(), styles.size)) {
