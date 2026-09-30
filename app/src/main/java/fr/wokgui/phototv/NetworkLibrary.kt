@@ -37,6 +37,7 @@ object NetworkLibrary {
     private data class Entry(
         val id: String,
         val sourceKey: String,
+        val sourceLabel: String,
         val remoteUrl: String,
         val title: String,
         val album: String,
@@ -249,6 +250,7 @@ object NetworkLibrary {
                 out += Entry(
                     id = stableId(cfg.kind, node.url),
                     sourceKey = cfg.key,
+                    sourceLabel = sourceDisplayLabel(cfg),
                     remoteUrl = node.url,
                     title = stripExtension(name),
                     album = pending.albumPath.ifBlank { rootAlbum },
@@ -356,6 +358,7 @@ object NetworkLibrary {
                 out += Entry(
                     id = stableId(cfg.kind, remote),
                     sourceKey = cfg.key,
+                    sourceLabel = sourceDisplayLabel(cfg),
                     remoteUrl = remote,
                     title = stripExtension(name),
                     album = albumPath.ifBlank { rootAlbum },
@@ -438,8 +441,19 @@ object NetworkLibrary {
             title = e.title,
             albums = linkedSetOf(e.album),
             mediaType = e.mediaType,
-            sourceId = e.remoteUrl
+            sourceId = e.remoteUrl,
+            sourceLabel = e.sourceLabel
         )
+
+    private fun sourceDisplayLabel(cfg: Config): String {
+        val prefix = if (cfg.kind == Kind.WEBDAV) "WebDAV" else "SMB"
+        val clean = cfg.baseUrl
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("smb://")
+            .trimEnd('/')
+        return prefix + " • " + clean
+    }
 
     private fun sourceKey(kind: Kind, baseUrl: String, username: String): String =
         stableId(kind, baseUrl + "|" + username.lowercase())
