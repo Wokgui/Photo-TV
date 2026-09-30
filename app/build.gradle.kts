@@ -73,6 +73,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("io.coil-kt:coil:2.7.0")
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
