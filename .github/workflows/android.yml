@@ -222,6 +222,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
       - name: Download signed APK
         uses: actions/download-artifact@v4
         with:
@@ -248,7 +253,9 @@ jobs:
           profile: tv_1080p
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash visual/run_android_tv_ci.sh Photo-TV.apk android-visual-results
+          script: |
+            gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest
+            bash visual/run_android_tv_ci.sh Photo-TV.apk android-visual-results
 
       - name: Upload Android TV visual report
         if: always()
