@@ -50,7 +50,7 @@ class NetworkLibraryInstrumentedTest {
         assertEquals(2, items.size)
         assertTrue(items.any { it.title == "root" })
         assertTrue(items.any { it.title == "nested" })
-        assertTrue(items.any { it.albums.any { album -> album.contains("Album A") } })
+        assertTrue(items.any { it.albums.any { album -> album.contains("album-a") } })
 
         val nested = items.first { it.title == "nested" }
         val first = NetworkLibrary.open(context, nested.uri)?.use { it.readBytes() }
