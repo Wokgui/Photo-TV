@@ -128,7 +128,7 @@ class RemoteControlServer(
                 return
             }
 
-            respond(s, 200, "text/html; charset=utf-8", page())
+            respond(s, 404, "text/plain; charset=utf-8", "Introuvable")
         }
     }
 
