@@ -15,13 +15,18 @@ object TakeoutLibrary {
         val missingExactAlbumFolders: Int
     )
 
-    fun load(context: Context, treeUri: Uri, exactMode: Boolean = true): LoadResult {
+    fun load(
+        context: Context,
+        treeUri: Uri,
+        exactMode: Boolean = true,
+        onProgress: ((foldersScanned: Int, mediaFound: Int) -> Unit)? = null
+    ): LoadResult {
         val root = DocumentFile.fromTreeUri(context, treeUri)
             ?: return LoadResult(emptyList(), exactAlbums = false, missingExactAlbumFolders = 0)
 
         val raw = mutableListOf<PhotoItem>()
         val exactState = ExactState()
-        scanFolder(context, root, raw, exactMode, exactState)
+        scanFolder(context, root, raw, exactMode, exactState, onProgress)
 
         return LoadResult(
             items = mergeAlbumMemberships(context, raw),
@@ -32,7 +37,9 @@ object TakeoutLibrary {
 
     private data class ExactState(
         var foldersWithMedia: Int = 0,
-        var missingAlbumMetadata: Int = 0
+        var missingAlbumMetadata: Int = 0,
+        var foldersScanned: Int = 0,
+        var mediaFound: Int = 0
     )
 
     private fun scanFolder(
@@ -40,7 +47,8 @@ object TakeoutLibrary {
         dir: DocumentFile,
         out: MutableList<PhotoItem>,
         exactMode: Boolean,
-        state: ExactState
+        state: ExactState,
+        onProgress: ((foldersScanned: Int, mediaFound: Int) -> Unit)?
     ) {
         val children = runCatching { dir.listFiles().toList() }.getOrDefault(emptyList())
         val media = children.filter {
@@ -50,6 +58,11 @@ object TakeoutLibrary {
             )
         }
         val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
+
+        state.foldersScanned++
+        state.mediaFound += media.size
+        onProgress?.invoke(state.foldersScanned, state.mediaFound)
+
         val parsedJson = jsons.mapNotNull { file ->
             readJson(context, file)?.let { file to it }
         }
@@ -134,7 +147,7 @@ object TakeoutLibrary {
         }
 
         children.filter { it.isDirectory }.forEach {
-            scanFolder(context, it, out, exactMode, state)
+            scanFolder(context, it, out, exactMode, state, onProgress)
         }
     }
 
