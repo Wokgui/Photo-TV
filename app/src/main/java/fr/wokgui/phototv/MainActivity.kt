@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.VideoView
+import android.widget.Toast
 import android.view.WindowManager
 import android.text.InputType
 import android.content.Intent
@@ -183,13 +184,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openExactSource() {
-        startActivityForResult(
-            Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-            ),
-            REQ_EXACT_FOLDER
-        )
+        AlertDialog.Builder(this)
+            .setTitle("Google Photos")
+            .setMessage(
+                "Pour conserver les noms d'albums exactement tels qu'ils existent dans Google Photos, " +
+                    "Photo TV utilise les métadonnées d'un export Google Takeout. " +
+                    "Sélectionnez le dossier exporté qui contient les fichiers JSON des albums."
+            )
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Choisir Takeout") { _, _ ->
+                startActivityForResult(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                    ),
+                    REQ_EXACT_FOLDER
+                )
+            }
+            .show()
     }
 
     private fun openLocalFolder() {
@@ -294,7 +306,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     )
                 }
-                ui.setLibrary(items, exactAlbums = false)
+                ui.setLibrary(items, exactAlbums = false, sourceName = "Sélection de photos")
             }
         }
     }
@@ -309,7 +321,24 @@ class MainActivity : AppCompatActivity() {
         Thread {
             val loaded = TakeoutLibrary.load(this, uri, exactMode = exactMode)
             runOnUiThread {
-                ui.setLibrary(loaded.items, exactAlbums = loaded.exactAlbums)
+                val source = if (exactMode) "Google Photos / Takeout" else "Dossier local"
+                ui.setLibrary(
+                    loaded.items,
+                    exactAlbums = loaded.exactAlbums,
+                    sourceName = source
+                )
+
+                if (!silent) {
+                    val message = when {
+                        loaded.items.isEmpty() -> "Aucun média compatible trouvé."
+                        exactMode && loaded.exactAlbums ->
+                            "${loaded.items.size} médias importés avec les noms d'albums exacts."
+                        exactMode && loaded.missingExactAlbumFolders > 0 ->
+                            "${loaded.items.size} médias importés. ${loaded.missingExactAlbumFolders} dossier(s) sans métadonnées d'album exactes."
+                        else -> "${loaded.items.size} médias importés depuis le dossier local."
+                    }
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                }
             }
         }.start()
     }
