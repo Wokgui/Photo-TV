@@ -1257,8 +1257,13 @@ class PhotoTvView(
 
     private fun decodeThumb(uri: Uri): Bitmap? {
         return runCatching {
-            val mime = context.contentResolver.getType(uri).orEmpty()
-            if (mime.startsWith("video/")) {
+            val key = uri.toString()
+            val mediaType = uriIndex[key]?.mediaType
+                ?: context.contentResolver.getType(uri).orEmpty().let {
+                    if (it.startsWith("video/")) "video" else "image"
+                }
+            if (mediaType == "video") {
+                if (NetworkLibrary.isNetworkUri(uri)) return@runCatching demoBitmap
                 val r = MediaMetadataRetriever()
                 try {
                     r.setDataSource(context, uri)
@@ -1348,6 +1353,8 @@ class PhotoTvView(
     private fun requestHighRes(uri: Uri) {
         val key = uri.toString()
         if (failedMediaUris.contains(key)) return
+        val mediaType = uriIndex[key]?.mediaType
+        if (mediaType != null && mediaType != "image") return
         synchronized(highResCache) {
             if (highResCache.containsKey(key) || highResLoading.contains(key)) return
             highResLoading += key
@@ -4113,8 +4120,26 @@ class PhotoTvView(
 
     private fun syncVideoPlayback() {
         val item = if (slideshow) currentItem() else null
-        if (item?.mediaType == "video" && supportsVideoPlayback) onVideoPlayback(item.uri, videoSound)
-        else onVideoPlayback(null, videoSound)
+        if (item?.mediaType != "video" || !supportsVideoPlayback) {
+            onVideoPlayback(null, videoSound)
+            return
+        }
+
+        if (!NetworkLibrary.isNetworkUri(item.uri)) {
+            onVideoPlayback(item.uri, videoSound)
+            return
+        }
+
+        val expected = item.uri
+        onVideoPlayback(null, videoSound)
+        executor.execute {
+            val file = NetworkLibrary.materialize(context, expected)
+            post {
+                if (slideshow && currentItem()?.uri == expected && file != null) {
+                    onVideoPlayback(Uri.fromFile(file), videoSound)
+                }
+            }
+        }
     }
 
     private fun startSlideshow() {
