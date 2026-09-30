@@ -59,8 +59,8 @@ assert_foreground() {
 }
 
 key() {
-  adb shell input keyevent "$1"
-  sleep 0.25
+  adb shell input dpad keyevent "$1"
+  sleep 0.3
   assert_foreground
 }
 
@@ -71,9 +71,9 @@ capture_page 3 settings
 
 # Remote regression: bottom navigation.
 start_page 0
-key 20
+key KEYCODE_DPAD_DOWN
 assert_state "page=0 navFocus=true"
-key 22
+key KEYCODE_DPAD_RIGHT
 assert_state "page=1 navFocus=true"
 
 # Photos: album row navigation and OK.
@@ -82,14 +82,14 @@ key 20
 assert_state "photosRow=1"
 key 22
 assert_state "page=1"
-key 23
+key KEYCODE_DPAD_CENTER
 assert_state "page=1"
 
 # Editor: columns, arrows, OK, and long OK.
 start_page 2
 key 22
 assert_state "editorColumn=1"
-adb shell input keyevent --longpress 23 || true
+adb shell input dpad keyevent --longpress KEYCODE_DPAD_CENTER || true
 sleep 0.4
 assert_foreground
 assert_state "editorMoveMode=true"
@@ -112,7 +112,7 @@ key 20
 assert_state "page=3"
 key 23
 assert_state "page=3"
-key 4
+key KEYCODE_BACK
 assert_state "page=0"
 
 # Reinstall the same signed APK in-place. This catches signer instability immediately.
