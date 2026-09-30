@@ -79,11 +79,19 @@ class PhotoTvView(
     private val inactivityHandler = Handler(Looper.getMainLooper())
     private val clockHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    private val highResExecutor = Executors.newSingleThreadExecutor()
     private val bitmapCache = LinkedHashMap<String, Bitmap>(32, .75f, true)
     private var bitmapCacheBytes = 0L
     private val bitmapCacheLimitBytes: Long by lazy {
         val adaptive = Runtime.getRuntime().maxMemory() / 8L
         adaptive.coerceIn(24L * 1024L * 1024L, 96L * 1024L * 1024L)
+    }
+    private val highResCache = LinkedHashMap<String, Bitmap>(8, .75f, true)
+    private val highResLoading = linkedSetOf<String>()
+    private var highResCacheBytes = 0L
+    private val highResCacheLimitBytes: Long by lazy {
+        val adaptive = Runtime.getRuntime().maxMemory() / 5L
+        adaptive.coerceIn(48L * 1024L * 1024L, 192L * 1024L * 1024L)
     }
     private val gifCache = LinkedHashMap<String, Movie>()
     private val gifLoading = linkedSetOf<String>()
@@ -741,6 +749,12 @@ class PhotoTvView(
             bitmapCache.clear()
             bitmapCacheBytes = 0L
         }
+        synchronized(highResCache) {
+            highResCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
+            highResCache.clear()
+            highResLoading.clear()
+            highResCacheBytes = 0L
+        }
         synchronized(gifCache) {
             gifCache.clear()
             gifLoading.clear()
@@ -871,17 +885,79 @@ class PhotoTvView(
                     runCatching { r.release() }
                 }
             } else {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                var sample = 1
-                while (bounds.outWidth / sample > 1200 || bounds.outHeight / sample > 900) sample *= 2
-                val opt = BitmapFactory.Options().apply { inSampleSize = max(1, sample) }
-                val decoded = context.contentResolver.openInputStream(uri)?.use {
-                    BitmapFactory.decodeStream(it, null, opt)
-                } ?: return@runCatching null
-                applyExifOrientation(uri, decoded)
+                decodeBitmap(uri, 1200, 900)
             }
         }.getOrNull()
+    }
+
+    private fun decodeBitmap(uri: Uri, targetWidth: Int, targetHeight: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= targetWidth &&
+            bounds.outHeight / (sample * 2) >= targetHeight
+        ) {
+            sample *= 2
+        }
+        val opt = BitmapFactory.Options().apply {
+            inSampleSize = max(1, sample)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val decoded = context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, opt)
+        } ?: return null
+        return applyExifOrientation(uri, decoded)
+    }
+
+    private fun highResTarget(): Pair<Int, Int> {
+        val displayW = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val displayH = height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        val memoryMb = Runtime.getRuntime().maxMemory() / (1024L * 1024L)
+        val maxW = when {
+            memoryMb >= 768L -> 3840
+            memoryMb >= 384L -> 3200
+            else -> 2560
+        }
+        val maxH = when {
+            maxW >= 3840 -> 2160
+            maxW >= 3200 -> 1800
+            else -> 1440
+        }
+        return min(displayW.coerceAtLeast(1280), maxW) to
+            min(displayH.coerceAtLeast(720), maxH)
+    }
+
+    private fun requestHighRes(uri: Uri) {
+        val key = uri.toString()
+        synchronized(highResCache) {
+            if (highResCache.containsKey(key) || highResLoading.contains(key)) return
+            highResLoading += key
+        }
+        val (targetW, targetH) = highResTarget()
+        highResExecutor.execute {
+            val bmp = runCatching { decodeBitmap(uri, targetW, targetH) }.getOrNull()
+            synchronized(highResCache) {
+                highResLoading.remove(key)
+                if (bmp != null) {
+                    highResCache.remove(key)?.let { old ->
+                        highResCacheBytes -= old.allocationByteCount.toLong()
+                        if (!old.isRecycled) old.recycle()
+                    }
+                    highResCache[key] = bmp
+                    highResCacheBytes += bmp.allocationByteCount.toLong()
+                    while (highResCacheBytes > highResCacheLimitBytes && highResCache.size > 1) {
+                        val first = highResCache.entries.firstOrNull() ?: break
+                        highResCacheBytes -= first.value.allocationByteCount.toLong()
+                        if (!first.value.isRecycled) first.value.recycle()
+                        highResCache.remove(first.key)
+                    }
+                }
+            }
+            if (bmp != null) postInvalidate()
+        }
     }
 
     private fun applyExifOrientation(uri: Uri, source: Bitmap): Bitmap {
@@ -946,10 +1022,25 @@ class PhotoTvView(
         val item = currentItem()
         return if (item == null) demoBitmap else {
             val key = item.uri.toString()
+            val high = synchronized(highResCache) { highResCache[key] }
+            if (high != null && !high.isRecycled) return high
+            requestHighRes(item.uri)
             synchronized(bitmapCache) { bitmapCache[key] }.also {
                 if (it == null) preload(listOf(item.uri))
             } ?: demoBitmap
         }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w == oldw && h == oldh) return
+        synchronized(highResCache) {
+            highResCache.values.forEach { bmp -> if (!bmp.isRecycled) bmp.recycle() }
+            highResCache.clear()
+            highResLoading.clear()
+            highResCacheBytes = 0L
+        }
+        currentItem()?.let { requestHighRes(it.uri) }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -3205,7 +3296,9 @@ class PhotoTvView(
         } else {
             (0..5).map { (currentPhoto + it) % items.size }
         }
-        preload(indices.distinct().mapNotNull { items.getOrNull(it)?.uri })
+        val orderedUris = indices.distinct().mapNotNull { items.getOrNull(it)?.uri }
+        preload(orderedUris)
+        orderedUris.take(3).forEach { requestHighRes(it) }
     }
 
     private fun slideshowNext(dir: Int) {
