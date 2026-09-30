@@ -9,8 +9,6 @@ import android.widget.Toast
 import android.view.WindowManager
 import android.text.InputType
 import android.content.Intent
-import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -291,14 +289,16 @@ class MainActivity : AppCompatActivity() {
                     }
                     val name = displayName(uri)
                     val mime = contentResolver.getType(uri).orEmpty()
-                    val dims = mediaDimensions(uri, mime)
+                    val info = MediaInfoReader.read(this, uri, mime)
                     PhotoItem(
                         uri = uri,
                         title = stripExtension(name),
                         albums = linkedSetOf("Album indisponible — utilisez le mode exact"),
-                        takenAt = 0L,
-                        width = dims.first,
-                        height = dims.second,
+                        takenAt = info.takenAt,
+                        location = info.location,
+                        camera = info.camera,
+                        width = info.width,
+                        height = info.height,
                         mediaType = when {
                             mime.startsWith("video/") -> "video"
                             mime.equals("image/gif", true) -> "gif"
@@ -341,25 +341,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
-    }
-
-    private fun mediaDimensions(uri: Uri, mime: String): Pair<Int, Int> {
-        return if (mime.startsWith("video/")) {
-            runCatching {
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(this, uri)
-                val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
-                val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-                retriever.release()
-                w to h
-            }.getOrDefault(0 to 0)
-        } else {
-            runCatching {
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-                opts.outWidth to opts.outHeight
-            }.getOrDefault(0 to 0)
-        }
     }
 
     private fun displayName(uri: Uri): String {
