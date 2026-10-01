@@ -1392,6 +1392,7 @@ class PhotoTvView(
                 try {
                     val bmp = decodeThumb(uri)
                     if (bmp != null) {
+                        analyzeQualityIfNeeded(key, bmp)
                         synchronized(bitmapCache) {
                             bitmapCache.remove(key)?.let { old ->
                                 bitmapCacheBytes -= old.allocationByteCount.toLong()
@@ -1414,6 +1415,41 @@ class PhotoTvView(
             }
         }
     }
+
+    private fun analyzeQualityIfNeeded(key: String, bmp: Bitmap) {
+        if (qualityScores.containsKey(key) || bmp.isRecycled) return
+        val cols = 16
+        val rows = 12
+        val luminance = IntArray(cols * rows)
+        var k = 0
+        for (row in 0 until rows) {
+            val y = (((row + 0.5f) / rows) * bmp.height).toInt().coerceIn(0, bmp.height - 1)
+            for (col in 0 until cols) {
+                val x = (((col + 0.5f) / cols) * bmp.width).toInt().coerceIn(0, bmp.width - 1)
+                val color = bmp.getPixel(x, y)
+                luminance[k++] = (
+                    Color.red(color) * 0.299f +
+                    Color.green(color) * 0.587f +
+                    Color.blue(color) * 0.114f
+                ).toInt().coerceIn(0, 255)
+            }
+        }
+        qualityScores[key] = ImageQualityPolicy.evaluate(luminance, cols, rows).score
+        activePhotosCacheKey = Long.MIN_VALUE
+    }
+
+    private fun smartAlbumCandidate(item: PhotoItem): SmartAlbumPolicy.Candidate =
+        SmartAlbumPolicy.Candidate(
+            favorite = favorites.contains(item.uri.toString()),
+            width = item.width,
+            height = item.height,
+            takenAt = item.takenAt,
+            mediaType = item.mediaType,
+            qualityScore = qualityScores[item.uri.toString()]
+        )
+
+    private fun smartAlbumMatches(name: String, item: PhotoItem): Boolean =
+        SmartAlbumPolicy.matches(name, smartAlbumCandidate(item))
 
     private fun scheduleBackgroundAnalysis() {
         val generation = ++backgroundAnalysisGeneration
@@ -1439,6 +1475,7 @@ class PhotoTvView(
                 } else {
                     val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                     if (bmp != null && !bmp.isRecycled) {
+                        analyzeQualityIfNeeded(key, bmp)
                         val scene = OnDeviceSceneLabeler.classify(bmp)
                         sceneCache[key] = scene
                         MediaMetadataStore.writeScene(
@@ -1783,6 +1820,9 @@ class PhotoTvView(
         mix(failedMediaUris.hashCode())
         mix(if (favoritesOnly) favorites.hashCode() else 0)
         mix(if (favoritesOnly) 1 else 0)
+        mix(if (smartAlbumsEnabled) 1 else 0)
+        mix(qualityMinimum)
+        mix(activeProfile)
         mix(albumRules.hashCode())
         mix(sourceRules.hashCode())
         if (key == activePhotosCacheKey) return activePhotosCache
@@ -1791,16 +1831,21 @@ class PhotoTvView(
         val filtered = library.filter { item ->
             (remoteSourceFilter == null || item.sourceLabel.ifBlank { "Source" } == remoteSourceFilter) &&
                 sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
-                item.albums.any {
-                    selectedAlbums.contains(it) &&
-                        !hiddenAlbums.contains(it) &&
-                        albumAllowed(it, now)
+                selectedAlbums.any { selected ->
+                    if (hiddenAlbums.contains(selected) || !albumAllowed(selected, now)) {
+                        false
+                    } else if (SmartAlbumPolicy.isSmartAlbum(selected)) {
+                        smartAlbumsEnabled && smartAlbumMatches(selected, item)
+                    } else {
+                        item.albums.contains(selected)
+                    }
                 } &&
                 NetworkLibrary.canUseOffline(context, item.uri) &&
                 !excludedUris.contains(item.uri.toString()) &&
                 !sessionExcludedUris.contains(item.uri.toString()) &&
                 !failedMediaUris.contains(item.uri.toString()) &&
-                (!favoritesOnly || favorites.contains(item.uri.toString()))
+                (!favoritesOnly || favorites.contains(item.uri.toString())) &&
+                (qualityMinimum <= 0 || qualityScores[item.uri.toString()]?.let { it >= qualityMinimum } != false)
         }
         activePhotosCache = filtered
         activePhotosCacheKey = key
@@ -2227,7 +2272,15 @@ class PhotoTvView(
         val base = if (library.isEmpty()) {
             mockAlbums
         } else {
-            albumIndex.entries.map { it.key to it.value.size }
+            buildList {
+                addAll(albumIndex.entries.map { it.key to it.value.size })
+                if (smartAlbumsEnabled) {
+                    SmartAlbumPolicy.labels.forEach { label ->
+                        val count = library.count { smartAlbumMatches(label, it) }
+                        if (count > 0) add(label to count)
+                    }
+                }
+            }
         }
         val filtered = if (albumSearch.isBlank()) base else {
             base.filter { it.first.contains(albumSearch, ignoreCase = true) }
@@ -2248,7 +2301,10 @@ class PhotoTvView(
     private fun currentAlbumPhotos(): List<PhotoItem?> {
         if (library.isEmpty()) return List(6) { null }
         val name = currentAlbumName()
-        return albumIndex[name].orEmpty().map { it as PhotoItem? }
+        val items = if (SmartAlbumPolicy.isSmartAlbum(name)) {
+            library.filter { smartAlbumMatches(name, it) }
+        } else albumIndex[name].orEmpty()
+        return items.map { it as PhotoItem? }
     }
     private fun albumDisplay(item: PhotoItem?): String {
         if (item == null) return "Norvège 2026"
@@ -5207,7 +5263,8 @@ class PhotoTvView(
                 takenAt = item.takenAt,
                 sourceLabel = item.sourceLabel,
                 albumKey = item.albums.firstOrNull().orEmpty(),
-                mediaType = item.mediaType
+                mediaType = item.mediaType,
+                qualityScore = qualityScores[item.uri.toString()]
             )
         }
         val activeSmartMode = effectiveSmartSelectionMode()
