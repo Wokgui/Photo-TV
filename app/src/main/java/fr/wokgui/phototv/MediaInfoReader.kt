@@ -87,10 +87,36 @@ object MediaInfoReader {
 
                 val make = exif.getAttribute(ExifInterface.TAG_MAKE).orEmpty().trim()
                 val model = exif.getAttribute(ExifInterface.TAG_MODEL).orEmpty().trim()
-                val camera = listOf(make, model)
+                val baseCamera = listOf(make, model)
                     .filter { it.isNotBlank() }
                     .distinct()
                     .joinToString(" ")
+
+                val lens = exif.getAttribute("LensModel").orEmpty().trim()
+                val focal = exifNumber(exif.getAttribute("FocalLength"))
+                    ?.takeIf { it > 0.0 }
+                    ?.let { value -> formatNumber(value) + " mm" }
+                    .orEmpty()
+                val aperture = exifNumber(exif.getAttribute("FNumber"))
+                    ?.takeIf { it > 0.0 }
+                    ?.let { value -> "f/" + formatNumber(value) }
+                    .orEmpty()
+                val iso = exif.getAttribute("PhotographicSensitivity")
+                    ?.ifBlank { exif.getAttribute("ISOSpeedRatings").orEmpty() }
+                    .orEmpty()
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?.let { "ISO " + it }
+                    .orEmpty()
+                val exposure = exifNumber(exif.getAttribute("ExposureTime"))
+                    ?.takeIf { it > 0.0 }
+                    ?.let(::formatExposure)
+                    .orEmpty()
+
+                val camera = listOf(baseCamera, lens, focal, aperture, iso, exposure)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .joinToString(" • ")
 
                 val latLong = FloatArray(2)
                 val hasLocation = runCatching { exif.getLatLong(latLong) }.getOrDefault(false)
@@ -113,6 +139,36 @@ object MediaInfoReader {
             } ?: MediaInfo(width = bounds.first, height = bounds.second)
         }.getOrDefault(MediaInfo(width = bounds.first, height = bounds.second))
     }
+
+    private fun exifNumber(raw: String?): Double? {
+        val value = raw?.trim().orEmpty()
+        if (value.isBlank()) return null
+        value.toDoubleOrNull()?.let { return it }
+        val slash = value.indexOf('/')
+        if (slash > 0 && slash < value.lastIndex) {
+            val a = value.substring(0, slash).toDoubleOrNull()
+            val b = value.substring(slash + 1).toDoubleOrNull()
+            if (a != null && b != null && b != 0.0) return a / b
+        }
+        return null
+    }
+
+    private fun formatNumber(value: Double): String =
+        if (kotlin.math.abs(value - kotlin.math.round(value)) < 0.05) {
+            kotlin.math.round(value).toInt().toString()
+        } else {
+            String.format(Locale.US, "%.1f", value)
+        }
+
+    private fun formatExposure(seconds: Double): String =
+        when {
+            seconds >= 1.0 -> formatNumber(seconds) + " s"
+            seconds > 0.0 -> {
+                val denominator = kotlin.math.round(1.0 / seconds).toInt().coerceAtLeast(1)
+                "1/" + denominator + " s"
+            }
+            else -> ""
+        }
 
     private fun parseExifDate(raw: String): Long {
         if (raw.isBlank()) return 0L
