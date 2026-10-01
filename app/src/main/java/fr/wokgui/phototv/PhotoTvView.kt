@@ -2687,7 +2687,10 @@ class PhotoTvView(
             appendLine("Scan incrémental: " + FolderScanIndex.stats())
             appendLine("Réseau temporairement hors ligne: " + NetworkLibrary.isTemporarilyOffline())
             appendLine("Télécommande: " + remoteEnabled)
-            appendLine("Adresses télécommande: " + remoteServer?.urls().orEmpty().joinToString())
+            appendLine(
+                "Adresses télécommande: " +
+                    remoteServer?.urls().orEmpty().map { it.substringBefore("#") }.joinToString()
+            )
             appendLine("Mode nuit actif: " + isNightModeActive())
             appendLine("État UI: " + automationStateDescription())
         }
