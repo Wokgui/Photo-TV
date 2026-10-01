@@ -13,7 +13,8 @@ Photo TV est un diaporama conçu pour Android TV / Google TV, avec une interface
 ## Fonctions principales
 
 - Diaporama plein écran avec navigation précédente / suivante et reprise de l'état.
-- 16 transitions, Ken Burns, modes Remplir / Adapter / Original / Fond flouté.
+- 16 transitions, Ken Burns, transitions adaptatives selon le média et les performances, modes Remplir / Adapter / Original / Fond flouté et Mosaïque 2 / 3 / 4.
+- Recadrage intelligent local avec détection de visage / sujet et cache persistant du point d'intérêt.
 - Photos, GIF et vidéos.
 - Date, heure et météo.
 - Métadonnées : titre, album, date, lieu, appareil, objectif, focale, ouverture, ISO, exposition, dimensions et orientation lorsque disponibles.
@@ -26,7 +27,7 @@ Photo TV est un diaporama conçu pour Android TV / Google TV, avec une interface
 - Éditeur visuel des textes : police, taille, couleur, position, alignement, ombre et visibilité.
 - Presets de disposition Standard, Minimal, Cinéma et Horloge.
 - Mode nuit programmable.
-- Télécommande smartphone sur le réseau local avec lien secret.
+- Télécommande smartphone sur le réseau local avec lien secret, aperçus authentifiés, gestes de balayage, favori visible et aperçu plein écran.
 - Cache réseau, lecture hors ligne des éléments déjà téléchargés, suivi de santé / latence par source et rafraîchissement automatique.
 - Préchargement et budgets mémoire adaptatifs jusqu'aux écrans 4K.
 - Diagnostic intégré : mémoire, FPS, jank, décodage, cache, index, réseau et fichiers illisibles.
@@ -38,7 +39,7 @@ Photo TV est un diaporama conçu pour Android TV / Google TV, avec une interface
 
 Photo TV conserve le dernier index connu d'une source réseau pendant une panne temporaire, isole l'état hors ligne source par source et réessaie les erreurs réseau transitoires au lieu de classer immédiatement le média comme définitivement illisible.
 
-Le projet inclut des tests JVM, des tests Android instrumentés, une régression visuelle du preview Web, des tests de navigation Android TV, des smoke tests 720p / 1080p / 4K et un test marathon sur émulateur Android TV.
+Le projet inclut des tests JVM, des tests Android instrumentés jusqu'à 50 000 médias synthétiques, des stress tests jusqu'à 100 000 éléments, une régression visuelle du preview Web, des tests de navigation Android TV, des smoke tests 720p / 1080p / 4K et un marathon renforcé sur émulateur Android TV.
 
 ## Aperçu Web
 
@@ -50,7 +51,7 @@ https://wokgui.github.io/Photo-TV/
 
 Le workflow GitHub Actions vérifie le preview Web, exécute les tests JVM et Android, contrôle les captures de régression, compile l'APK et vérifie sa signature.
 
-L'artefact produit s'appelle `Photo-TV-APK`.
+L'artefact produit s'appelle `Photo-TV-APK` et contient l'APK générique, un APK nommé `Photo-TV-v<version>.apk`, les informations de version / signature et un changelog récent.
 
 ## Remarque sur Google Photos
 
