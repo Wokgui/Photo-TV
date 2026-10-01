@@ -171,6 +171,7 @@ class PhotoTvView(
     private var fixedImage = false
     private var loop = true
     private var randomOrder = false
+    private var smartSelectionMode = SmartSelectionPolicy.OFF
     private var transitionIndex = 0
     private var transitionSeconds = 2f
     private var kenBurns = true
@@ -322,6 +323,7 @@ class PhotoTvView(
         fixedImage = prefs.getBoolean("fixed", false)
         loop = prefs.getBoolean("loop", true)
         randomOrder = prefs.getBoolean("random", false)
+        smartSelectionMode = prefs.getInt("smart_selection_mode", SmartSelectionPolicy.OFF).coerceIn(0, 4)
         transitionIndex = prefs.getInt("transition", 0).coerceIn(0, transitions.lastIndex)
         transitionSeconds = prefs.getFloat("transition_seconds", 2f)
         kenBurns = prefs.getBoolean("ken", true)
@@ -393,6 +395,7 @@ class PhotoTvView(
             putBoolean("fixed", fixedImage)
             putBoolean("loop", loop)
             putBoolean("random", randomOrder)
+            putInt("smart_selection_mode", smartSelectionMode)
             putInt("transition", transitionIndex)
             putFloat("transition_seconds", transitionSeconds)
             putBoolean("ken", kenBurns)
@@ -595,6 +598,7 @@ class PhotoTvView(
         root.put("fixedImage", fixedImage)
         root.put("loop", loop)
         root.put("randomOrder", randomOrder)
+        root.put("smartSelectionMode", smartSelectionMode)
         root.put("transitionIndex", transitionIndex)
         root.put("transitionSeconds", transitionSeconds.toDouble())
         root.put("kenBurns", kenBurns)
@@ -668,6 +672,7 @@ class PhotoTvView(
             fixedImage = root.optBoolean("fixedImage", fixedImage)
             loop = root.optBoolean("loop", loop)
             randomOrder = root.optBoolean("randomOrder", randomOrder)
+            smartSelectionMode = root.optInt("smartSelectionMode", smartSelectionMode).coerceIn(0, 4)
             transitionIndex = root.optInt("transitionIndex", transitionIndex).coerceIn(0, transitions.lastIndex)
             transitionSeconds = root.optDouble("transitionSeconds", transitionSeconds.toDouble()).toFloat().coerceIn(.2f, 4f)
             kenBurns = root.optBoolean("kenBurns", kenBurns)
@@ -2183,6 +2188,7 @@ class PhotoTvView(
         settingsSlider(c, "Durée de la transition", transitionSeconds, .2f, 4f, "${format1(transitionSeconds)} secondes", x, y + 390f, 5)
         settingsToggle(c, "Effet panoramique (Ken Burns)", kenBurns, x, y + 430f, 6)
         settingsSegment(c, "Style d'agrandissement", listOf("Léger", "Moyen", "Fort"), zoomLevel, x, y + 471f, 7)
+        settingsChoice(c, "Sélection intelligente", SmartSelectionPolicy.modeLabel(smartSelectionMode), x, y + 512f, 8)
     }
 
     private fun drawSettingsElements(c: Canvas, x: Float, y: Float, w: Float) {
@@ -2486,6 +2492,8 @@ class PhotoTvView(
             appendLine("Pause: " + paused)
             appendLine("Photo courante: " + currentPhoto)
             appendLine("Mode aléatoire: " + randomOrder)
+            appendLine("Sélection intelligente: " + SmartSelectionPolicy.modeLabel(smartSelectionMode))
+            appendLine("Santé réseau: " + NetworkLibrary.healthSummary())
             appendLine("Transition: " + transitions[transitionIndex.coerceIn(0, transitions.lastIndex)])
             appendLine("Mode image: " + imageModeLabel())
             appendLine("Fichiers illisibles: " + decodeFailureCount)
@@ -3691,7 +3699,7 @@ class PhotoTvView(
     }
 
     private fun settingsControlMax(): Int = when(settingsCategory) {
-        0 -> 7
+        0 -> 8
         1 -> elementNames.lastIndex
         2 -> elementNames.lastIndex
         3 -> transitions.lastIndex
@@ -3814,6 +3822,7 @@ class PhotoTvView(
                 5 -> transitionSeconds = (transitionSeconds + dir * .1f).coerceIn(.2f, 4f)
                 6 -> kenBurns = !kenBurns
                 7 -> zoomLevel = (zoomLevel + dir + 3) % 3
+                8 -> smartSelectionMode = (smartSelectionMode + dir + 5) % 5
             }
             1 -> toggleElement(settingsControl)
             2 -> editorElement = (editorElement + dir + elementNames.size) % elementNames.size
@@ -4232,7 +4241,29 @@ class PhotoTvView(
     private fun rebuildShuffleBag() {
         val items = activePhotos()
         shuffleBag.clear()
-        shuffleBag.addAll(SlideshowOrder.newBag(items.size, currentPhoto))
+        if (smartSelectionMode == SmartSelectionPolicy.OFF) {
+            shuffleBag.addAll(SlideshowOrder.newBag(items.size, currentPhoto))
+            return
+        }
+        val candidates = items.mapIndexed { index, item ->
+            SmartSelectionPolicy.Candidate(
+                index = index,
+                favorite = favorites.contains(item.uri.toString()),
+                width = item.width,
+                height = item.height,
+                takenAt = item.takenAt,
+                sourceLabel = item.sourceLabel,
+                albumKey = item.albums.firstOrNull().orEmpty(),
+                mediaType = item.mediaType
+            )
+        }
+        shuffleBag.addAll(
+            SmartSelectionPolicy.buildOrder(
+                candidates = candidates,
+                currentIndex = currentPhoto,
+                mode = smartSelectionMode
+            )
+        )
     }
 
     private fun preloadAroundCurrent() {
