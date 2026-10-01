@@ -2188,7 +2188,6 @@ class PhotoTvView(
         settingsSlider(c, "Durée de la transition", transitionSeconds, .2f, 4f, "${format1(transitionSeconds)} secondes", x, y + 390f, 5)
         settingsToggle(c, "Effet panoramique (Ken Burns)", kenBurns, x, y + 430f, 6)
         settingsSegment(c, "Style d'agrandissement", listOf("Léger", "Moyen", "Fort"), zoomLevel, x, y + 471f, 7)
-        settingsChoice(c, "Sélection intelligente", SmartSelectionPolicy.modeLabel(smartSelectionMode), x, y + 512f, 8)
     }
 
     private fun drawSettingsElements(c: Canvas, x: Float, y: Float, w: Float) {
@@ -2440,6 +2439,7 @@ class PhotoTvView(
     }
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        controlBox(c, x + 22f, y + 8f, 82f, 38f, "Sélect.", settingsColumn == 1 && settingsControl == 15 && !navFocus)
         controlBox(c, x + 118f, y + 8f, 92f, 38f, "PIN", settingsColumn == 1 && settingsControl == 14 && !navFocus)
         controlBox(c, x + 225f, y + 8f, 205f, 38f, if (remoteEnabled) "Télécommande : ON" else "Télécommande : OFF", settingsColumn == 1 && settingsControl == 13 && !navFocus)
         controlBox(c, x + 445f, y + 8f, 205f, 38f, if (interactionDiagnostics) "Zones : ON" else "Zones : OFF", settingsColumn == 1 && settingsControl == 12 && !navFocus)
@@ -3699,14 +3699,14 @@ class PhotoTvView(
     }
 
     private fun settingsControlMax(): Int = when(settingsCategory) {
-        0 -> 8
+        0 -> 7
         1 -> elementNames.lastIndex
         2 -> elementNames.lastIndex
         3 -> transitions.lastIndex
         4 -> 9
         5 -> 2
         6 -> 7
-        else -> if (advancedRulesOpen) 9 else 14
+        else -> if (advancedRulesOpen) 9 else 15
     }
 
     private fun adjustEditor(dir: Int) {
@@ -3822,7 +3822,6 @@ class PhotoTvView(
                 5 -> transitionSeconds = (transitionSeconds + dir * .1f).coerceIn(.2f, 4f)
                 6 -> kenBurns = !kenBurns
                 7 -> zoomLevel = (zoomLevel + dir + 3) % 3
-                8 -> smartSelectionMode = (smartSelectionMode + dir + 5) % 5
             }
             1 -> toggleElement(settingsControl)
             2 -> editorElement = (editorElement + dir + elementNames.size) % elementNames.size
@@ -3875,6 +3874,7 @@ class PhotoTvView(
                     if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
                 }
                 14 -> onSettingsPin()
+                15 -> smartSelectionMode = (smartSelectionMode + dir + 5) % 5
             }
         }
         scheduleSlideshow()
@@ -3967,6 +3967,7 @@ class PhotoTvView(
                             if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
                         }
                         14 -> onSettingsPin()
+                        15 -> smartSelectionMode = (smartSelectionMode + 1) % 5
                         else -> adjustSettings(1)
                     }
                 }
@@ -4706,6 +4707,11 @@ class PhotoTvView(
                     }
                 }
             } else when {
+                x in 402f..484f && y in 77f..125f -> {
+                    settingsControl = 15
+                    smartSelectionMode = (smartSelectionMode + 1) % 5
+                }
+
                 x in 498f..590f && y in 77f..125f -> {
                     settingsControl = 14
                     onSettingsPin()
