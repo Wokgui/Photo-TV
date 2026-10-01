@@ -131,6 +131,8 @@ class MainActivity : AppCompatActivity() {
             val testCount = intent.getIntExtra("phototv_test_library_count", 0)
             if (testCount > 0) ui.installAutomationLibraryForTest(testCount)
             ui.setAutomationPage(intent.getIntExtra("phototv_test_page", 0))
+            val testImageMode = intent.getIntExtra("phototv_test_image_mode", -1)
+            if (testImageMode >= 0) ui.setAutomationImageModeForTest(testImageMode)
             if (intent.getBooleanExtra("phototv_test_slideshow", false) && testCount > 0) {
                 ui.startAutomationSlideshowForTest()
             }
