@@ -983,17 +983,23 @@ class PhotoTvView(
 
     fun installAutomationLibraryForTest(count: Int) {
         if (!automationMode) return
-        val safeCount = count.coerceIn(1, 500)
+        val safeCount = count.coerceIn(1, 50_000)
         val items = (0 until safeCount).map { index ->
             PhotoItem(
                 uri = Uri.parse("content://phototv-test/photo-" + index),
                 title = "Test " + index,
-                albums = linkedSetOf("Test"),
-                sourceLabel = "Test"
+                albums = linkedSetOf("Test " + (index % 24)),
+                sourceLabel = "Test " + (index % 4)
             )
         }
         setLibrary(items, exactAlbums = false, sourceName = "Test")
     }
+
+    fun automationLibrarySizeForTest(): Int =
+        if (automationMode) library.size else 0
+
+    fun automationActiveCountForTest(): Int =
+        if (automationMode) activePhotos().size else 0
 
     fun startAutomationSlideshowForTest() {
         if (automationMode) startSlideshow()
