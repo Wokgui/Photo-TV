@@ -55,7 +55,7 @@ class PhotoTvView(
 ) : View(context) {
 
     companion object {
-        private const val SETTINGS_SCHEMA_VERSION = 4
+        private const val SETTINGS_SCHEMA_VERSION = 5
     }
 
     private data class Style(
@@ -725,6 +725,21 @@ class PhotoTvView(
         root.put("albumSearch", albumSearch)
         root.put("albumSort", albumSort)
         root.put("videoSound", videoSound)
+        root.put("activeProfile", activeProfile)
+        root.put("smartAlbumsEnabled", smartAlbumsEnabled)
+        root.put("qualityMinimum", qualityMinimum)
+        root.put("profileStates", JSONObject().apply {
+            for (index in ProfilePolicy.labels.indices) {
+                val raw = if (index == activeProfile) {
+                    profileStateJson().toString()
+                } else {
+                    prefs.getString("profile_state_" + index, null)
+                }
+                if (!raw.isNullOrBlank()) {
+                    runCatching { put(index.toString(), JSONObject(raw)) }
+                }
+            }
+        })
         root.put("albumRules", albumRulesJson())
         root.put("sourceRules", sourceRulesJson())
         root.put("networkSources", NetworkSourceStore.exportJson(context))
@@ -801,6 +816,16 @@ class PhotoTvView(
             albumSearch = root.optString("albumSearch", albumSearch)
             albumSort = root.optInt("albumSort", albumSort).coerceIn(0, 1)
             videoSound = root.optBoolean("videoSound", videoSound)
+            activeProfile = ProfilePolicy.normalize(root.optInt("activeProfile", activeProfile))
+            smartAlbumsEnabled = root.optBoolean("smartAlbumsEnabled", smartAlbumsEnabled)
+            qualityMinimum = root.optInt("qualityMinimum", qualityMinimum).coerceIn(0, 90)
+            root.optJSONObject("profileStates")?.let { states ->
+                for (index in ProfilePolicy.labels.indices) {
+                    states.optJSONObject(index.toString())?.let { state ->
+                        prefs.edit().putString("profile_state_" + index, state.toString()).apply()
+                    }
+                }
+            }
             root.optJSONArray("networkSources")?.let { NetworkSourceStore.importJson(context, it) }
             val networkPrefs = context.getSharedPreferences("photo_tv_network_settings", Context.MODE_PRIVATE)
             val importedCacheMb = root.optInt("networkCacheMb", networkPrefs.getInt("cache_mb", 512)).coerceIn(64, 2048)
@@ -834,7 +859,7 @@ class PhotoTvView(
             restoreSet("hiddenAlbums", hiddenAlbums)
             restoreSet("excludedUris", excludedUris)
             restoreSet("selectedAlbums", selectedAlbums)
-            val availableAlbums = library.flatMap { it.albums }.distinct()
+            val availableAlbums = allSelectableAlbumNames()
             if (availableAlbums.isNotEmpty()) {
                 selectedAlbums.retainAll(availableAlbums.toSet())
                 if (selectedAlbums.isEmpty()) selectedAlbums.addAll(availableAlbums)
