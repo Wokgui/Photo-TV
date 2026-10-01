@@ -11,6 +11,8 @@ import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityEvent
 import android.util.Log
 import android.media.MediaMetadataRetriever
 import androidx.core.graphics.drawable.toBitmap
@@ -999,6 +1001,83 @@ class PhotoTvView(
         invalidate()
     }
 
+    private fun accessibilityDescription(): String {
+        loadingText?.let { return "Photo TV. $it" }
+        if (remoteQrVisible) return "Télécommande téléphone. Scannez le QR code avec un téléphone connecté au même réseau."
+        if (technicalDiagnosticsVisible) return "Diagnostics techniques. Appuyez sur OK ou Retour pour fermer."
+        if (historyOverlayVisible) return "Historique récent. Utilisez les flèches pour choisir une photo puis OK pour l'ouvrir."
+        if (memoriesOverlayVisible) return "Souvenirs. Utilisez les flèches pour choisir une catégorie et une photo."
+        if (slideshow) {
+            val item = currentItem()
+            val state = if (paused) "En pause" else "Lecture"
+            return "Diaporama. $state. ${item?.title.orEmpty()}. ${albumDisplay(item)}. Flèche gauche : précédente. Flèche droite : suivante. OK : pause ou reprise. Retour : quitter."
+        }
+        if (navFocus) {
+            val labels = listOf("Aperçu", "Photos", "Éditeur", "Réglages")
+            return "Navigation principale. ${labels[page.coerceIn(0, labels.lastIndex)]}. Flèches gauche et droite pour changer d'écran. OK pour ouvrir."
+        }
+        return when (page) {
+            0 -> {
+                val item = currentItem()
+                "Aperçu. ${item?.title.orEmpty()}. ${albumDisplay(item)}. Flèches gauche et droite pour changer de photo. OK pour démarrer le diaporama."
+            }
+            1 -> when (photosRow) {
+                0 -> "Sources. " + listOf("Google Photos ou Takeout", "Dossier local", "Sélection de photos")[sourceFocus.coerceIn(0, 2)] + ". OK pour ouvrir."
+                1 -> {
+                    val name = currentAlbumName()
+                    val selected = if (selectedAlbums.contains(name)) "sélectionné" else "non sélectionné"
+                    "Albums. $name, $selected. OK pour modifier la sélection."
+                }
+                2 -> {
+                    val item = currentAlbumPhotos().getOrNull(photoFocus)
+                    "Photos. ${item?.title ?: "Aucune photo"}. OK pour ouvrir."
+                }
+                else -> "Navigation principale."
+            }
+            2 -> {
+                val element = elementNames[editorElement.coerceIn(0, elementNames.lastIndex)]
+                when (editorColumn) {
+                    0 -> "Éditeur. Élément $element. Flèches haut et bas pour choisir un élément. Droite pour modifier."
+                    1 -> "Éditeur. Aperçu de $element. OK pour activer ou quitter le déplacement."
+                    else -> "Éditeur. Réglage ${editorControl + 1} pour $element. Flèches pour modifier."
+                }
+            }
+            else -> {
+                val categories = listOf(
+                    "Diaporama", "Éléments affichés", "Style et position", "Transitions",
+                    "Heure et date", "Température", "Source des photos", "Avancés"
+                )
+                val category = categories[settingsCategory.coerceIn(0, categories.lastIndex)]
+                if (settingsColumn == 0) {
+                    "Réglages. Catégorie $category. Haut et bas pour changer de catégorie. Droite ou OK pour ouvrir."
+                } else {
+                    "Réglages. $category. Contrôle ${settingsControl + 1}. Utilisez les flèches et OK pour modifier."
+                }
+            }
+        }
+    }
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        info.className = "android.view.View"
+        info.contentDescription = accessibilityDescription()
+        info.isClickable = true
+        info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        if (slideshow) togglePause() else activate()
+        contentDescription = accessibilityDescription()
+        sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED)
+        return true
+    }
+
+    private fun announceAccessibilityState() {
+        contentDescription = accessibilityDescription()
+        announceForAccessibility(contentDescription)
+    }
+
     fun automationStateDescription(): String =
         "PhotoTV page=$page navFocus=$navFocus photosRow=$photosRow sourceFocus=$sourceFocus " +
             "albumFocus=$albumFocus photoFocus=$photoFocus editorColumn=$editorColumn " +
@@ -1559,7 +1638,7 @@ class PhotoTvView(
             frameCount = 0
             fpsWindowStarted = nowFps
         }
-        contentDescription = automationStateDescription()
+        contentDescription = accessibilityDescription()
         if (width <= 0 || height <= 0) return
         val sx = width / 1280f
         val sy = height / 720f
@@ -2603,6 +2682,7 @@ class PhotoTvView(
             appendLine("Scan incrémental: " + FolderScanIndex.stats())
             appendLine("Réseau temporairement hors ligne: " + NetworkLibrary.isTemporarilyOffline())
             appendLine("Télécommande: " + remoteEnabled)
+            appendLine("Adresses télécommande: " + remoteServer?.urls().orEmpty().joinToString())
             appendLine("Mode nuit actif: " + isNightModeActive())
             appendLine("État UI: " + automationStateDescription())
         }
@@ -3766,6 +3846,7 @@ class PhotoTvView(
                 }
             }
             invalidate()
+            announceAccessibilityState()
             return
         }
 
@@ -3797,6 +3878,7 @@ class PhotoTvView(
         }
         savePrefs()
         invalidate()
+        announceAccessibilityState()
     }
 
     private fun moveHorizontal(dir: Int) {
@@ -3808,6 +3890,7 @@ class PhotoTvView(
             }
             page = target
             invalidate()
+            announceAccessibilityState()
             return
         }
 
@@ -3846,6 +3929,7 @@ class PhotoTvView(
         }
         savePrefs()
         invalidate()
+        announceAccessibilityState()
     }
 
     private fun moveEditorByPixels(dx: Int, dy: Int) {
