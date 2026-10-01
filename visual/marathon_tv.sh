@@ -11,9 +11,11 @@ adb install -r "$APK"
 adb logcat -c
 
 launch_slideshow() {
+  local mode="${1:-0}"
   adb shell am force-stop "$PKG"
   adb shell am start -n "$ACT" --ez phototv_test_mode true --ei phototv_test_page 0 \
-    --ei phototv_test_library_count 5000 --ez phototv_test_slideshow true >/dev/null
+    --ei phototv_test_library_count 5000 --ei phototv_test_image_mode "$mode" \
+    --ez phototv_test_slideshow true >/dev/null
   sleep 1
 }
 
@@ -33,7 +35,8 @@ launch_photos() {
   sleep 1
 }
 
-launch_slideshow
+mosaic_mode=4
+launch_slideshow "$mosaic_mode"
 : > "$OUT/memory.txt"
 
 for i in $(seq 1 3000); do
@@ -41,11 +44,12 @@ for i in $(seq 1 3000); do
   if (( phase == 250 )); then
     launch_settings
   elif (( phase == 400 )); then
-    for _ in $(seq 1 7); do adb shell input keyevent 22; done
+    mosaic_mode=$((4 + ((i / 750) % 3)))
+    launch_slideshow "$mosaic_mode"
   elif (( phase == 500 )); then
     launch_photos
   elif (( phase == 620 )); then
-    launch_slideshow
+    launch_slideshow "$mosaic_mode"
   fi
 
   case $((i % 10)) in
@@ -67,7 +71,7 @@ for i in $(seq 1 3000); do
 
   if (( i % 1000 == 0 )); then
     adb shell am force-stop "$PKG"
-    launch_slideshow
+    launch_slideshow "$mosaic_mode"
   fi
 done
 
