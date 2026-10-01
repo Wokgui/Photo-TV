@@ -29,67 +29,78 @@ object SmartSelectionPolicy {
         now: Calendar = Calendar.getInstance(),
         random: Random = Random()
     ): List<Int> {
-        val pool = candidates.filter { it.index != currentIndex }.toMutableList()
+        val pool = candidates.filter { it.index != currentIndex }
         if (pool.isEmpty()) return emptyList()
         if (mode == OFF) return pool.map { it.index }.shuffled(random)
 
         val useQuality = mode == QUALITY || mode == COMPLETE
         val useAntiRepeat = mode == ANTI_REPEAT || mode == COMPLETE
         val useMemories = mode == MEMORIES || mode == COMPLETE
-        val result = mutableListOf<Int>()
+
+        val scored = pool.map { candidate ->
+            var score = random.nextDouble() * 100.0
+
+            if (useQuality) {
+                val pixels = candidate.width.toLong().coerceAtLeast(0L) *
+                    candidate.height.toLong().coerceAtLeast(0L)
+                score += when {
+                    pixels >= 12_000_000L -> 35.0
+                    pixels >= 6_000_000L -> 25.0
+                    pixels >= 2_000_000L -> 12.0
+                    pixels in 1..699_999L -> -20.0
+                    else -> 0.0
+                }
+                if (candidate.favorite) score += 55.0
+                if (candidate.mediaType == "image") score += 8.0
+            }
+
+            if (useMemories && candidate.takenAt > 0L) {
+                val date = Calendar.getInstance().apply { timeInMillis = candidate.takenAt }
+                val sameMonth = date.get(Calendar.MONTH) == now.get(Calendar.MONTH)
+                val sameDay = sameMonth &&
+                    date.get(Calendar.DAY_OF_MONTH) == now.get(Calendar.DAY_OF_MONTH)
+                score += when {
+                    sameDay -> 70.0
+                    sameMonth -> 30.0
+                    else -> 0.0
+                }
+            }
+
+            candidate to score
+        }.sortedByDescending { it.second }.toMutableList()
+
+        if (!useAntiRepeat) return scored.map { it.first.index }
+
         var previousSource = candidates.firstOrNull { it.index == currentIndex }?.sourceLabel.orEmpty()
         var previousAlbum = candidates.firstOrNull { it.index == currentIndex }?.albumKey.orEmpty()
 
-        while (pool.isNotEmpty()) {
-            val scored = pool.map { candidate ->
-                val base = random.nextDouble() * 100.0
-                var score = base
+        for (position in scored.indices) {
+            fun conflicts(candidate: Candidate): Boolean =
+                (candidate.sourceLabel.isNotBlank() && candidate.sourceLabel == previousSource) ||
+                    (candidate.albumKey.isNotBlank() && candidate.albumKey == previousAlbum)
 
-                if (useQuality) {
-                    val pixels = candidate.width.toLong().coerceAtLeast(0L) *
-                        candidate.height.toLong().coerceAtLeast(0L)
-                    score += when {
-                        pixels >= 12_000_000L -> 35.0
-                        pixels >= 6_000_000L -> 25.0
-                        pixels >= 2_000_000L -> 12.0
-                        pixels in 1..699_999L -> -20.0
-                        else -> 0.0
-                    }
-                    if (candidate.favorite) score += 55.0
-                    if (candidate.mediaType == "image") score += 8.0
-                }
-
-                if (useMemories && candidate.takenAt > 0L) {
-                    val date = Calendar.getInstance().apply { timeInMillis = candidate.takenAt }
-                    val sameMonth = date.get(Calendar.MONTH) == now.get(Calendar.MONTH)
-                    val sameDay = sameMonth &&
-                        date.get(Calendar.DAY_OF_MONTH) == now.get(Calendar.DAY_OF_MONTH)
-                    score += when {
-                        sameDay -> 70.0
-                        sameMonth -> 30.0
-                        else -> 0.0
+            if (conflicts(scored[position].first)) {
+                val searchEnd = minOf(scored.lastIndex, position + 12)
+                var replacement = -1
+                for (j in position + 1..searchEnd) {
+                    if (!conflicts(scored[j].first)) {
+                        replacement = j
+                        break
                     }
                 }
-
-                if (useAntiRepeat) {
-                    if (candidate.sourceLabel.isNotBlank() && candidate.sourceLabel == previousSource) {
-                        score -= 35.0
-                    }
-                    if (candidate.albumKey.isNotBlank() && candidate.albumKey == previousAlbum) {
-                        score -= 55.0
-                    }
+                if (replacement >= 0) {
+                    val tmp = scored[position]
+                    scored[position] = scored[replacement]
+                    scored[replacement] = tmp
                 }
-                candidate to score
             }
 
-            val chosen = scored.maxByOrNull { it.second }!!.first
-            result += chosen.index
+            val chosen = scored[position].first
             previousSource = chosen.sourceLabel
             previousAlbum = chosen.albumKey
-            pool.remove(chosen)
         }
 
-        return result
+        return scored.map { it.first.index }
     }
 
     fun modeLabel(mode: Int): String = when (mode.coerceIn(OFF, COMPLETE)) {
