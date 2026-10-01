@@ -24,4 +24,14 @@ class SceneClassifierInstrumentedTest {
         assertEquals(SceneClassifier.SEA_SKY, SceneClassifier.classify(bmp))
         bmp.recycle()
     }
+
+    @Test
+    fun onDeviceLabelerRunsWithoutCrashing() {
+        val bmp = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(Color.rgb(70, 160, 80))
+        val scene = OnDeviceSceneLabeler.classify(bmp)
+        org.junit.Assert.assertTrue(scene.isNotBlank())
+        bmp.recycle()
+    }
+
 }
