@@ -1406,13 +1406,13 @@ class PhotoTvView(
         val duration = movie.duration().takeIf { it > 0 } ?: 1000
         movie.setTime((android.os.SystemClock.uptimeMillis() % duration).toInt())
 
-        val scale = when (imageMode) {
+        val scale = when (displayImageMode()) {
             1, 3 -> min(w / mw, h / mh)
             2 -> min(1f, min(w / mw, h / mh))
             else -> max(w / mw, h / mh)
         }
 
-        if (imageMode == 3) {
+        if (displayImageMode() == 3) {
             drawSoftBackground(c, currentBitmap(), x, y, w, h)
             fill(c, x, y, x + w, y + h, Color.argb(75, 0, 0, 0))
         } else {
@@ -2829,6 +2829,38 @@ class PhotoTvView(
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
     }.getOrDefault("?")
 
+    private fun displayImageMode(): Int = autonomousImageModeOverride ?: imageMode
+
+    private fun currentScene(item: PhotoItem?): String? {
+        if (item == null || item.mediaType != "image") return null
+        val key = item.uri.toString()
+        sceneCache[key]?.let { return it }
+        val mime = runCatching { context.contentResolver.getType(item.uri) }.getOrNull().orEmpty()
+        val signature = MediaMetadataStore.signature(context, item.uri, mime)
+        val cached = MediaMetadataStore.readScene(context, item.uri, signature)?.label
+        if (!cached.isNullOrBlank()) sceneCache[key] = cached
+        return cached
+    }
+
+    private fun effectiveSmartSelectionMode(): Int =
+        if (autonomousSlideshow) AutonomousSlideshowPolicy.current(
+            slideNumber = autonomousSlideNumber,
+            scene = currentScene(currentItem())
+        ).smartSelectionMode else smartSelectionMode
+
+    private fun updateAutonomousPresentation() {
+        if (!autonomousSlideshow) {
+            autonomousImageModeOverride = null
+            return
+        }
+        val item = currentItem()
+        val presentation = AutonomousSlideshowPolicy.current(
+            slideNumber = autonomousSlideNumber,
+            scene = currentScene(item)
+        )
+        autonomousImageModeOverride = if (item?.mediaType == "image") presentation.imageModeOverride else null
+    }
+
     private val imageModes: List<String>
         get() = listOf("Remplir", "Adapter", "Original", "Fond flouté", "Mosaïque 2", "Mosaïque 3", "Mosaïque 4")
 
@@ -2891,7 +2923,7 @@ class PhotoTvView(
 
         val localTransition = effectiveTransition(item)
         val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
-        if (imageMode >= 4) {
+        if (displayImageMode() >= 4) {
             drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current, item)
         } else if (item?.mediaType == "video" && supportsVideoPlayback) {
             c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
@@ -3502,7 +3534,7 @@ class PhotoTvView(
         item: PhotoItem? = currentItem()
     ) {
         fill(c, x, y, x + w, y + h, Color.rgb(6, 12, 18))
-        when (imageMode) {
+        when (displayImageMode()) {
             1 -> drawBitmapFit(c, bmp, x, y, w, h)
             2 -> drawBitmapOriginal(c, bmp, x, y, w, h)
             3 -> {
@@ -4867,7 +4899,7 @@ class PhotoTvView(
     }
 
     private fun syncVideoPlayback() {
-        if (imageMode >= 4) {
+        if (displayImageMode() >= 4) {
             onVideoPlayback(null, videoSound)
             return
         }
@@ -4958,13 +4990,14 @@ class PhotoTvView(
                 mediaType = item.mediaType
             )
         }
-        val baseOrder = if (smartSelectionMode == SmartSelectionPolicy.OFF) {
+        val activeSmartMode = effectiveSmartSelectionMode()
+        val baseOrder = if (activeSmartMode == SmartSelectionPolicy.OFF) {
             SlideshowOrder.newBag(items.size, currentPhoto)
         } else {
             SmartSelectionPolicy.buildOrder(
                 candidates = smartCandidates,
                 currentIndex = currentPhoto,
-                mode = smartSelectionMode
+                mode = activeSmartMode
             )
         }
         val diversityCandidates = items.mapIndexed { index, item ->
@@ -4996,9 +5029,10 @@ class PhotoTvView(
             avgDecodeMs = if (decodeCount <= 0L) 0L else decodeTotalMs / decodeCount,
             avgNetworkMs = NetworkLibrary.averageRemoteReadMs()
         )
-        val mosaicCount = if (imageMode >= 4) (imageMode - 2).coerceIn(2, 4) else 1
+        val displayMode = displayImageMode()
+        val mosaicCount = if (displayMode >= 4) (displayMode - 2).coerceIn(2, 4) else 1
         val ahead = max(decision.ahead, mosaicCount - 1)
-        val hdAhead = max(decision.hdAhead, if (imageMode >= 4) mosaicCount else 1)
+        val hdAhead = max(decision.hdAhead, if (displayMode >= 4) mosaicCount else 1)
 
         val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
             buildList {
