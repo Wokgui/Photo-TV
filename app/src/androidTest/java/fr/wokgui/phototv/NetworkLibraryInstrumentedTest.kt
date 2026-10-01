@@ -100,6 +100,37 @@ class NetworkLibraryInstrumentedTest {
     }
 
     @Test
+    fun outageIsScopedToTheFailingSource() {
+        val secondServer = FakeWebDavServer()
+        secondServer.start()
+        try {
+            val firstItems = NetworkLibrary.load(
+                kind = NetworkLibrary.Kind.WEBDAV,
+                baseUrl = "http://127.0.0.1:" + server.port + "/photos/",
+                username = "",
+                password = ""
+            )
+            val secondItems = NetworkLibrary.load(
+                kind = NetworkLibrary.Kind.WEBDAV,
+                baseUrl = "http://127.0.0.1:" + secondServer.port + "/photos/",
+                username = "",
+                password = ""
+            )
+
+            val failing = firstItems.first { it.title == "nested" }
+            val healthy = secondItems.first { it.title == "nested" }
+
+            server.close()
+            assertEquals(null, NetworkLibrary.open(context, failing.uri))
+            assertTrue(NetworkLibrary.isTemporarilyOffline())
+            assertFalse(NetworkLibrary.canUseOffline(context, failing.uri))
+            assertTrue(NetworkLibrary.canUseOffline(context, healthy.uri))
+        } finally {
+            secondServer.close()
+        }
+    }
+
+    @Test
     fun savedNetworkSourceNeverStoresPassword() {
         val secret = "mot-de-passe-test"
         NetworkSourceStore.upsert(
