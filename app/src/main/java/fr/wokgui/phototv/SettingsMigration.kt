@@ -4,7 +4,7 @@ import android.content.SharedPreferences
 import java.util.UUID
 
 object SettingsMigration {
-    const val CURRENT_VERSION = 3
+    const val CURRENT_VERSION = 4
     const val VERSION_KEY = "_prefs_schema_version"
 
     fun migrate(prefs: SharedPreferences) {
@@ -49,6 +49,15 @@ object SettingsMigration {
             prefs.edit()
                 .putInt("image_mode", prefs.getInt("image_mode", 0).coerceIn(0, 6))
                 .putInt(VERSION_KEY, 3)
+                .commit()
+            version = 3
+        }
+
+        if (version < 4) {
+            prefs.edit()
+                .putBoolean("autonomous_slideshow", prefs.getBoolean("autonomous_slideshow", false))
+                .putBoolean("background_analysis", prefs.getBoolean("background_analysis", true))
+                .putInt(VERSION_KEY, 4)
                 .commit()
         }
     }
