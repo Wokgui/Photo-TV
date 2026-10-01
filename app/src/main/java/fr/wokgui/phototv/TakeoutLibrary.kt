@@ -113,7 +113,7 @@ object TakeoutLibrary {
             val rootJson = filenameRoot ?: byDeclaredTitle[mediaName]
 
             val mime = file.type.orEmpty()
-            val info = MediaInfoReader.read(context, file.uri, mime)
+            val info = MediaInfoReader.read(context, file.uri, mime, mediaName)
             var takenAt = info.takenAt.takeIf { it > 0 } ?: file.lastModified()
             var description = ""
             var location = info.location
