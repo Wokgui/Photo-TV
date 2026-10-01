@@ -94,8 +94,9 @@ class MainActivity : AppCompatActivity() {
             onPrepareNetworkSource = { kind, url, user -> requestNetworkCredentials(kind, url, user) },
             onSettingsPin = { manageSettingsPin() },
             canOpenSettings = {
-                !ProfileStore.isGuest(this) &&
-                    (!SettingsPinStore.hasPin(this) || settingsUnlockedSession)
+                ProfileStore.isGuest(this) ||
+                    !SettingsPinStore.hasPin(this) ||
+                    settingsUnlockedSession
             },
             onUnlockSettings = { requestSettingsUnlock() },
             onManageProfiles = { manageProfiles() },
