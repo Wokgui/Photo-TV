@@ -1196,11 +1196,20 @@ class PhotoTvView(
 
     private fun registerDecodeFailure(uri: Uri, reason: String) {
         val key = uri.toString()
-        val added = failedMediaUris.add(key)
-        if (!added) return
-        decodeFailureCount++
-        lastDecodeFailure = reason
-        Log.w("PhotoTVDecode", "$reason: $key")
+        val transientNetworkFailure =
+            NetworkLibrary.isNetworkUri(uri) && NetworkLibrary.isTemporarilyOffline()
+
+        if (transientNetworkFailure) {
+            lastDecodeFailure = "Source réseau temporairement indisponible"
+            Log.w("PhotoTVDecode", "$lastDecodeFailure: $key")
+        } else {
+            val added = failedMediaUris.add(key)
+            if (!added) return
+            decodeFailureCount++
+            lastDecodeFailure = reason
+            Log.w("PhotoTVDecode", "$reason: $key")
+        }
+
         post {
             val items = activePhotos()
             if (items.isEmpty()) {
