@@ -23,11 +23,7 @@ object PickedLibrary {
                     camera = info.camera,
                     width = info.width,
                     height = info.height,
-                    mediaType = when {
-                        mime.startsWith("video/") -> "video"
-                        mime.equals("image/gif", true) -> "gif"
-                        else -> "image"
-                    }
+                    mediaType = MediaTypeDetector.classify(name, mime) ?: "image"
                 )
             }.getOrNull()
         }
