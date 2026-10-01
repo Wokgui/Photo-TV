@@ -30,13 +30,16 @@ data class RemoteControlState(
     val transitions: List<String>,
     val imageModes: List<String>,
     val smartModes: List<String>,
-    val smartMode: String
+    val smartMode: String,
+    val position: Int = 0,
+    val previewTitles: List<String> = emptyList()
 )
 
 class RemoteControlServer(
     private val port: Int = 8765,
     private val token: String,
     private val stateProvider: () -> RemoteControlState,
+    private val thumbnailProvider: (Int) -> ByteArray? = { null },
     private val onCommand: (String) -> Unit
 ) {
     companion object {
@@ -154,6 +157,21 @@ class RemoteControlServer(
                 return
             }
 
+            if (path == "/thumbnail") {
+                if (method != "GET") {
+                    respond(s, 405, "text/plain; charset=utf-8", "Méthode non autorisée")
+                    return
+                }
+                val slot = query["slot"]?.toIntOrNull()?.coerceIn(0, 3) ?: 0
+                val jpeg = thumbnailProvider(slot)
+                if (jpeg == null || jpeg.isEmpty()) {
+                    respond(s, 404, "text/plain; charset=utf-8", "Miniature indisponible")
+                } else {
+                    respondBytes(s, 200, "image/jpeg", jpeg)
+                }
+                return
+            }
+
             if (path == "/status") {
                 if (method != "GET") {
                     respond(s, 405, "text/plain; charset=utf-8", "Méthode non autorisée")
@@ -166,6 +184,7 @@ class RemoteControlServer(
                 val imageModesJson = st.imageModes.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
                 val smartModesJson = st.smartModes.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
                 val filterJson = st.sourceFilter?.let { "\"" + jsonEscape(it) + "\"" } ?: "null"
+                val previewsJson = st.previewTitles.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
                 val json = "{" +
                     "\"title\":\"" + jsonEscape(st.title) + "\"," +
                     "\"album\":\"" + jsonEscape(st.album) + "\"," +
@@ -180,7 +199,9 @@ class RemoteControlServer(
                     "\"transitions\":" + transitionsJson + "," +
                     "\"imageModes\":" + imageModesJson + "," +
                     "\"smartModes\":" + smartModesJson + "," +
-                    "\"smartMode\":\"" + jsonEscape(st.smartMode) + "\"}"
+                    "\"smartMode\":\"" + jsonEscape(st.smartMode) + "\"," +
+                    "\"position\":" + st.position + "," +
+                    "\"previewTitles\":" + previewsJson + "}"
                 respond(s, 200, "application/json; charset=utf-8", json)
                 return
             }
@@ -257,12 +278,23 @@ main{max-width:520px;margin:auto}
 button{font:inherit;font-size:18px;padding:20px 12px;border:0;border-radius:14px;background:#126fe8;color:white}
 button.wide{grid-column:1/-1}
 small{display:block;margin-top:18px;color:#9fb3c8}
+.preview-strip{grid-column:1/-1;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;background:#0d2134;border-radius:14px;padding:10px}
+.preview-card{min-width:0}
+.preview-card img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:10px;background:#07121e;display:block}
+.preview-card:first-child img{aspect-ratio:16/9}
+.preview-title{font-size:11px;color:#c8d5e3;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
 <main>
 <h1>Photo TV</h1>
 <div class="grid">
+<div class="preview-strip" id="previews">
+  <div class="preview-card"><img id="thumb0" alt="Photo actuelle"><div class="preview-title" id="previewTitle0"></div></div>
+  <div class="preview-card"><img id="thumb1" alt="Photo suivante"><div class="preview-title" id="previewTitle1"></div></div>
+  <div class="preview-card"><img id="thumb2" alt="Photo suivante"><div class="preview-title" id="previewTitle2"></div></div>
+  <div class="preview-card"><img id="thumb3" alt="Photo suivante"><div class="preview-title" id="previewTitle3"></div></div>
+</div>
 <button onclick="send('prev')">◀ Précédente</button>
 <button onclick="send('next')">Suivante ▶</button>
 <button class="wide" onclick="send('pause')">Pause / reprise</button>
@@ -318,6 +350,23 @@ function fillSelect(id,values,current,allLabel){
   wanted.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;el.appendChild(o);});
   el.value=current||old||allLabel;
 }
+let lastPreviewSignature='';
+function updatePreviews(s){
+  const titles=s.previewTitles||[];
+  const signature=String(s.position)+'|'+titles.join('|');
+  for(let i=0;i<4;i++){
+    const title=titles[i]||'';
+    document.getElementById('previewTitle'+i).textContent=title;
+    document.getElementById('thumb'+i).style.display=title?'block':'none';
+  }
+  if(signature===lastPreviewSignature)return;
+  lastPreviewSignature=signature;
+  for(let i=0;i<4;i++){
+    const img=document.getElementById('thumb'+i);
+    if(titles[i]) img.src='/thumbnail?slot='+i+'&v='+encodeURIComponent(signature);
+    else img.removeAttribute('src');
+  }
+}
 function prepareNetwork(){
   const kind=document.getElementById('netKind').value;
   const url=document.getElementById('netUrl').value.trim();
@@ -329,6 +378,7 @@ function refresh(){
   fetch('/status',{headers:auth})
     .then(r=>{if(!r.ok)throw new Error('status');return r.json();})
     .then(s=>{
+      updatePreviews(s);
       document.getElementById('status').textContent=
         s.title+' • '+s.album+' • '+s.duration+' s • '+s.transition+' • '+s.imageMode+(s.paused?' • pause':'');
       fillSelect('album',s.albums,s.album,'Tous les albums');
@@ -346,6 +396,28 @@ setInterval(refresh,2000);
 </body>
 </html>
 """.trimIndent()
+
+    private fun respondBytes(socket: Socket, status: Int, contentType: String, bytes: ByteArray) {
+        val statusText = when (status) {
+            200 -> "OK"
+            404 -> "Not Found"
+            405 -> "Method Not Allowed"
+            else -> "Error"
+        }
+        val writer = OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)
+        writer.write("HTTP/1.1 $status $statusText\r\n")
+        writer.write("Content-Type: $contentType\r\n")
+        writer.write("Content-Length: ${bytes.size}\r\n")
+        writer.write("Cache-Control: no-store, max-age=0\r\n")
+        writer.write("X-Content-Type-Options: nosniff\r\n")
+        writer.write("X-Frame-Options: DENY\r\n")
+        writer.write("Referrer-Policy: no-referrer\r\n")
+        writer.write("Content-Security-Policy: default-src 'none'\r\n")
+        writer.write("Connection: close\r\n\r\n")
+        writer.flush()
+        socket.getOutputStream().write(bytes)
+        socket.getOutputStream().flush()
+    }
 
     private fun respond(socket: Socket, status: Int, contentType: String, body: String) {
         val statusText = when (status) {
