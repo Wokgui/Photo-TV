@@ -94,6 +94,16 @@ object VisualDuplicateDetector {
     }
 
     fun fingerprint(context: Context, uri: Uri): Fingerprint? {
+        val mime = context.contentResolver.getType(uri).orEmpty()
+        val signature = MediaMetadataStore.signature(context, uri, mime)
+        MediaMetadataStore.readFingerprint(context, uri, signature)?.let { cached ->
+            return Fingerprint(
+                hash = cached.hash,
+                meanLuma = cached.meanLuma,
+                aspectRatio = cached.aspectRatio
+            )
+        }
+
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, bounds)
@@ -141,7 +151,18 @@ object VisualDuplicateDetector {
                 hash = hash,
                 meanLuma = sum / (9 * 8),
                 aspectRatio = bounds.outWidth.toFloat() / bounds.outHeight.toFloat()
-            )
+            ).also { fingerprint ->
+                MediaMetadataStore.writeFingerprint(
+                    context = context,
+                    uri = uri,
+                    signature = signature,
+                    fingerprint = MediaMetadataStore.CachedFingerprint(
+                        hash = fingerprint.hash,
+                        meanLuma = fingerprint.meanLuma,
+                        aspectRatio = fingerprint.aspectRatio
+                    )
+                )
+            }
         } finally {
             if (!small.isRecycled) small.recycle()
         }
