@@ -3995,7 +3995,11 @@ class PhotoTvView(
                     imageMode = imageModeLabel(),
                     albums = albumPairs().map { it.first },
                     sources = sourceLabels(),
-                    sourceFilter = remoteSourceFilter
+                    sourceFilter = remoteSourceFilter,
+                    transitions = transitions,
+                    imageModes = listOf("Ajuster", "Remplir", "Original", "Flou"),
+                    smartModes = (0..4).map(SmartSelectionPolicy::modeLabel),
+                    smartMode = SmartSelectionPolicy.modeLabel(smartSelectionMode)
                 )
             }
         ) { command ->
@@ -4011,6 +4015,7 @@ class PhotoTvView(
             "next" -> if (slideshow) slideshowNext(1) else previewNext(1)
             "pause" -> if (slideshow) togglePause() else startSlideshow()
             "stop" -> if (slideshow) stopSlideshow()
+            "start" -> if (!slideshow) startSlideshow()
             "sources" -> {
                 if (slideshow) stopSlideshow()
                 page = 1
@@ -4099,10 +4104,36 @@ class PhotoTvView(
                 savePrefs()
                 invalidate()
             }
+            "transition_select" -> {
+                val idx = transitions.indexOf(commandValue)
+                if (idx >= 0) {
+                    transitionIndex = idx
+                    savePrefs()
+                    invalidate()
+                }
+            }
             "mode_next" -> {
                 imageMode = (imageMode + 1) % 4
                 savePrefs()
                 invalidate()
+            }
+            "mode_select" -> {
+                val modes = listOf("Ajuster", "Remplir", "Original", "Flou")
+                val idx = modes.indexOf(commandValue)
+                if (idx >= 0) {
+                    imageMode = idx
+                    savePrefs()
+                    invalidate()
+                }
+            }
+            "smart_select" -> {
+                val idx = (0..4).firstOrNull { SmartSelectionPolicy.modeLabel(it) == commandValue }
+                if (idx != null) {
+                    smartSelectionMode = idx
+                    rebuildShuffleBag()
+                    savePrefs()
+                    invalidate()
+                }
             }
             "history_prev" -> goToRecentPrevious()
             "album_next" -> {
