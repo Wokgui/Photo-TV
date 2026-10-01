@@ -25,6 +25,7 @@ Photo TV est un diaporama conçu pour Android TV / Google TV, avec une interface
 - Diaporama intelligent autonome : adapte la sélection au moment de la journée et injecte ponctuellement des mosaïques sans modifier les réglages manuels.
 - Détection locale de scènes (portrait, nuit, mer / ciel, nature, intérieur, ville) pour diversifier le diaporama et les mosaïques.
 - Pré-analyse locale progressive des scènes et du recadrage intelligent, mise en cache entre les redémarrages.
+- Page « Intelligence et performances » : centralise les automatismes, leur état et une explication claire de leur rôle ; permet d'activer le diaporama autonome, la sélection intelligente et la pré-analyse sans chercher dans plusieurs menus.
 - Vue Souvenirs dédiée.
 - Règles par album selon le jour, l'heure, la durée et la transition.
 - Éditeur visuel des textes : police, taille, couleur, position, alignement, ombre et visibilité.
