@@ -18,8 +18,8 @@ android {
         applicationId="fr.wokgui.phototv"
         minSdk=23
         targetSdk=35
-        versionCode=8
-        versionName="0.8"
+        versionCode=9
+        versionName="0.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -54,7 +54,12 @@ android {
         }
 
         getByName("release") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             if (hasSecureReleaseSigner) {
                 signingConfig = signingConfigs.getByName("secureRelease")
             }
