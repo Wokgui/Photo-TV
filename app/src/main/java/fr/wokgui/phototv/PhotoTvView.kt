@@ -1428,6 +1428,9 @@ class PhotoTvView(
             if (generation == backgroundAnalysisGeneration) {
                 post {
                     rebuildLibraryIndexes()
+                    if (slideshow && (randomOrder || autonomousSlideshow || effectiveSmartSelectionMode() != SmartSelectionPolicy.OFF)) {
+                        rebuildShuffleBag()
+                    }
                     postInvalidate()
                 }
             } else {
