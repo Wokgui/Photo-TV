@@ -1325,6 +1325,7 @@ class PhotoTvView(
                                 bitmapCache.remove(first.key)
                             }
                         }
+                        recordQuality(key, bmp)
                         postInvalidate()
                     } else {
                         registerDecodeFailure(uri, "Image illisible ou format non pris en charge")
@@ -1605,7 +1606,49 @@ class PhotoTvView(
                     }
                 }
             }
-            if (bmp != null) postInvalidate()
+            if (bmp != null) {
+                recordQuality(key, bmp)
+                postInvalidate()
+            }
+        }
+    }
+
+    private fun recordQuality(key: String, bitmap: Bitmap) {
+        if (qualityByUri.containsKey(key) || bitmap.isRecycled) return
+        val result = runCatching { PhotoQualityAnalyzer.analyze(bitmap) }.getOrNull() ?: return
+        if (qualityByUri.putIfAbsent(key, result) == null) {
+            post {
+                libraryRevision++
+                activePhotosCacheKey = Long.MIN_VALUE
+                invalidate()
+            }
+        }
+    }
+
+    private fun qualityFor(item: PhotoItem): PhotoQualityPolicy.Result? =
+        qualityByUri[item.uri.toString()]
+
+    private fun matchesSmartAlbum(item: PhotoItem, name: String): Boolean =
+        SmartAlbumPolicy.matches(
+            album = name,
+            width = item.width,
+            height = item.height,
+            takenAt = item.takenAt,
+            favorite = favorites.contains(item.uri.toString()),
+            qualityScore = qualityFor(item)?.score
+        )
+
+    private fun itemSelectedByAlbum(item: PhotoItem, now: java.util.Calendar): Boolean {
+        val regularSelected = item.albums.any {
+            selectedAlbums.contains(it) &&
+                !hiddenAlbums.contains(it) &&
+                albumAllowed(it, now)
+        }
+        if (regularSelected) return true
+        return SmartAlbumPolicy.names.any { name ->
+            selectedAlbums.contains(name) &&
+                !hiddenAlbums.contains(name) &&
+                matchesSmartAlbum(item, name)
         }
     }
 
@@ -1669,11 +1712,7 @@ class PhotoTvView(
         val filtered = library.filter { item ->
             (remoteSourceFilter == null || item.sourceLabel.ifBlank { "Source" } == remoteSourceFilter) &&
                 sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
-                item.albums.any {
-                    selectedAlbums.contains(it) &&
-                        !hiddenAlbums.contains(it) &&
-                        albumAllowed(it, now)
-                } &&
+                itemSelectedByAlbum(item, now) &&
                 NetworkLibrary.canUseOffline(context, item.uri) &&
                 !excludedUris.contains(item.uri.toString()) &&
                 !sessionExcludedUris.contains(item.uri.toString()) &&
@@ -2105,7 +2144,11 @@ class PhotoTvView(
         val base = if (library.isEmpty()) {
             mockAlbums
         } else {
-            albumIndex.entries.map { it.key to it.value.size }
+            val regular = albumIndex.entries.map { it.key to it.value.size }
+            val smart = SmartAlbumPolicy.names.map { name ->
+                name to library.count { matchesSmartAlbum(it, name) }
+            }
+            regular + smart
         }
         val filtered = if (albumSearch.isBlank()) base else {
             base.filter { it.first.contains(albumSearch, ignoreCase = true) }
@@ -2126,12 +2169,24 @@ class PhotoTvView(
     private fun currentAlbumPhotos(): List<PhotoItem?> {
         if (library.isEmpty()) return List(6) { null }
         val name = currentAlbumName()
-        return albumIndex[name].orEmpty().map { it as PhotoItem? }
+        val items = if (name in SmartAlbumPolicy.names) {
+            library.filter { matchesSmartAlbum(it, name) }
+        } else {
+            albumIndex[name].orEmpty()
+        }
+        return items.map { it as PhotoItem? }
     }
     private fun albumDisplay(item: PhotoItem?): String {
         if (item == null) return "Norvège 2026"
+        val smart = SmartAlbumPolicy.names.filter {
+            selectedAlbums.contains(it) && !hiddenAlbums.contains(it) && matchesSmartAlbum(item, it)
+        }
         val preferred = item.albums.filter { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) }
-        val values = if (preferred.isNotEmpty()) preferred else item.albums.toList()
+        val values = when {
+            smart.isNotEmpty() -> smart
+            preferred.isNotEmpty() -> preferred
+            else -> item.albums.toList()
+        }
         return values.joinToString(" • ").ifBlank { "Album" }
     }
 
@@ -2841,6 +2896,7 @@ class PhotoTvView(
             appendLine("Fichiers illisibles: " + decodeFailureCount)
             appendLine("Dernière erreur: " + lastDecodeFailure)
             appendLine("Historique: " + recentUris.size)
+            appendLine("Analyses qualité: " + qualityByUri.size + "/" + library.size)
             appendLine("Mémoire: " + memoryDiagnostics())
             appendLine("Cache réseau: " + cache.first + " fichiers • " + (cache.second / (1024L * 1024L)) + " Mo")
             appendLine("Performance réseau: " + NetworkLibrary.runtimeStats())
@@ -3159,10 +3215,20 @@ class PhotoTvView(
         val x = 35f
         val y = 112f
         val w = 470f
-        val h = 355f
+        val h = 390f
         round(c, x, y, x + w, y + h, 16f, Color.argb(232, 5, 17, 29))
         strokeRound(c, x, y, x + w, y + h, 16f, Color.rgb(50, 82, 114), 1.3f)
         text(c, "Informations", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        val quality = item?.let { qualityFor(it) }
+        val qualityLabel = quality?.let {
+            it.score.toString() + "/100" +
+                when {
+                    it.blurred -> " • flou possible"
+                    it.underexposed -> " • sombre"
+                    it.overexposed -> " • surexposée"
+                    else -> ""
+                }
+        } ?: "Analyse en attente"
         val rows = listOf(
             "Titre" to (item?.title ?: "—"),
             "Album(s)" to (item?.albums?.joinToString(" • ") ?: "—"),
@@ -3171,7 +3237,8 @@ class PhotoTvView(
             "Appareil" to (item?.camera?.ifBlank { "—" } ?: "—"),
             "Dimensions" to (item?.dimensionsLabel?.ifBlank { "—" } ?: "—"),
             "Orientation" to (item?.orientationLabel?.ifBlank { "—" } ?: "—"),
-            "Type" to (item?.mediaType ?: "—")
+            "Type" to (item?.mediaType ?: "—"),
+            "Qualité" to qualityLabel
         )
         rows.forEachIndexed { i, row ->
             val yy = y + 72f + i * 33f
@@ -3341,7 +3408,11 @@ class PhotoTvView(
 
     private fun albumBitmap(name: String, index: Int): Bitmap? {
         if (library.isEmpty()) return mockAlbumBitmaps[index] ?: demoBitmap
-        val item = library.firstOrNull { it.albums.contains(name) } ?: return demoBitmap
+        val item = if (name in SmartAlbumPolicy.names) {
+            library.firstOrNull { matchesSmartAlbum(it, name) }
+        } else {
+            library.firstOrNull { it.albums.contains(name) }
+        } ?: return demoBitmap
         val cached = synchronized(bitmapCache) { bitmapCache[item.uri.toString()] }
         if (cached == null) preload(listOf(item.uri))
         return cached ?: demoBitmap
