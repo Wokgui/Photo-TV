@@ -2610,15 +2610,16 @@ class PhotoTvView(
 
         val cats = listOf(
             "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-            "Heure et date", "Température", "Source des photos", "Intelligence", "Avancés"
+            "Heure et date", "Température", "Source des photos", "Intelligence",
+            "Avancés", "Profils et audio"
         )
         cats.forEachIndexed { i, name ->
-            val yy = sideY + 8f + i * 50f
+            val yy = sideY + 8f + i * 46f
             val active = settingsCategory == i
-            if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 50f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
-            if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 53f, 12f, Color.rgb(136, 197, 255), 2f)
-            drawSideIcon(c, sideX + 30f, yy + 25f, i)
-            text(c, name, sideX + 58f, yy + 31f, 14f, Color.WHITE)
+            if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 46f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
+            if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 49f, 12f, Color.rgb(136, 197, 255), 2f)
+            drawSideIcon(c, sideX + 30f, yy + 23f, i)
+            text(c, name, sideX + 58f, yy + 29f, 13.5f, Color.WHITE)
         }
 
         val panelX = 380f
@@ -2637,7 +2638,8 @@ class PhotoTvView(
             5 -> drawSettingsTemp(c, panelX, panelY)
             6 -> drawSettingsSource(c, panelX, panelY, panelW)
             7 -> drawSettingsIntelligence(c, panelX, panelY, panelW)
-            else -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
+            8 -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
+            else -> drawSettingsProfilesAudio(c, panelX, panelY)
         }
     }
 
@@ -3019,6 +3021,32 @@ class PhotoTvView(
         }
     }
 
+    private fun drawSettingsProfilesAudio(c: Canvas, x: Float, y: Float) {
+        text(c, "Profils, musique et albums intelligents", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        settingsChoice(c, "Profil actif", ProfilePolicy.label(activeProfile), x, y + 55f, 0)
+        settingsToggle(c, "Musique d'ambiance", ambientMusicEnabled, x, y + 113f, 1)
+        controlBox(
+            c, x + 350f, y + 166f, 270f, 42f,
+            if (ambientMusicConfigured) "Changer la playlist" else "Choisir de la musique",
+            settingsColumn == 1 && settingsControl == 2 && !navFocus
+        )
+        settingsSlider(
+            c, "Volume de la musique", ambientMusicVolume * 100f, 0f, 100f,
+            (ambientMusicVolume * 100f).toInt().toString() + " %", x, y + 220f, 3
+        )
+        settingsToggle(c, "Afficher les albums intelligents", smartAlbumsEnabled, x, y + 280f, 4)
+        settingsSlider(
+            c, "Qualité minimale", qualityMinimum.toFloat(), 0f, 90f,
+            if (qualityMinimum == 0) "Désactivée" else qualityMinimum.toString() + " / 100",
+            x, y + 338f, 5
+        )
+        text(c, "Albums automatiques : favoris, meilleures, récentes, paysages, portraits, haute résolution et vidéos.", x + 22f, y + 430f, 11f, Color.rgb(156, 178, 203))
+        text(c, "L'analyse de qualité reste locale et progressive ; les photos non encore analysées restent visibles.", x + 22f, y + 453f, 11f, Color.rgb(156, 178, 203))
+        if (ProfilePolicy.isGuest(activeProfile)) {
+            text(c, "Invités possède ses propres favoris, masquages et sélections.", x + 22f, y + 485f, 11f, Color.rgb(137, 200, 173))
+        }
+    }
+
     fun diagnosticReport(): String {
         val cache = NetworkLibrary.cacheStats(context)
         val albums = library.flatMap { it.albums }.distinct().size
@@ -3040,6 +3068,11 @@ class PhotoTvView(
             appendLine("Transition demandée: " + transitions[transitionIndex.coerceIn(0, transitions.lastIndex)])
             appendLine("Transition effective: " + transitions[effectiveTransition(currentItem()).coerceIn(0, transitions.lastIndex)])
             appendLine("Mode image: " + imageModeLabel())
+            appendLine("Profil: " + ProfilePolicy.label(activeProfile))
+            appendLine("Musique d'ambiance: " + ambientMusicEnabled + " • " + (ambientMusicVolume * 100f).toInt() + "%")
+            appendLine("Albums intelligents: " + smartAlbumsEnabled)
+            appendLine("Qualité minimale: " + qualityMinimum)
+            appendLine("Photos avec score qualité: " + qualityScores.size)
             appendLine("Fichiers illisibles: " + decodeFailureCount)
             appendLine("Dernière erreur: " + lastDecodeFailure)
             appendLine("Historique: " + recentUris.size)
@@ -4468,7 +4501,7 @@ class PhotoTvView(
             }
             3 -> {
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
+                    settingsCategory = (settingsCategory + dir).coerceIn(0, 9)
                     settingsControl = settingsControl.coerceIn(0, settingsControlMax())
                 } else {
                     settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
@@ -4561,7 +4594,8 @@ class PhotoTvView(
         5 -> 2
         6 -> 8
         7 -> 6
-        else -> if (advancedRulesOpen) 9 else 15
+        8 -> if (advancedRulesOpen) 9 else 15
+        else -> 5
     }
 
     private fun adjustEditor(dir: Int) {
