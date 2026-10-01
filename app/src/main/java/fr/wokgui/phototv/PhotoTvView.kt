@@ -1501,7 +1501,31 @@ class PhotoTvView(
                     runCatching { r.release() }
                 }
             } else {
-                decodeBitmap(uri, 1200, 900)
+                val item = uriIndex[key]
+                val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull().orEmpty()
+                val signature = MediaMetadataStore.signature(context, uri, mime)
+                val persistentKey = buildString {
+                    append(key)
+                    append('|').append(signature.modified)
+                    append('|').append(signature.size)
+                    append('|').append(item?.width ?: 0).append('x').append(item?.height ?: 0)
+                    append('|').append(item?.takenAt ?: 0L)
+                    append("|tv1200x900")
+                }
+                ThumbnailDiskCache.read(context, persistentKey)?.let { bytes ->
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { return@runCatching it }
+                }
+                val decoded = decodeBitmap(uri, 1200, 900)
+                if (decoded != null && !decoded.isRecycled) {
+                    runCatching {
+                        java.io.ByteArrayOutputStream().use { stream ->
+                            if (decoded.compress(Bitmap.CompressFormat.JPEG, 82, stream)) {
+                                ThumbnailDiskCache.write(context, persistentKey, stream.toByteArray())
+                            }
+                        }
+                    }
+                }
+                decoded
             }
         }.getOrNull()
     }
@@ -2845,7 +2869,7 @@ class PhotoTvView(
             appendLine("Cache réseau: " + cache.first + " fichiers • " + (cache.second / (1024L * 1024L)) + " Mo")
             appendLine("Performance réseau: " + NetworkLibrary.runtimeStats())
             appendLine("Index persistant: " + MediaMetadataStore.stats())
-            val thumbStats = RemoteThumbnailCache.stats(context)
+            val thumbStats = ThumbnailDiskCache.stats(context)
             appendLine("Miniatures télécommande: " + thumbStats.first + " fichiers • " + (thumbStats.second / (1024L * 1024L)) + " Mo")
             appendLine("Scan incrémental: " + FolderScanIndex.stats())
             appendLine("Réseau temporairement hors ligne: " + NetworkLibrary.isTemporarilyOffline())
@@ -4691,7 +4715,7 @@ class PhotoTvView(
             append('|').append(item.width).append('x').append(item.height)
             append('|').append(item.takenAt)
         }
-        RemoteThumbnailCache.read(context, persistentKey)?.let { return it }
+        ThumbnailDiskCache.read(context, persistentKey)?.let { return it }
 
         val bmp = synchronized(highResCache) { highResCache[key] }
             ?: synchronized(bitmapCache) { bitmapCache[key] }
@@ -4716,7 +4740,7 @@ class PhotoTvView(
                 stream.toByteArray()
             }
         }.getOrNull().also { bytes ->
-            if (bytes != null) RemoteThumbnailCache.write(context, persistentKey, bytes)
+            if (bytes != null) ThumbnailDiskCache.write(context, persistentKey, bytes)
             if (out !== bmp && !out.isRecycled) out.recycle()
         }
     }
