@@ -109,6 +109,9 @@ object NetworkLibrary {
             health.totalLatencyMs += latencyMs.coerceAtLeast(0L)
             health.samples++
             health.lastError = ""
+            synchronized(offlineUntilBySource) {
+                offlineUntilBySource.remove(cfg.key)
+            }
         }
     }
 
@@ -121,6 +124,9 @@ object NetworkLibrary {
             health.lastFailureMs = System.currentTimeMillis()
             health.consecutiveFailures++
             health.lastError = error?.message.orEmpty().take(160)
+            synchronized(offlineUntilBySource) {
+                offlineUntilBySource[cfg.key] = System.currentTimeMillis() + 60_000L
+            }
         }
     }
 
@@ -220,9 +226,6 @@ object NetworkLibrary {
             }
             cached.setLastModified(now)
             trimCache(cacheDir)
-            synchronized(offlineUntilBySource) {
-                offlineUntilBySource.remove(pair.first.key)
-            }
             true
         }.onFailure {
             remoteError = it
@@ -234,9 +237,6 @@ object NetworkLibrary {
         if (downloaded) {
             recordHealthSuccess(pair.first, elapsed)
         } else {
-            synchronized(offlineUntilBySource) {
-                offlineUntilBySource[pair.first.key] = now + 60_000L
-            }
             recordHealthFailure(pair.first, remoteError)
         }
 
@@ -332,6 +332,9 @@ object NetworkLibrary {
     fun reload(): List<PhotoItem>? {
         val snapshot = synchronized(entries) { configs.values.toList() }
         if (snapshot.isEmpty()) return null
+        val previousBySource = synchronized(entries) {
+            entries.values.groupBy { it.sourceKey }
+        }
 
         val all = mutableListOf<Entry>()
         snapshot.forEach { cfg ->
@@ -345,7 +348,9 @@ object NetworkLibrary {
                 recordHealthSuccess(cfg, android.os.SystemClock.elapsedRealtime() - started)
             }.onFailure {
                 recordHealthFailure(cfg, it)
-            }.getOrElse { emptyList() }
+            }.getOrElse {
+                previousBySource[cfg.key].orEmpty()
+            }
             all += discovered
         }
 
