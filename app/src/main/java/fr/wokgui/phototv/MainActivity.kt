@@ -56,10 +56,12 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_IMPORT_SETTINGS = 45
         private const val REQ_LOCAL_FOLDER = 46
         private const val REQ_EXPORT_DIAGNOSTICS = 47
+        private const val REQ_MUSIC = 48
     }
 
     private lateinit var ui: PhotoTvView
     private lateinit var videoView: VideoView
+    private lateinit var musicController: BackgroundMusicController
     private val networkRefreshHandler = Handler(Looper.getMainLooper())
     private var networkRefreshMinutes = 15
     private var currentNetworkSourceName = "Réseau"
@@ -77,6 +79,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         automationMode = intent.getBooleanExtra("phototv_test_mode", false)
+        musicController = BackgroundMusicController(this)
 
         videoView = VideoView(this).apply {
             visibility = View.GONE
@@ -100,6 +103,17 @@ class MainActivity : AppCompatActivity() {
             onAlbumSearch = { requestAlbumSearch() },
             onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) },
             onVideoPause = { pause -> handleVideoPause(pause) },
+            onMusicPick = { openMusicPicker() },
+            onMusicToggle = { musicController.toggle() },
+            onMusicVolumeStep = {
+                val current = (musicController.volume * 100f).toInt()
+                val next = if (current >= 100) 10 else (current + 10).coerceAtMost(100)
+                musicController.setVolume(next / 100f)
+                next
+            },
+            musicEnabled = { musicController.enabled },
+            musicTrackCount = { musicController.playlist.size },
+            musicVolume = { (musicController.volume * 100f).toInt() },
             supportsVideoPlayback = true,
             automationMode = automationMode
         )
@@ -236,6 +250,7 @@ class MainActivity : AppCompatActivity() {
         if (::ui.isInitialized) ui.automationActiveCountForTest() else 0
 
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
+        musicController.setVideoWithSound(uri != null && sound)
         if (uri == null) {
             runCatching { videoView.stopPlayback() }
             videoView.visibility = View.GONE
@@ -257,6 +272,18 @@ class MainActivity : AppCompatActivity() {
             if (pause) videoView.pause()
             else if (!videoView.isPlaying) videoView.start()
         }
+    }
+
+    private fun openMusicPicker() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "audio/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            },
+            REQ_MUSIC
+        )
     }
 
     private fun requestSettingsUnlock() {
@@ -729,6 +756,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         networkRefreshHandler.removeCallbacksAndMessages(null)
+        if (::musicController.isInitialized) musicController.release()
         super.onDestroy()
     }
 
@@ -795,6 +823,32 @@ class MainActivity : AppCompatActivity() {
                     if (ok) "Réglages importés." else "Fichier de réglages invalide.",
                     Toast.LENGTH_LONG
                 ).show()
+            }
+
+            REQ_MUSIC -> {
+                val uris = mutableListOf<Uri>()
+                data.clipData?.let { clip ->
+                    for (i in 0 until clip.itemCount) uris += clip.getItemAt(i).uri
+                }
+                if (uris.isEmpty()) data.data?.let { uris += it }
+                val distinct = uris.distinct()
+                distinct.forEach { uri ->
+                    runCatching {
+                        contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
+                }
+                musicController.setPlaylist(distinct)
+                if (distinct.isNotEmpty() && !musicController.enabled) musicController.toggle()
+                Toast.makeText(
+                    this,
+                    if (distinct.isEmpty()) "Aucun morceau sélectionné."
+                    else "${distinct.size} morceau(x) chargé(s).",
+                    Toast.LENGTH_SHORT
+                ).show()
+                ui.invalidate()
             }
 
             REQ_PHOTOS -> {
