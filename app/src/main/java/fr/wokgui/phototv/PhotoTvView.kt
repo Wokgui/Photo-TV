@@ -2782,7 +2782,7 @@ class PhotoTvView(
             return
         }
 
-        val albums = albumPairs()
+        val albums = albumPairs().filterNot { it.first in SmartAlbumPolicy.names }
         if (albums.isEmpty()) {
             text(c, "Chargez d’abord une photothèque.", x + 22f, y + 85f, 14f, Color.rgb(174, 188, 205))
             return
@@ -4841,6 +4841,14 @@ class PhotoTvView(
     private fun handleRemoteCommand(command: String) {
         val commandName = command.substringBefore('|')
         val commandValue = command.substringAfter('|', "").trim()
+        if (profileGuestProvider() && commandName in setOf(
+                "network_prepare",
+                "duration_down", "duration_up",
+                "transition_next", "transition_select",
+                "mode_next", "mode_select",
+                "smart_select"
+            )
+        ) return
         when (commandName) {
             "prev" -> if (slideshow) slideshowNext(-1) else previewNext(-1)
             "next" -> if (slideshow) slideshowNext(1) else previewNext(1)
@@ -4856,14 +4864,15 @@ class PhotoTvView(
                 invalidate()
             }
             "album_select" -> {
-                val all = library.flatMap { it.albums }.distinct()
+                val regular = library.flatMap { it.albums }.distinct()
+                val all = regular + SmartAlbumPolicy.names
                 selectedAlbums.clear()
                 if (commandValue.isBlank() || commandValue == "Tous les albums") {
-                    selectedAlbums.addAll(all)
+                    selectedAlbums.addAll(regular)
                 } else if (all.contains(commandValue)) {
                     selectedAlbums += commandValue
                 } else {
-                    selectedAlbums.addAll(all)
+                    selectedAlbums.addAll(regular)
                 }
                 currentPhoto = 0
                 preloadAroundCurrent()
@@ -4973,12 +4982,25 @@ class PhotoTvView(
             "album_next" -> {
                 val albums = albumPairs().map { it.first }
                 if (albums.isNotEmpty()) {
-                    val currentAlbum = currentItem()?.albums?.firstOrNull()
+                    val current = currentItem()
+                    val currentAlbum = albums.firstOrNull { name ->
+                        name in SmartAlbumPolicy.names &&
+                            current != null &&
+                            matchesSmartAlbum(current, name)
+                    } ?: current?.albums?.firstOrNull()
                     val currentIndex = albums.indexOf(currentAlbum).coerceAtLeast(-1)
                     val nextAlbum = albums[(currentIndex + 1 + albums.size) % albums.size]
-                    val items = activePhotos()
-                    val idx = items.indexOfFirst { it.albums.contains(nextAlbum) }
-                    if (idx >= 0) {
+                    val items = library
+                    val idxInLibrary = items.indexOfFirst { item ->
+                        if (nextAlbum in SmartAlbumPolicy.names) matchesSmartAlbum(item, nextAlbum)
+                        else item.albums.contains(nextAlbum)
+                    }
+                    if (idxInLibrary >= 0) {
+                        selectedAlbums.clear()
+                        selectedAlbums += nextAlbum
+                        val active = activePhotos()
+                        val idx = active.indexOfFirst { it.uri == items[idxInLibrary].uri }
+                        if (idx < 0) return
                         previousPhoto = currentPhoto
                         currentPhoto = idx
                         rememberCurrentUri()
