@@ -3,6 +3,7 @@ package fr.wokgui.phototv
 import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -51,6 +52,37 @@ class StateRecoveryInstrumentedTest {
         second.onActivity { activity ->
             val state = activity.automationStateForTest()
             assertTrue(state.contains("slideshow=true"))
+            assertTrue(state.contains("currentPhoto=1"))
+        }
+        second.close()
+    }
+
+
+    @Test
+    fun pausedSlideshowStateSurvivesFullRelaunch() {
+        val first = launch()
+        first.onActivity { activity ->
+            activity.installAutomationLibraryForTest(8)
+            activity.startAutomationSlideshowForTest()
+            activity.advanceAutomationForTest()
+            activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_CENTER))
+            activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_CENTER))
+            val state = activity.automationStateForTest()
+            assertTrue(state.contains("slideshow=true"))
+            assertTrue(state.contains("paused=true"))
+            assertTrue(state.contains("currentPhoto=1"))
+        }
+        first.close()
+
+        val second = launch()
+        second.onActivity { activity ->
+            activity.installAutomationLibraryForTest(8)
+        }
+        SystemClock.sleep(750)
+        second.onActivity { activity ->
+            val state = activity.automationStateForTest()
+            assertTrue(state.contains("slideshow=true"))
+            assertTrue(state.contains("paused=true"))
             assertTrue(state.contains("currentPhoto=1"))
         }
         second.close()
