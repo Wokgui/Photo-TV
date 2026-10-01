@@ -2798,6 +2798,77 @@ class PhotoTvView(
         )
     }
 
+    private fun drawSettingsIntelligence(c: Canvas, x: Float, y: Float, w: Float) {
+        text(c, "Intelligence et performances", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Chaque ligne explique ce que fait le système et s'il est réglable ou automatique.", x + 22f, y + 58f, 11f, Color.rgb(153, 174, 198))
+
+        fun row(
+            index: Int,
+            top: Float,
+            title: String,
+            description: String,
+            state: String,
+            enabled: Boolean? = null
+        ) {
+            val selected = settingsColumn == 1 && settingsControl == index && !navFocus
+            round(c, x + 22f, top, x + w - 22f, top + 58f, 10f, Color.rgb(11, 25, 38))
+            if (selected) strokeRound(c, x + 19f, top - 3f, x + w - 19f, top + 61f, 11f, Color.rgb(31, 132, 255), 2f)
+            text(c, title, x + 40f, top + 22f, 13f, Color.WHITE, 1)
+            ellipsizedText(c, description, x + 40f, top + 44f, w - 260f, 10.5f, Color.rgb(151, 169, 190))
+            if (enabled != null) {
+                drawToggle(c, x + w - 88f, top + 14f, enabled, false)
+            } else {
+                round(c, x + w - 166f, top + 12f, x + w - 40f, top + 45f, 9f, Color.rgb(18, 47, 70))
+                text(c, state, x + w - 103f, top + 34f, 10.5f, Color.rgb(135, 205, 255), 1, 1)
+            }
+        }
+
+        row(
+            0, y + 72f,
+            "Diaporama intelligent autonome",
+            "Adapte automatiquement sélection, favoris, souvenirs et mosaïques selon le moment et les photos.",
+            if (autonomousSlideshow) "ACTIF" else "INACTIF",
+            autonomousSlideshow
+        )
+        row(
+            1, y + 136f,
+            "Sélection intelligente",
+            "Choisit les photos avec des règles de qualité, variété, anti-répétition et souvenirs.",
+            SmartSelectionPolicy.modeLabel(smartSelectionMode)
+        )
+        row(
+            2, y + 200f,
+            "Pré-analyse locale",
+            "Analyse progressivement scènes et recadrage à l'avance pour rendre le diaporama plus instantané.",
+            if (backgroundAnalysis) "ACTIF" else "INACTIF",
+            backgroundAnalysis
+        )
+        row(
+            3, y + 264f,
+            "Reconnaissance locale des scènes",
+            "Classe sur la TV : personnes, animaux, nourriture, paysage, ville, nuit, mer/ciel, etc.",
+            if (backgroundAnalysisDone > 0) "$backgroundAnalysisDone/$backgroundAnalysisTotal" else "AUTO"
+        )
+        row(
+            4, y + 328f,
+            "Recadrage intelligent",
+            "Détecte visages et sujets pour éviter de couper l'élément important en mode Remplir ou mosaïque.",
+            "AUTO"
+        )
+        row(
+            5, y + 392f,
+            "Transitions adaptatives",
+            "Allège automatiquement une transition si le média, la mémoire ou les FPS rendent l'effet trop coûteux.",
+            "AUTO"
+        )
+        row(
+            6, y + 456f,
+            "Préchargement et caches adaptatifs",
+            "Précharge les prochains médias et ajuste les caches selon la RAM, la résolution et la vitesse de décodage.",
+            "AUTO"
+        )
+    }
+
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
         text(c, if (rulesBySource) "Règles par source" else "Règles par album", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         controlBox(c, x + w - 385f, y + 10f, 175f, 38f, if (rulesBySource) "Voir albums" else "Voir sources", settingsColumn == 1 && settingsControl == 9 && !navFocus)
@@ -5594,6 +5665,22 @@ class PhotoTvView(
                     if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
                 }
                 y in 340f..599f -> settingsControl = (((y - 346f) / 65f).toInt() + 3).coerceIn(3, 6)
+            }
+
+            7 -> {
+                val slot = (((y - 149f) / 64f).toInt()).coerceIn(0, 6)
+                settingsControl = slot
+                when (slot) {
+                    0 -> {
+                        autonomousSlideshow = !autonomousSlideshow
+                        if (!autonomousSlideshow) autonomousImageModeOverride = null
+                    }
+                    1 -> smartSelectionMode = (smartSelectionMode + 1) % 5
+                    2 -> {
+                        backgroundAnalysis = !backgroundAnalysis
+                        if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
+                    }
+                }
             }
 
             else -> if (advancedRulesOpen) {
