@@ -2054,7 +2054,7 @@ class PhotoTvView(
                     val y = 116f + i * 55f
                     box(32f, y, 352f, y + 50f, "Catégorie ${i + 1}", amber)
                 }
-                if (settingsCategory == 7 && !advancedRulesOpen) {
+                if (settingsCategory == 8 && !advancedRulesOpen) {
                     box(825f, 85f, 1030f, 123f, "Zones diagnostic", magenta)
                     box(1045f, 85f, 1235f, 123f, "Règles album", magenta)
                 } else {
@@ -2478,10 +2478,10 @@ class PhotoTvView(
 
         val cats = listOf(
             "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-            "Heure et date", "Température", "Source des photos", "Avancés"
+            "Heure et date", "Température", "Source des photos", "Intelligence", "Avancés"
         )
         cats.forEachIndexed { i, name ->
-            val yy = sideY + 8f + i * 55f
+            val yy = sideY + 8f + i * 50f
             val active = settingsCategory == i
             if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 50f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
             if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 53f, 12f, Color.rgb(136, 197, 255), 2f)
@@ -2504,6 +2504,7 @@ class PhotoTvView(
             4 -> drawSettingsTime(c, panelX, panelY)
             5 -> drawSettingsTemp(c, panelX, panelY)
             6 -> drawSettingsSource(c, panelX, panelY, panelW)
+            7 -> drawSettingsIntelligence(c, panelX, panelY, panelW)
             else -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
         }
     }
@@ -2725,6 +2726,76 @@ class PhotoTvView(
             settingsColumn == 1 && settingsControl == 6 && !navFocus
         )
         settingsToggle(c, "Pré-analyse locale en arrière-plan", backgroundAnalysis, x, y + 510f, 8)
+    }
+
+    private fun drawSettingsIntelligence(c: Canvas, x: Float, y: Float, w: Float) {
+        text(c, "Intelligence et performances", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Les fonctions automatiques restent visibles ici même lorsqu'elles ne demandent aucun réglage.", x + 22f, y + 58f, 11f, Color.rgb(150, 171, 194))
+
+        fun row(
+            index: Int,
+            top: Float,
+            title: String,
+            explanation: String,
+            value: String,
+            toggle: Boolean? = null
+        ) {
+            val focused = settingsColumn == 1 && settingsControl == index && !navFocus
+            round(c, x + 22f, top, x + w - 22f, top + 58f, 10f, Color.rgb(10, 24, 38))
+            if (focused) strokeRound(c, x + 19f, top - 3f, x + w - 19f, top + 61f, 11f, Color.rgb(49, 151, 255), 2f)
+            text(c, title, x + 38f, top + 23f, 13f, Color.WHITE, 1)
+            ellipsizedText(c, explanation, x + 38f, top + 44f, 590f, 10f, Color.rgb(142, 163, 187))
+            if (toggle != null) {
+                drawToggle(c, x + w - 94f, top + 15f, toggle, false)
+            } else {
+                text(c, value, x + w - 38f, top + 31f, 11f, Color.rgb(109, 190, 255), 1, 2)
+            }
+        }
+
+        row(
+            0, y + 74f,
+            "Diaporama intelligent autonome",
+            "Adapte sélection, souvenirs, favoris et mosaïques au contenu et au moment de la journée.",
+            if (autonomousSlideshow) "Activé" else "Désactivé",
+            autonomousSlideshow
+        )
+        row(
+            1, y + 139f,
+            "Sélection intelligente",
+            "Privilégie les meilleures photos et limite les répétitions selon le mode choisi.",
+            SmartSelectionPolicy.modeLabel(smartSelectionMode)
+        )
+        row(
+            2, y + 204f,
+            "Pré-analyse locale",
+            "Analyse progressivement scènes et recadrages pour accélérer les affichages suivants.",
+            "$backgroundAnalysisDone / $backgroundAnalysisTotal",
+            backgroundAnalysis
+        )
+        row(
+            3, y + 269f,
+            "Reconnaissance locale des scènes",
+            "Classe sur la TV personnes, animaux, nourriture, paysages, ville, nuit et autres scènes.",
+            currentScene(currentItem()) ?: "En attente"
+        )
+        row(
+            4, y + 334f,
+            "Recadrage intelligent",
+            "Détecte visage ou sujet principal pour éviter de couper l'élément important en mode Remplir.",
+            "Automatique"
+        )
+        row(
+            5, y + 399f,
+            "Anti-doublons et diversité",
+            "Écarte les photos identiques ou très proches et espace les contenus visuellement similaires.",
+            "Automatique"
+        )
+        row(
+            6, y + 464f,
+            "Transitions et préchargement adaptatifs",
+            "Allège les effets si la TV manque de ressources et prépare les médias suivants selon ses performances.",
+            "Automatique"
+        )
     }
 
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
@@ -3493,6 +3564,15 @@ class PhotoTvView(
             4 -> { stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
             5 -> text(c, "♨", x, y + 7f, 18f, Color.WHITE, 0, 1)
             6 -> drawSourceIcon(c, x, y, 2)
+            7 -> {
+                stroke.style = Paint.Style.STROKE
+                stroke.color = Color.WHITE
+                stroke.strokeWidth = 1.8f
+                c.drawCircle(x, y, 9f, stroke)
+                c.drawLine(x - 5f, y, x + 5f, y, stroke)
+                c.drawLine(x, y - 5f, x, y + 5f, stroke)
+                circle(c, x, y, 2.5f, Color.WHITE)
+            }
             else -> drawGear(c, x, y, 9f)
         }
     }
@@ -3925,7 +4005,7 @@ class PhotoTvView(
             invalidate()
             return true
         }
-        if (page == 3 && settingsCategory == 7 && settingsColumn == 1 &&
+        if (page == 3 && settingsCategory == 8 && settingsColumn == 1 &&
             settingsControl == 13 && remoteEnabled
         ) {
             remoteToken = java.util.UUID.randomUUID().toString().replace("-", "").take(24)
@@ -4139,7 +4219,7 @@ class PhotoTvView(
         }
 
         when (keyCode) {
-            KeyEvent.KEYCODE_BACK -> if (page == 3 && settingsCategory == 7 && advancedRulesOpen) {
+            KeyEvent.KEYCODE_BACK -> if (page == 3 && settingsCategory == 8 && advancedRulesOpen) {
                 advancedRulesOpen = false
                 settingsControl = 0
                 invalidate()
@@ -4256,7 +4336,7 @@ class PhotoTvView(
             }
             3 -> {
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 7)
+                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
                     settingsControl = settingsControl.coerceIn(0, settingsControlMax())
                 } else {
                     settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
@@ -4348,6 +4428,7 @@ class PhotoTvView(
         4 -> 9
         5 -> 2
         6 -> 8
+        7 -> 6
         else -> if (advancedRulesOpen) 9 else 15
     }
 
@@ -4498,7 +4579,18 @@ class PhotoTvView(
                     if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
                 }
             }
-            7 -> if (advancedRulesOpen) {
+            7 -> when (settingsControl) {
+                0 -> {
+                    autonomousSlideshow = !autonomousSlideshow
+                    if (!autonomousSlideshow) autonomousImageModeOverride = null
+                }
+                1 -> smartSelectionMode = (smartSelectionMode + dir + 5) % 5
+                2 -> {
+                    backgroundAnalysis = !backgroundAnalysis
+                    if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
+                }
+            }
+            else -> if (advancedRulesOpen) {
                 adjustAlbumRule(dir)
             } else when (settingsControl) {
                 0 -> imageMode = (imageMode + dir + imageModes.size) % imageModes.size
@@ -4602,7 +4694,8 @@ class PhotoTvView(
                         7 -> onNetworkSource()
                         8 -> adjustSettings(1)
                     }
-                    7 -> if (advancedRulesOpen) {
+                    7 -> adjustSettings(1)
+                    else -> if (advancedRulesOpen) {
                         adjustAlbumRule(1)
                     } else when (settingsControl) {
                         8 -> onExportSettings()
@@ -5360,7 +5453,7 @@ class PhotoTvView(
 
     private fun handleSettingsTap(x: Float, y: Float) {
         if (x in 32f..352f && y in 116f..566f) {
-            val i = ((y - 116f) / 55f).toInt().coerceIn(0, 7)
+            val i = ((y - 116f) / 50f).toInt().coerceIn(0, 8)
             settingsCategory = i
             settingsColumn = 0
             settingsControl = settingsControl.coerceIn(0, settingsControlMax())
@@ -5492,7 +5585,18 @@ class PhotoTvView(
                 }
             }
 
-            7 -> if (advancedRulesOpen) {
+            7 -> when {
+                y in 145f..209f -> { settingsControl = 0; autonomousSlideshow = !autonomousSlideshow; if (!autonomousSlideshow) autonomousImageModeOverride = null }
+                y in 210f..274f -> { settingsControl = 1; smartSelectionMode = (smartSelectionMode + 1) % 5 }
+                y in 275f..339f -> {
+                    settingsControl = 2
+                    backgroundAnalysis = !backgroundAnalysis
+                    if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
+                }
+                y in 340f..599f -> settingsControl = (((y - 346f) / 65f).toInt() + 3).coerceIn(3, 6)
+            }
+
+            else -> if (advancedRulesOpen) {
                 when {
                     x in 855f..1045f && y in 75f..125f -> {
                         settingsControl = 9
