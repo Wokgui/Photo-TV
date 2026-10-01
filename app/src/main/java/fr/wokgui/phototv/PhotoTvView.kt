@@ -150,6 +150,7 @@ class PhotoTvView(
     private var libraryHasNetworkItems = false
     private var activePhotosCacheKey = Long.MIN_VALUE
     private var activePhotosCache: List<PhotoItem> = emptyList()
+    private val intelligenceRevision = java.util.concurrent.atomic.AtomicLong(0L)
     private var exactAlbums = false
     private var sourceName = "Démo"
     private var page = 0
@@ -1308,6 +1309,8 @@ class PhotoTvView(
         decodeFailureCount = 0
         lastDecodeFailure = ""
         qualityScores.clear()
+        sceneCache.clear()
+        intelligenceRevision.incrementAndGet()
         library = tagSource(items, sourceName)
         this.exactAlbums = exactAlbums
         this.sourceName = sourceName
@@ -1388,6 +1391,7 @@ class PhotoTvView(
                     val bmp = decodeThumb(uri)
                     if (bmp != null) {
                         qualityScores[key] = analyzeBitmapQuality(bmp)
+                        intelligenceRevision.incrementAndGet()
                         synchronized(bitmapCache) {
                             bitmapCache.remove(key)?.let { old ->
                                 bitmapCacheBytes -= old.allocationByteCount.toLong()
@@ -1436,6 +1440,7 @@ class PhotoTvView(
                         val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                         if (bmp != null && !bmp.isRecycled) {
                             qualityScores[key] = analyzeBitmapQuality(bmp)
+                            intelligenceRevision.incrementAndGet()
                             smartCropAnchors(item, bmp)
                             if (bmp !== demoBitmap && !bmp.isRecycled) bmp.recycle()
                         }
@@ -1446,6 +1451,7 @@ class PhotoTvView(
                         qualityScores[key] = analyzeBitmapQuality(bmp)
                         val scene = OnDeviceSceneLabeler.classify(bmp)
                         sceneCache[key] = scene
+                        intelligenceRevision.incrementAndGet()
                         MediaMetadataStore.writeScene(
                             context,
                             item.uri,
@@ -1802,6 +1808,7 @@ class PhotoTvView(
         fun mix(value: Int) { key = key * 31L + value.toLong() }
         key = key * 31L + libraryRevision
         key = key * 31L + timeBucket
+        key = key * 31L + intelligenceRevision.get()
         mix(remoteSourceFilter?.hashCode() ?: 0)
         mix(selectedAlbums.hashCode())
         mix(hiddenAlbums.hashCode())
@@ -3093,7 +3100,9 @@ class PhotoTvView(
         val mime = runCatching { context.contentResolver.getType(item.uri) }.getOrNull().orEmpty()
         val signature = MediaMetadataStore.signature(context, item.uri, mime)
         val cached = MediaMetadataStore.readScene(context, item.uri, signature)?.label
-        if (!cached.isNullOrBlank()) sceneCache[key] = cached
+        if (!cached.isNullOrBlank() && sceneCache.put(key, cached) != cached) {
+            intelligenceRevision.incrementAndGet()
+        }
         return cached
     }
 
