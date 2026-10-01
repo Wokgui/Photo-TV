@@ -383,6 +383,22 @@ object NetworkLibrary {
             ?.forEach { it.delete() }
     }
 
+    internal fun resetRuntimeStateForTests() {
+        synchronized(entries) {
+            configs.clear()
+            entries.clear()
+        }
+        synchronized(sourceHealth) {
+            sourceHealth.clear()
+        }
+        synchronized(offlineUntilBySource) {
+            offlineUntilBySource.clear()
+        }
+        cacheReadHits = 0L
+        remoteReads = 0L
+        remoteReadTotalMs = 0L
+    }
+
     private fun normalizeBase(kind: Kind, raw: String): String {
         val trimmed = raw.trim()
         return when (kind) {
