@@ -32,6 +32,8 @@ data class RemoteControlState(
     val smartModes: List<String>,
     val smartMode: String,
     val position: Int = 0,
+    val total: Int = 0,
+    val favorite: Boolean = false,
     val previewTitles: List<String> = emptyList()
 )
 
@@ -201,6 +203,8 @@ class RemoteControlServer(
                     "\"smartModes\":" + smartModesJson + "," +
                     "\"smartMode\":\"" + jsonEscape(st.smartMode) + "\"," +
                     "\"position\":" + st.position + "," +
+                    "\"total\":" + st.total + "," +
+                    "\"favorite\":" + st.favorite + "," +
                     "\"previewTitles\":" + previewsJson + "}"
                 respond(s, 200, "application/json; charset=utf-8", json)
                 return
@@ -277,15 +281,19 @@ main{max-width:520px;margin:auto}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 button{font:inherit;font-size:18px;padding:20px 12px;border:0;border-radius:14px;background:#126fe8;color:white}
 button.wide{grid-column:1/-1}
+button.active{background:#8a5d00}
 small{display:block;margin-top:18px;color:#9fb3c8}
 .preview-strip{grid-column:1/-1;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;background:#0d2134;border-radius:14px;padding:10px}
 .preview-card{min-width:0}
 .preview-card img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:10px;background:#07121e;display:block}
 .preview-card:first-child img{aspect-ratio:16/9}
 .preview-title{font-size:11px;color:#c8d5e3;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.94);display:none;align-items:center;justify-content:center;z-index:10;padding:18px}
+#lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:12px}
 </style>
 </head>
 <body>
+<div id="lightbox" role="dialog" aria-label="Aperçu plein écran"><img id="lightboxImg" alt="Photo actuelle en plein écran"></div>
 <main>
 <h1>Photo TV</h1>
 <div class="grid">
@@ -298,7 +306,7 @@ small{display:block;margin-top:18px;color:#9fb3c8}
 <button onclick="send('prev')">◀ Précédente</button>
 <button onclick="send('next')">Suivante ▶</button>
 <button class="wide" onclick="send('pause')">Pause / reprise</button>
-<button onclick="send('favorite')">★ Favori</button>
+<button id="favoriteBtn" onclick="send('favorite')" aria-pressed="false">☆ Favori</button>
 <button onclick="send('hide')">Masquer</button>
 <button onclick="send('duration_down')">− Durée</button>
 <button onclick="send('duration_up')">+ Durée</button>
@@ -351,6 +359,17 @@ function fillSelect(id,values,current,allLabel){
   el.value=current||old||allLabel;
 }
 let lastPreviewSignature='';
+const previewObjectUrls=new Array(4).fill('');
+function loadPreview(i,signature){
+  fetch('/thumbnail?slot='+i+'&v='+encodeURIComponent(signature),{headers:auth})
+    .then(r=>{if(!r.ok)throw new Error('thumb');return r.blob();})
+    .then(blob=>{
+      if(previewObjectUrls[i])URL.revokeObjectURL(previewObjectUrls[i]);
+      previewObjectUrls[i]=URL.createObjectURL(blob);
+      document.getElementById('thumb'+i).src=previewObjectUrls[i];
+    })
+    .catch(()=>{});
+}
 function updatePreviews(s){
   const titles=s.previewTitles||[];
   const signature=String(s.position)+'|'+titles.join('|');
@@ -359,14 +378,36 @@ function updatePreviews(s){
     document.getElementById('previewTitle'+i).textContent=title;
     document.getElementById('thumb'+i).style.display=title?'block':'none';
   }
+  const fav=document.getElementById('favoriteBtn');
+  fav.textContent=s.favorite?'★ Favori':'☆ Favori';
+  fav.classList.toggle('active',!!s.favorite);
+  fav.setAttribute('aria-pressed',s.favorite?'true':'false');
   if(signature===lastPreviewSignature)return;
   lastPreviewSignature=signature;
   for(let i=0;i<4;i++){
-    const img=document.getElementById('thumb'+i);
-    if(titles[i]) img.src='/thumbnail?t='+encodeURIComponent(t)+'&slot='+i+'&v='+encodeURIComponent(signature);
-    else img.removeAttribute('src');
+    if(titles[i])loadPreview(i,signature);
+    else document.getElementById('thumb'+i).removeAttribute('src');
   }
 }
+const previewStrip=document.getElementById('previews');
+let touchStartX=null;
+previewStrip.addEventListener('touchstart',e=>{touchStartX=e.changedTouches[0]?.clientX??null},{passive:true});
+previewStrip.addEventListener('touchend',e=>{
+  if(touchStartX===null)return;
+  const end=e.changedTouches[0]?.clientX??touchStartX;
+  const delta=end-touchStartX;
+  touchStartX=null;
+  if(Math.abs(delta)>=50)send(delta<0?'next':'prev');
+},{passive:true});
+document.getElementById('thumb0').addEventListener('click',()=>{
+  const src=document.getElementById('thumb0').src;
+  if(!src)return;
+  document.getElementById('lightboxImg').src=src;
+  document.getElementById('lightbox').style.display='flex';
+});
+document.getElementById('lightbox').addEventListener('click',e=>{
+  e.currentTarget.style.display='none';
+});
 function prepareNetwork(){
   const kind=document.getElementById('netKind').value;
   const url=document.getElementById('netUrl').value.trim();
@@ -380,7 +421,7 @@ function refresh(){
     .then(s=>{
       updatePreviews(s);
       document.getElementById('status').textContent=
-        s.title+' • '+s.album+' • '+s.duration+' s • '+s.transition+' • '+s.imageMode+(s.paused?' • pause':'');
+        s.title+' • '+s.album+' • '+(s.position+1)+' / '+s.total+' • '+s.duration+' s • '+s.transition+' • '+s.imageMode+(s.paused?' • pause':'');
       fillSelect('album',s.albums,s.album,'Tous les albums');
       fillSelect('source',s.sources,s.sourceFilter,'Toutes les sources');
       fillSelect('transition',s.transitions,s.transition,'Transition');
