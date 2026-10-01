@@ -10,7 +10,8 @@ object MosaicSelectionPolicy {
         val width: Int,
         val height: Int,
         val takenAt: Long,
-        val mediaType: String
+        val mediaType: String,
+        val scene: String = ""
     )
 
     fun select(candidates: List<Candidate>, currentIndex: Int, count: Int): List<Int> {
@@ -36,6 +37,7 @@ object MosaicSelectionPolicy {
         var score = 0
         if (a.source != b.source) score += 40
         if (a.album != b.album) score += 25
+        if (a.scene.isNotBlank() && b.scene.isNotBlank() && a.scene != b.scene) score += 28
         if (orientation(a) != orientation(b)) score += 18
         if (a.takenAt > 0L && b.takenAt > 0L) {
             val delta = abs(a.takenAt - b.takenAt)
