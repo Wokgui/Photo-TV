@@ -560,7 +560,7 @@ class MainActivity : AppCompatActivity() {
             Thread {
                 val result = runCatching { NetworkLibrary.reload() }
                 runOnUiThread {
-                    result.getOrNull()?.takeIf { items -> items.isNotEmpty() }?.let { items ->
+                    result.getOrNull()?.let { items ->
                         ui.replaceNetworkLibraries(items)
                     }
                     scheduleNetworkRefresh()
