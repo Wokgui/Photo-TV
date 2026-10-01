@@ -128,7 +128,12 @@ class MainActivity : AppCompatActivity() {
             NetworkLibrary.configureCache(cacheMb, ttlHours)
         }
         if (automationMode) {
+            val testCount = intent.getIntExtra("phototv_test_library_count", 0)
+            if (testCount > 0) ui.installAutomationLibraryForTest(testCount)
             ui.setAutomationPage(intent.getIntExtra("phototv_test_page", 0))
+            if (intent.getBooleanExtra("phototv_test_slideshow", false) && testCount > 0) {
+                ui.startAutomationSlideshowForTest()
+            }
         } else {
             restoreSavedSource()
         }
@@ -195,6 +200,12 @@ class MainActivity : AppCompatActivity() {
 
     fun accessibilityDescriptionForTest(): String =
         if (::ui.isInitialized) ui.accessibilityDescriptionForTest() else ""
+
+    fun automationLibrarySizeForTest(): Int =
+        if (::ui.isInitialized) ui.automationLibrarySizeForTest() else 0
+
+    fun automationActiveCountForTest(): Int =
+        if (::ui.isInitialized) ui.automationActiveCountForTest() else 0
 
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
         if (uri == null) {
