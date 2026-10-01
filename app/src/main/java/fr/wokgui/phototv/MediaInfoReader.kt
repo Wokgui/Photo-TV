@@ -18,7 +18,8 @@ data class MediaInfo(
 )
 
 object MediaInfoReader {
-    fun read(context: Context, uri: Uri, mime: String): MediaInfo {
+    fun read(context: Context, uri: Uri, mime: String, name: String? = null): MediaInfo {
+        val kind = MediaTypeDetector.classify(name, mime)
         val signature = MediaMetadataStore.signature(context, uri, mime)
         MediaMetadataStore.readInfo(context, uri, signature)?.let { cached ->
             return MediaInfo(
@@ -30,7 +31,7 @@ object MediaInfoReader {
             )
         }
 
-        val info = if (mime.startsWith("video/")) {
+        val info = if (kind == "video" || mime.startsWith("video/")) {
             readVideo(context, uri)
         } else {
             readImage(context, uri)
