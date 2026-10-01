@@ -16,7 +16,9 @@ object MosaicSelectionPolicy {
     fun select(candidates: List<Candidate>, currentIndex: Int, count: Int): List<Int> {
         if (candidates.isEmpty() || count <= 0) return emptyList()
         val byIndex = candidates.associateBy { it.index }
-        val current = byIndex[currentIndex] ?: candidates.first()
+        val current = byIndex[currentIndex]?.takeIf { it.mediaType != "video" }
+            ?: candidates.firstOrNull { it.mediaType != "video" }
+            ?: return emptyList()
         val selected = mutableListOf(current)
         val remaining = candidates.filter { it.index != current.index && it.mediaType != "video" }.toMutableList()
 
