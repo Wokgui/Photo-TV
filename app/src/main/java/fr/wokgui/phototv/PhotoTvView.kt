@@ -46,6 +46,8 @@ class PhotoTvView(
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
     private val onAlbumSearch: () -> Unit = {},
+    private val onPickAmbientMusic: () -> Unit = {},
+    private val onAmbientMusicChange: (Boolean, Float) -> Unit = { _, _ -> },
     private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> },
     private val onVideoPause: (Boolean) -> Unit = {},
     private val supportsVideoPlayback: Boolean = false,
@@ -254,6 +256,13 @@ class PhotoTvView(
     private var albumSearch = ""
     private var albumSort = 0
     private var videoSound = false
+    private var activeProfile = ProfilePolicy.PERSONAL
+    private var smartAlbumsEnabled = true
+    private var qualityMinimum = 0
+    private val qualityScores = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private var ambientMusicEnabled = false
+    private var ambientMusicVolume = 0.35f
+    private var ambientMusicConfigured = false
     private var remoteEnabled = false
     private var remoteToken = ""
     private var remoteServer: RemoteControlServer? = null
@@ -363,6 +372,9 @@ class PhotoTvView(
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
         videoSound = prefs.getBoolean("video_sound", false)
+        activeProfile = ProfilePolicy.normalize(prefs.getInt("active_profile", ProfilePolicy.PERSONAL))
+        smartAlbumsEnabled = prefs.getBoolean("smart_albums_enabled", true)
+        qualityMinimum = prefs.getInt("quality_minimum", 0).coerceIn(0, 90)
         remoteEnabled = prefs.getBoolean("remote_enabled", false)
         remoteToken = prefs.getString("remote_token", "").orEmpty().ifBlank {
             java.util.UUID.randomUUID().toString().replace("-", "").take(20)
@@ -387,6 +399,7 @@ class PhotoTvView(
             val arr = JSONArray(prefs.getString("recent_uris", "[]") ?: "[]")
             for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { recentUris.addLast(it) }
         }
+        restoreProfileState(activeProfile)
         styles.forEachIndexed { i, s ->
             s.size = prefs.getFloat("s${i}_size", s.size)
             s.x = prefs.getFloat("s${i}_x", s.x)
@@ -435,6 +448,9 @@ class PhotoTvView(
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
             putBoolean("video_sound", videoSound)
+            putInt("active_profile", activeProfile)
+            putBoolean("smart_albums_enabled", smartAlbumsEnabled)
+            putInt("quality_minimum", qualityMinimum)
             putBoolean("remote_enabled", remoteEnabled)
             putString("remote_token", remoteToken)
             putBoolean("interaction_diagnostics", interactionDiagnostics)
@@ -465,6 +481,61 @@ class PhotoTvView(
                 putBoolean("s${i}_visible", s.visible)
             }
         }.apply()
+        persistProfileState(activeProfile)
+    }
+
+    private fun profileStateJson(): JSONObject = JSONObject().apply {
+        put("favoritesOnly", favoritesOnly)
+        put("smartSelectionMode", smartSelectionMode)
+        put("imageMode", imageMode)
+        put("selectedAlbums", JSONArray().apply { selectedAlbums.forEach { put(it) } })
+        put("favorites", JSONArray().apply { favorites.forEach { put(it) } })
+        put("hiddenAlbums", JSONArray().apply { hiddenAlbums.forEach { put(it) } })
+        put("excludedUris", JSONArray().apply { excludedUris.forEach { put(it) } })
+    }
+
+    private fun persistProfileState(index: Int) {
+        prefs.edit().putString("profile_state_" + ProfilePolicy.normalize(index), profileStateJson().toString()).apply()
+    }
+
+    private fun restoreProfileState(index: Int) {
+        val raw = prefs.getString("profile_state_" + ProfilePolicy.normalize(index), null) ?: return
+        runCatching {
+            val root = JSONObject(raw)
+            favoritesOnly = root.optBoolean("favoritesOnly", favoritesOnly)
+            smartSelectionMode = root.optInt("smartSelectionMode", smartSelectionMode).coerceIn(0, 4)
+            imageMode = root.optInt("imageMode", imageMode).coerceIn(0, 6)
+            fun restoreSet(name: String, target: MutableSet<String>) {
+                val arr = root.optJSONArray(name) ?: return
+                target.clear()
+                for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { target += it }
+            }
+            restoreSet("selectedAlbums", savedSelectedAlbums)
+            restoreSet("favorites", favorites)
+            restoreSet("hiddenAlbums", hiddenAlbums)
+            restoreSet("excludedUris", excludedUris)
+        }
+    }
+
+    private fun switchProfile(next: Int) {
+        persistProfileState(activeProfile)
+        activeProfile = ProfilePolicy.normalize(next)
+        favorites.clear()
+        hiddenAlbums.clear()
+        excludedUris.clear()
+        savedSelectedAlbums.clear()
+        restoreProfileState(activeProfile)
+        if (library.isNotEmpty()) refreshLibraryState(resetCurrent = true)
+        activePhotosCacheKey = Long.MIN_VALUE
+        rebuildShuffleBag()
+        savePrefs()
+    }
+
+    fun setAmbientMusicState(enabled: Boolean, volume: Float, configured: Boolean) {
+        ambientMusicEnabled = enabled
+        ambientMusicVolume = volume.coerceIn(0f, 1f)
+        ambientMusicConfigured = configured
+        invalidate()
     }
 
     private fun scheduleClock() {
