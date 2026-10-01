@@ -2651,7 +2651,9 @@ class PhotoTvView(
         if (lastDecodeFailure.isNotBlank()) {
             ellipsizedText(c, "Erreur : $lastDecodeFailure", x + 22f, y + 575f, 820f, 9f, Color.rgb(196, 150, 120))
         } else if (remoteEnabled) {
-            ellipsizedText(c, remoteServer?.url() ?: "Télécommande : connexion réseau en attente", x + 22f, y + 575f, 820f, 9f, Color.rgb(137, 200, 173))
+            val remoteHint = (remoteServer?.url() ?: "Télécommande : connexion réseau en attente") +
+                " • maintien OK sur Télécommande = nouveau lien"
+            ellipsizedText(c, remoteHint, x + 22f, y + 575f, 820f, 9f, Color.rgb(137, 200, 173))
         }
     }
 
@@ -3548,6 +3550,18 @@ class PhotoTvView(
         if (page == 2 && editorColumn == 1) {
             editorMoveMode = !editorMoveMode
             invalidate()
+            return true
+        }
+        if (page == 3 && settingsCategory == 7 && settingsColumn == 1 &&
+            settingsControl == 13 && remoteEnabled
+        ) {
+            remoteToken = java.util.UUID.randomUUID().toString().replace("-", "").take(24)
+            remoteQrBitmap?.let { if (!it.isRecycled) it.recycle() }
+            remoteQrBitmap = null
+            remoteQrUrl = ""
+            updateRemoteServer()
+            savePrefs()
+            showRemoteQrIfAvailable()
             return true
         }
         return false
