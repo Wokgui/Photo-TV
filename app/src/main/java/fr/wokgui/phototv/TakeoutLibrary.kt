@@ -53,10 +53,7 @@ object TakeoutLibrary {
     ) {
         val children = runCatching { dir.listFiles().toList() }.getOrDefault(emptyList())
         val media = children.filter {
-            it.isFile && (
-                it.type?.startsWith("image/") == true ||
-                    it.type?.startsWith("video/") == true
-            )
+            it.isFile && MediaTypeDetector.classify(it.name, it.type) != null
         }
         val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
 
@@ -138,11 +135,7 @@ object TakeoutLibrary {
                 camera = camera,
                 width = info.width,
                 height = info.height,
-                mediaType = when {
-                    mime.startsWith("video/") -> "video"
-                    mime.equals("image/gif", true) -> "gif"
-                    else -> "image"
-                },
+                mediaType = MediaTypeDetector.classify(mediaName, mime) ?: "image",
                 sourceId = sourceId
             )
         }
