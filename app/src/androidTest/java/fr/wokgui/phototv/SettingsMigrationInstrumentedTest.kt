@@ -43,7 +43,7 @@ class SettingsMigrationInstrumentedTest {
         assertEquals(15, prefs.getInt("transition", -1))
         assertEquals(4f, prefs.getFloat("transition_seconds", -1f))
         assertEquals(2, prefs.getInt("zoom", -1))
-        assertEquals(3, prefs.getInt("image_mode", -1))
+        assertEquals(6, prefs.getInt("image_mode", -1))
         assertEquals(4, prefs.getInt("smart_selection_mode", -1))
         assertEquals(0, prefs.getInt("night_start", -1))
         assertEquals(23, prefs.getInt("night_end", -1))
