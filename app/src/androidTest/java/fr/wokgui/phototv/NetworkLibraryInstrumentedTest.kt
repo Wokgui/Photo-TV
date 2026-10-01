@@ -131,6 +131,41 @@ class NetworkLibraryInstrumentedTest {
     }
 
     @Test
+    fun reloadKeepsLastKnownItemsForAnOfflineSource() {
+        val secondServer = FakeWebDavServer()
+        secondServer.start()
+        try {
+            val firstBase = "http://127.0.0.1:" + server.port + "/photos/"
+            val secondBase = "http://127.0.0.1:" + secondServer.port + "/photos/"
+
+            val firstItems = NetworkLibrary.load(
+                kind = NetworkLibrary.Kind.WEBDAV,
+                baseUrl = firstBase,
+                username = "",
+                password = ""
+            )
+            val secondItems = NetworkLibrary.load(
+                kind = NetworkLibrary.Kind.WEBDAV,
+                baseUrl = secondBase,
+                username = "",
+                password = ""
+            )
+            assertEquals(2, firstItems.size)
+            assertEquals(2, secondItems.size)
+
+            server.close()
+            val reloaded = NetworkLibrary.reload().orEmpty()
+
+            assertEquals(4, reloaded.size)
+            assertTrue(reloaded.any { it.sourceLabel.contains(secondServer.port.toString()) })
+            assertTrue(reloaded.any { it.sourceLabel.contains(server.port.toString()) })
+            assertTrue(NetworkLibrary.isTemporarilyOffline())
+        } finally {
+            secondServer.close()
+        }
+    }
+
+    @Test
     fun savedNetworkSourceNeverStoresPassword() {
         val secret = "mot-de-passe-test"
         NetworkSourceStore.upsert(
