@@ -23,6 +23,12 @@ object FolderScanIndex {
     @Volatile var misses: Long = 0
         private set
 
+    fun isReliable(children: List<DocumentFile>): Boolean =
+        children.filter { it.isFile }.all { child ->
+            runCatching { child.lastModified() }.getOrDefault(0L) > 0L ||
+                runCatching { child.length() }.getOrDefault(0L) > 0L
+        }
+
     fun signature(children: List<DocumentFile>, exactMode: Boolean): String {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(byteArrayOf((if (exactMode) 1 else 0).toByte()))
