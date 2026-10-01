@@ -505,25 +505,8 @@ object NetworkLibrary {
     private fun decodePath(value: String): String =
         runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
 
-    private fun mediaType(name: String, contentType: String?): String? {
-        val lower = name.lowercase()
-        return when {
-            contentType?.startsWith("video/") == true ||
-                lower.endsWith(".mp4") ||
-                lower.endsWith(".mkv") ||
-                lower.endsWith(".webm") -> "video"
-
-            contentType.equals("image/gif", true) || lower.endsWith(".gif") -> "gif"
-
-            contentType?.startsWith("image/") == true ||
-                listOf(
-                    ".jpg", ".jpeg", ".png", ".webp",
-                    ".heic", ".heif", ".bmp", ".avif"
-                ).any { lower.endsWith(it) } -> "image"
-
-            else -> null
-        }
-    }
+    private fun mediaType(name: String, contentType: String?): String? =
+        MediaTypeDetector.classify(name, contentType)
 
     private fun stripExtension(name: String): String {
         val i = name.lastIndexOf('.')
