@@ -46,6 +46,8 @@ class PhotoTvView(
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
     private val onAlbumSearch: () -> Unit = {},
+    private val onPickAmbientMusic: () -> Unit = {},
+    private val onAmbientMusicChange: (Boolean, Float) -> Unit = { _, _ -> },
     private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> },
     private val onVideoPause: (Boolean) -> Unit = {},
     private val supportsVideoPlayback: Boolean = false,
@@ -53,7 +55,7 @@ class PhotoTvView(
 ) : View(context) {
 
     companion object {
-        private const val SETTINGS_SCHEMA_VERSION = 4
+        private const val SETTINGS_SCHEMA_VERSION = 5
     }
 
     private data class Style(
@@ -263,6 +265,13 @@ class PhotoTvView(
     private var albumSearch = ""
     private var albumSort = 0
     private var videoSound = false
+    private var activeProfile = ProfilePolicy.PERSONAL
+    private var smartAlbumsEnabled = true
+    private var qualityMinimum = 0
+    private val qualityScores = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private var ambientMusicEnabled = false
+    private var ambientMusicVolume = 0.35f
+    private var ambientMusicConfigured = false
     private var remoteEnabled = false
     private var remoteToken = ""
     private var remoteServer: RemoteControlServer? = null
@@ -374,6 +383,9 @@ class PhotoTvView(
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
         videoSound = prefs.getBoolean("video_sound", false)
+        activeProfile = ProfilePolicy.normalize(prefs.getInt("active_profile", ProfilePolicy.PERSONAL))
+        smartAlbumsEnabled = prefs.getBoolean("smart_albums_enabled", true)
+        qualityMinimum = prefs.getInt("quality_minimum", 0).coerceIn(0, 90)
         remoteEnabled = prefs.getBoolean("remote_enabled", false)
         remoteToken = prefs.getString("remote_token", "").orEmpty().ifBlank {
             java.util.UUID.randomUUID().toString().replace("-", "").take(20)
@@ -398,6 +410,7 @@ class PhotoTvView(
             val arr = JSONArray(prefs.getString("recent_uris", "[]") ?: "[]")
             for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { recentUris.addLast(it) }
         }
+        restoreProfileState(activeProfile)
         styles.forEachIndexed { i, s ->
             s.size = prefs.getFloat("s${i}_size", s.size)
             s.x = prefs.getFloat("s${i}_x", s.x)
@@ -448,6 +461,9 @@ class PhotoTvView(
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
             putBoolean("video_sound", videoSound)
+            putInt("active_profile", activeProfile)
+            putBoolean("smart_albums_enabled", smartAlbumsEnabled)
+            putInt("quality_minimum", qualityMinimum)
             putBoolean("remote_enabled", remoteEnabled)
             putString("remote_token", remoteToken)
             putBoolean("interaction_diagnostics", interactionDiagnostics)
@@ -478,6 +494,64 @@ class PhotoTvView(
                 putBoolean("s${i}_visible", s.visible)
             }
         }.apply()
+        persistProfileState(activeProfile)
+    }
+
+    private fun profileStateJson(): JSONObject = JSONObject().apply {
+        put("favoritesOnly", favoritesOnly)
+        put("smartSelectionMode", smartSelectionMode)
+        put("imageMode", imageMode)
+        put("selectedAlbums", JSONArray().apply { selectedAlbums.forEach { put(it) } })
+        put("favorites", JSONArray().apply { favorites.forEach { put(it) } })
+        put("hiddenAlbums", JSONArray().apply { hiddenAlbums.forEach { put(it) } })
+        put("excludedUris", JSONArray().apply { excludedUris.forEach { put(it) } })
+    }
+
+    private fun persistProfileState(index: Int) {
+        prefs.edit().putString("profile_state_" + ProfilePolicy.normalize(index), profileStateJson().toString()).apply()
+    }
+
+    private fun restoreProfileState(index: Int) {
+        val raw = prefs.getString("profile_state_" + ProfilePolicy.normalize(index), null) ?: return
+        runCatching {
+            val root = JSONObject(raw)
+            favoritesOnly = root.optBoolean("favoritesOnly", favoritesOnly)
+            smartSelectionMode = root.optInt("smartSelectionMode", smartSelectionMode).coerceIn(0, 4)
+            imageMode = root.optInt("imageMode", imageMode).coerceIn(0, 6)
+            fun restoreSet(name: String, target: MutableSet<String>) {
+                val arr = root.optJSONArray(name) ?: return
+                target.clear()
+                for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { target += it }
+            }
+            restoreSet("selectedAlbums", savedSelectedAlbums)
+            restoreSet("favorites", favorites)
+            restoreSet("hiddenAlbums", hiddenAlbums)
+            restoreSet("excludedUris", excludedUris)
+        }
+    }
+
+    private fun switchProfile(next: Int) {
+        persistProfileState(activeProfile)
+        activeProfile = ProfilePolicy.normalize(next)
+        favorites.clear()
+        hiddenAlbums.clear()
+        excludedUris.clear()
+        savedSelectedAlbums.clear()
+        favoritesOnly = false
+        smartSelectionMode = SmartSelectionPolicy.OFF
+        imageMode = 0
+        restoreProfileState(activeProfile)
+        if (library.isNotEmpty()) refreshLibraryState(resetCurrent = true)
+        activePhotosCacheKey = Long.MIN_VALUE
+        rebuildShuffleBag()
+        savePrefs()
+    }
+
+    fun setAmbientMusicState(enabled: Boolean, volume: Float, configured: Boolean) {
+        ambientMusicEnabled = enabled
+        ambientMusicVolume = volume.coerceIn(0f, 1f)
+        ambientMusicConfigured = configured
+        invalidate()
     }
 
     private fun scheduleClock() {
@@ -654,6 +728,21 @@ class PhotoTvView(
         root.put("albumSearch", albumSearch)
         root.put("albumSort", albumSort)
         root.put("videoSound", videoSound)
+        root.put("activeProfile", activeProfile)
+        root.put("smartAlbumsEnabled", smartAlbumsEnabled)
+        root.put("qualityMinimum", qualityMinimum)
+        root.put("profileStates", JSONObject().apply {
+            for (index in ProfilePolicy.labels.indices) {
+                val raw = if (index == activeProfile) {
+                    profileStateJson().toString()
+                } else {
+                    prefs.getString("profile_state_" + index, null)
+                }
+                if (!raw.isNullOrBlank()) {
+                    runCatching { put(index.toString(), JSONObject(raw)) }
+                }
+            }
+        })
         root.put("albumRules", albumRulesJson())
         root.put("sourceRules", sourceRulesJson())
         root.put("networkSources", NetworkSourceStore.exportJson(context))
@@ -730,6 +819,16 @@ class PhotoTvView(
             albumSearch = root.optString("albumSearch", albumSearch)
             albumSort = root.optInt("albumSort", albumSort).coerceIn(0, 1)
             videoSound = root.optBoolean("videoSound", videoSound)
+            activeProfile = ProfilePolicy.normalize(root.optInt("activeProfile", activeProfile))
+            smartAlbumsEnabled = root.optBoolean("smartAlbumsEnabled", smartAlbumsEnabled)
+            qualityMinimum = root.optInt("qualityMinimum", qualityMinimum).coerceIn(0, 90)
+            root.optJSONObject("profileStates")?.let { states ->
+                for (index in ProfilePolicy.labels.indices) {
+                    states.optJSONObject(index.toString())?.let { state ->
+                        prefs.edit().putString("profile_state_" + index, state.toString()).apply()
+                    }
+                }
+            }
             root.optJSONArray("networkSources")?.let { NetworkSourceStore.importJson(context, it) }
             val networkPrefs = context.getSharedPreferences("photo_tv_network_settings", Context.MODE_PRIVATE)
             val importedCacheMb = root.optInt("networkCacheMb", networkPrefs.getInt("cache_mb", 512)).coerceIn(64, 2048)
@@ -763,7 +862,7 @@ class PhotoTvView(
             restoreSet("hiddenAlbums", hiddenAlbums)
             restoreSet("excludedUris", excludedUris)
             restoreSet("selectedAlbums", selectedAlbums)
-            val availableAlbums = library.flatMap { it.albums }.distinct()
+            val availableAlbums = allSelectableAlbumNames()
             if (availableAlbums.isNotEmpty()) {
                 selectedAlbums.retainAll(availableAlbums.toSet())
                 if (selectedAlbums.isEmpty()) selectedAlbums.addAll(availableAlbums)
@@ -1104,7 +1203,7 @@ class PhotoTvView(
             else -> {
                 val categories = listOf(
                     "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-                    "Heure et date", "Température", "Source des photos", "Avancés"
+                    "Heure et date", "Température", "Source des photos", "Avancés", "Profils et audio"
                 )
                 val category = categories[settingsCategory.coerceIn(0, categories.lastIndex)]
                 if (settingsColumn == 0) {
@@ -1178,7 +1277,7 @@ class PhotoTvView(
     private fun refreshLibraryState(resetCurrent: Boolean) {
         rebuildLibraryIndexes()
         selectedAlbums.clear()
-        val allAlbums = albumIndex.keys.toList()
+        val allAlbums = allSelectableAlbumNames()
         if (savedSelectedAlbums.isNotEmpty()) {
             selectedAlbums.addAll(allAlbums.filter { savedSelectedAlbums.contains(it) })
         }
@@ -1316,6 +1415,7 @@ class PhotoTvView(
                 try {
                     val bmp = decodeThumb(uri)
                     if (bmp != null) {
+                        analyzeQualityIfNeeded(key, bmp)
                         synchronized(bitmapCache) {
                             bitmapCache.remove(key)?.let { old ->
                                 bitmapCacheBytes -= old.allocationByteCount.toLong()
@@ -1357,21 +1457,35 @@ class PhotoTvView(
                 val key = item.uri.toString()
                 val mime = runCatching { context.contentResolver.getType(item.uri) }.getOrNull().orEmpty()
                 val signature = MediaMetadataStore.signature(context, item.uri, mime)
-                val cached = MediaMetadataStore.readScene(context, item.uri, signature)
-                if (cached != null) {
-                    sceneCache[key] = cached.label
-                } else {
+                val cachedScene = MediaMetadataStore.readScene(context, item.uri, signature)
+                val cachedQuality = MediaMetadataStore.readQuality(context, item.uri, signature)
+                if (cachedScene != null) sceneCache[key] = cachedScene.label
+                if (cachedQuality != null) qualityScores[key] = cachedQuality.score
+                if (cachedScene == null || cachedQuality == null) {
                     val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                     if (bmp != null && !bmp.isRecycled) {
-                        val scene = OnDeviceSceneLabeler.classify(bmp)
-                        sceneCache[key] = scene
-                        MediaMetadataStore.writeScene(
-                            context,
-                            item.uri,
-                            signature,
-                            MediaMetadataStore.CachedScene(scene, .65f)
-                        )
-                        smartCropAnchors(item, bmp)
+                        if (cachedScene == null) {
+                            val scene = OnDeviceSceneLabeler.classify(bmp)
+                            sceneCache[key] = scene
+                            MediaMetadataStore.writeScene(
+                                context,
+                                item.uri,
+                                signature,
+                                MediaMetadataStore.CachedScene(scene, .65f)
+                            )
+                            smartCropAnchors(item, bmp)
+                        }
+                        if (cachedQuality == null) {
+                            analyzeQualityIfNeeded(key, bmp)
+                            qualityScores[key]?.let { score ->
+                                MediaMetadataStore.writeQuality(
+                                    context,
+                                    item.uri,
+                                    signature,
+                                    MediaMetadataStore.CachedQuality(score)
+                                )
+                            }
+                        }
                         if (bmp !== demoBitmap && !bmp.isRecycled) bmp.recycle()
                     }
                 }
@@ -1381,6 +1495,47 @@ class PhotoTvView(
             postInvalidate()
         }
     }
+
+    private fun analyzeQualityIfNeeded(key: String, bmp: Bitmap) {
+        if (qualityScores.containsKey(key) || bmp.isRecycled) return
+        val cols = 16
+        val rows = 12
+        val luminance = IntArray(cols * rows)
+        var k = 0
+        for (row in 0 until rows) {
+            val y = (((row + 0.5f) / rows) * bmp.height).toInt().coerceIn(0, bmp.height - 1)
+            for (col in 0 until cols) {
+                val x = (((col + 0.5f) / cols) * bmp.width).toInt().coerceIn(0, bmp.width - 1)
+                val color = bmp.getPixel(x, y)
+                luminance[k++] = (
+                    Color.red(color) * 0.299f +
+                    Color.green(color) * 0.587f +
+                    Color.blue(color) * 0.114f
+                ).toInt().coerceIn(0, 255)
+            }
+        }
+        qualityScores[key] = ImageQualityPolicy.evaluate(luminance, cols, rows).score
+        activePhotosCacheKey = Long.MIN_VALUE
+    }
+
+    private fun smartAlbumCandidate(item: PhotoItem): SmartAlbumPolicy.Candidate =
+        SmartAlbumPolicy.Candidate(
+            favorite = favorites.contains(item.uri.toString()),
+            width = item.width,
+            height = item.height,
+            takenAt = item.takenAt,
+            mediaType = item.mediaType,
+            qualityScore = qualityScores[item.uri.toString()]
+        )
+
+    private fun smartAlbumMatches(name: String, item: PhotoItem): Boolean =
+        SmartAlbumPolicy.matches(name, smartAlbumCandidate(item))
+
+    private fun allSelectableAlbumNames(): List<String> =
+        buildList {
+            addAll(albumIndex.keys)
+            if (smartAlbumsEnabled) addAll(SmartAlbumPolicy.labels)
+        }.distinct()
 
     private fun registerDecodeFailure(uri: Uri, reason: String) {
         val key = uri.toString()
@@ -1707,6 +1862,9 @@ class PhotoTvView(
         mix(failedMediaUris.hashCode())
         mix(if (favoritesOnly) favorites.hashCode() else 0)
         mix(if (favoritesOnly) 1 else 0)
+        mix(if (smartAlbumsEnabled) 1 else 0)
+        mix(qualityMinimum)
+        mix(activeProfile)
         mix(albumRules.hashCode())
         mix(sourceRules.hashCode())
         if (key == activePhotosCacheKey) return activePhotosCache
@@ -1715,16 +1873,21 @@ class PhotoTvView(
         val filtered = library.filter { item ->
             (remoteSourceFilter == null || item.sourceLabel.ifBlank { "Source" } == remoteSourceFilter) &&
                 sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
-                item.albums.any {
-                    selectedAlbums.contains(it) &&
-                        !hiddenAlbums.contains(it) &&
-                        albumAllowed(it, now)
+                selectedAlbums.any { selected ->
+                    if (hiddenAlbums.contains(selected) || !albumAllowed(selected, now)) {
+                        false
+                    } else if (SmartAlbumPolicy.isSmartAlbum(selected)) {
+                        smartAlbumsEnabled && smartAlbumMatches(selected, item)
+                    } else {
+                        item.albums.contains(selected)
+                    }
                 } &&
                 NetworkLibrary.canUseOffline(context, item.uri) &&
                 !excludedUris.contains(item.uri.toString()) &&
                 !sessionExcludedUris.contains(item.uri.toString()) &&
                 !failedMediaUris.contains(item.uri.toString()) &&
-                (!favoritesOnly || favorites.contains(item.uri.toString()))
+                (!favoritesOnly || favorites.contains(item.uri.toString())) &&
+                (qualityMinimum <= 0 || qualityScores[item.uri.toString()]?.let { it >= qualityMinimum } != false)
         }
         activePhotosCache = filtered
         activePhotosCacheKey = key
@@ -2050,8 +2213,8 @@ class PhotoTvView(
                 }
             }
             else -> {
-                repeat(8) { i ->
-                    val y = 116f + i * 55f
+                repeat(9) { i ->
+                    val y = 116f + i * 53f
                     box(32f, y, 352f, y + 50f, "Catégorie ${i + 1}", amber)
                 }
                 if (settingsCategory == 7 && !advancedRulesOpen) {
@@ -2151,7 +2314,15 @@ class PhotoTvView(
         val base = if (library.isEmpty()) {
             mockAlbums
         } else {
-            albumIndex.entries.map { it.key to it.value.size }
+            buildList {
+                addAll(albumIndex.entries.map { it.key to it.value.size })
+                if (smartAlbumsEnabled) {
+                    SmartAlbumPolicy.labels.forEach { label ->
+                        val count = library.count { smartAlbumMatches(label, it) }
+                        if (count > 0) add(label to count)
+                    }
+                }
+            }
         }
         val filtered = if (albumSearch.isBlank()) base else {
             base.filter { it.first.contains(albumSearch, ignoreCase = true) }
@@ -2172,7 +2343,10 @@ class PhotoTvView(
     private fun currentAlbumPhotos(): List<PhotoItem?> {
         if (library.isEmpty()) return List(6) { null }
         val name = currentAlbumName()
-        return albumIndex[name].orEmpty().map { it as PhotoItem? }
+        val items = if (SmartAlbumPolicy.isSmartAlbum(name)) {
+            library.filter { smartAlbumMatches(name, it) }
+        } else albumIndex[name].orEmpty()
+        return items.map { it as PhotoItem? }
     }
     private fun albumDisplay(item: PhotoItem?): String {
         if (item == null) return "Norvège 2026"
@@ -2472,16 +2646,16 @@ class PhotoTvView(
         val sideX = 32f
         val sideY = 108f
         val sideW = 320f
-        val sideH = 475f
+        val sideH = 505f
         round(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(6, 18, 29))
         strokeRound(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(22, 45, 69), 1f)
 
         val cats = listOf(
             "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-            "Heure et date", "Température", "Source des photos", "Avancés"
+            "Heure et date", "Température", "Source des photos", "Avancés", "Profils et audio"
         )
         cats.forEachIndexed { i, name ->
-            val yy = sideY + 8f + i * 55f
+            val yy = sideY + 8f + i * 53f
             val active = settingsCategory == i
             if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 50f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
             if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 53f, 12f, Color.rgb(136, 197, 255), 2f)
@@ -2504,7 +2678,8 @@ class PhotoTvView(
             4 -> drawSettingsTime(c, panelX, panelY)
             5 -> drawSettingsTemp(c, panelX, panelY)
             6 -> drawSettingsSource(c, panelX, panelY, panelW)
-            else -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
+            7 -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
+            else -> drawSettingsProfilesAudio(c, panelX, panelY)
         }
     }
 
@@ -2684,7 +2859,7 @@ class PhotoTvView(
             4
         )
 
-        val allAlbums = library.flatMap { it.albums }.distinct()
+        val allAlbums = allSelectableAlbumNames()
         val allSelected = allAlbums.isNotEmpty() && selectedAlbums.containsAll(allAlbums)
         controlBox(
             c,
@@ -2816,6 +2991,32 @@ class PhotoTvView(
         }
     }
 
+    private fun drawSettingsProfilesAudio(c: Canvas, x: Float, y: Float) {
+        text(c, "Profils et audio", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        settingsChoice(c, "Profil actif", ProfilePolicy.label(activeProfile), x, y + 55f, 0)
+        settingsToggle(c, "Musique d'ambiance", ambientMusicEnabled, x, y + 113f, 1)
+        controlBox(
+            c, x + 350f, y + 166f, 270f, 42f,
+            if (ambientMusicConfigured) "Changer la musique" else "Choisir de la musique",
+            settingsColumn == 1 && settingsControl == 2 && !navFocus
+        )
+        settingsSlider(
+            c, "Volume de la musique", ambientMusicVolume * 100f, 0f, 100f,
+            (ambientMusicVolume * 100f).toInt().toString() + " %", x, y + 220f, 3
+        )
+        settingsToggle(c, "Afficher les albums intelligents", smartAlbumsEnabled, x, y + 280f, 4)
+        settingsSlider(
+            c, "Qualité minimale", qualityMinimum.toFloat(), 0f, 90f,
+            if (qualityMinimum == 0) "Désactivée" else qualityMinimum.toString() + " / 100",
+            x, y + 338f, 5
+        )
+        text(c, "Albums automatiques : favoris, meilleures, récentes, paysages, portraits, haute résolution et vidéos.", x + 22f, y + 430f, 11f, Color.rgb(156, 178, 203))
+        text(c, "L'analyse de qualité est locale et progressive. Les photos non encore analysées restent visibles.", x + 22f, y + 453f, 11f, Color.rgb(156, 178, 203))
+        if (ProfilePolicy.isGuest(activeProfile)) {
+            text(c, "Le profil Invités possède ses propres favoris, masquages et sélections.", x + 22f, y + 485f, 11f, Color.rgb(137, 200, 173))
+        }
+    }
+
     fun diagnosticReport(): String {
         val cache = NetworkLibrary.cacheStats(context)
         val albums = library.flatMap { it.albums }.distinct().size
@@ -2837,6 +3038,11 @@ class PhotoTvView(
             appendLine("Transition demandée: " + transitions[transitionIndex.coerceIn(0, transitions.lastIndex)])
             appendLine("Transition effective: " + transitions[effectiveTransition(currentItem()).coerceIn(0, transitions.lastIndex)])
             appendLine("Mode image: " + imageModeLabel())
+            appendLine("Profil: " + ProfilePolicy.label(activeProfile))
+            appendLine("Musique d'ambiance: " + ambientMusicEnabled + " • " + (ambientMusicVolume * 100f).toInt() + "%")
+            appendLine("Albums intelligents: " + smartAlbumsEnabled)
+            appendLine("Qualité minimale: " + qualityMinimum)
+            appendLine("Photos analysées: " + qualityScores.size)
             appendLine("Fichiers illisibles: " + decodeFailureCount)
             appendLine("Dernière erreur: " + lastDecodeFailure)
             appendLine("Historique: " + recentUris.size)
@@ -3493,6 +3699,8 @@ class PhotoTvView(
             4 -> { stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
             5 -> text(c, "♨", x, y + 7f, 18f, Color.WHITE, 0, 1)
             6 -> drawSourceIcon(c, x, y, 2)
+            7 -> drawGear(c, x, y, 9f)
+            8 -> text(c, "♫", x, y + 7f, 18f, Color.WHITE, 1, 1)
             else -> drawGear(c, x, y, 9f)
         }
     }
@@ -4256,7 +4464,7 @@ class PhotoTvView(
             }
             3 -> {
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 7)
+                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
                     settingsControl = settingsControl.coerceIn(0, settingsControlMax())
                 } else {
                     settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
@@ -4348,7 +4556,8 @@ class PhotoTvView(
         4 -> 9
         5 -> 2
         6 -> 8
-        else -> if (advancedRulesOpen) 9 else 15
+        7 -> if (advancedRulesOpen) 9 else 15
+        else -> 5
     }
 
     private fun adjustEditor(dir: Int) {
@@ -4526,6 +4735,26 @@ class PhotoTvView(
                 14 -> onSettingsPin()
                 15 -> smartSelectionMode = (smartSelectionMode + dir + 5) % 5
             }
+            8 -> when (settingsControl) {
+                0 -> switchProfile((activeProfile + dir + ProfilePolicy.labels.size) % ProfilePolicy.labels.size)
+                1 -> {
+                    ambientMusicEnabled = !ambientMusicEnabled
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                2 -> onPickAmbientMusic()
+                3 -> {
+                    ambientMusicVolume = (ambientMusicVolume + dir * .05f).coerceIn(0f, 1f)
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                4 -> {
+                    smartAlbumsEnabled = !smartAlbumsEnabled
+                    refreshLibraryState(resetCurrent = false)
+                }
+                5 -> {
+                    qualityMinimum = (qualityMinimum + dir * 5).coerceIn(0, 90)
+                    activePhotosCacheKey = Long.MIN_VALUE
+                }
+            }
         }
         scheduleSlideshow()
         scheduleInactivity()
@@ -4621,6 +4850,7 @@ class PhotoTvView(
                         15 -> smartSelectionMode = (smartSelectionMode + 1) % 5
                         else -> adjustSettings(1)
                     }
+                    8 -> adjustSettings(1)
                 }
             }
         }
@@ -4772,7 +5002,7 @@ class PhotoTvView(
                 invalidate()
             }
             "album_select" -> {
-                val all = library.flatMap { it.albums }.distinct()
+                val all = allSelectableAlbumNames()
                 selectedAlbums.clear()
                 if (commandValue.isBlank() || commandValue == "Tous les albums") {
                     selectedAlbums.addAll(all)
@@ -4916,7 +5146,7 @@ class PhotoTvView(
     }
 
     private fun toggleAllAlbums() {
-        val all = library.flatMap { it.albums }.distinct()
+        val all = allSelectableAlbumNames()
         if (all.isEmpty()) return
         if (selectedAlbums.containsAll(all)) selectedAlbums.clear()
         else {
@@ -5038,7 +5268,8 @@ class PhotoTvView(
                 takenAt = item.takenAt,
                 sourceLabel = item.sourceLabel,
                 albumKey = item.albums.firstOrNull().orEmpty(),
-                mediaType = item.mediaType
+                mediaType = item.mediaType,
+                qualityScore = qualityScores[item.uri.toString()]
             )
         }
         val activeSmartMode = effectiveSmartSelectionMode()
@@ -5359,8 +5590,8 @@ class PhotoTvView(
     }
 
     private fun handleSettingsTap(x: Float, y: Float) {
-        if (x in 32f..352f && y in 116f..566f) {
-            val i = ((y - 116f) / 55f).toInt().coerceIn(0, 7)
+        if (x in 32f..352f && y in 116f..596f) {
+            val i = ((y - 116f) / 53f).toInt().coerceIn(0, 8)
             settingsCategory = i
             settingsColumn = 0
             settingsControl = settingsControl.coerceIn(0, settingsControlMax())
@@ -5547,6 +5778,37 @@ class PhotoTvView(
                 y in 536f..578f && x < 1000f -> { settingsControl = 8; onExportSettings() }
                 y in 536f..578f && x >= 1000f -> { settingsControl = 9; onImportSettings() }
                 y in 579f..626f -> { settingsControl = 10; videoSound = !videoSound; syncVideoPlayback() }
+            }
+
+            8 -> when {
+                y in 130f..190f -> {
+                    settingsControl = 0
+                    switchProfile((activeProfile + 1) % ProfilePolicy.labels.size)
+                }
+                y in 190f..245f -> {
+                    settingsControl = 1
+                    ambientMusicEnabled = !ambientMusicEnabled
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                y in 245f..305f -> {
+                    settingsControl = 2
+                    onPickAmbientMusic()
+                }
+                y in 305f..365f -> {
+                    settingsControl = 3
+                    ambientMusicVolume = (setSliderFromTap(x, 0f, 100f) / 100f).coerceIn(0f, 1f)
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                y in 365f..425f -> {
+                    settingsControl = 4
+                    smartAlbumsEnabled = !smartAlbumsEnabled
+                    refreshLibraryState(resetCurrent = false)
+                }
+                y in 425f..490f -> {
+                    settingsControl = 5
+                    qualityMinimum = setSliderFromTap(x, 0f, 90f).toInt().coerceIn(0, 90)
+                    activePhotosCacheKey = Long.MIN_VALUE
+                }
             }
         }
 
