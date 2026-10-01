@@ -6,6 +6,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.VideoView
+import android.media.MediaPlayer
 import android.widget.Toast
 import android.view.WindowManager
 import android.text.InputType
@@ -56,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_IMPORT_SETTINGS = 45
         private const val REQ_LOCAL_FOLDER = 46
         private const val REQ_EXPORT_DIAGNOSTICS = 47
+        private const val REQ_AMBIENT_MUSIC = 48
     }
 
     private lateinit var ui: PhotoTvView
@@ -67,6 +69,12 @@ class MainActivity : AppCompatActivity() {
     private var settingsUnlockedSession = false
     private var automationMode = false
     private var lastResumeNetworkRefreshAt = 0L
+    private var ambientPlayer: MediaPlayer? = null
+    private val ambientUris = mutableListOf<Uri>()
+    private var ambientIndex = 0
+    private var ambientEnabled = false
+    private var ambientVolume = 0.35f
+    private var ambientPausedForVideo = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +106,8 @@ class MainActivity : AppCompatActivity() {
             onExportSettings = { exportSettings() },
             onImportSettings = { importSettings() },
             onAlbumSearch = { requestAlbumSearch() },
+            onPickAmbientMusic = { openAmbientMusicPicker() },
+            onAmbientMusicChange = { enabled, volume -> updateAmbientMusic(enabled, volume) },
             onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) },
             onVideoPause = { pause -> handleVideoPause(pause) },
             supportsVideoPlayback = true,
@@ -122,6 +132,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         setContentView(root)
+        restoreAmbientMusic()
 
         getSharedPreferences("photo_tv_network_settings", MODE_PRIVATE).let { prefs ->
             val cacheMb = prefs.getInt("cache_mb", 512)
@@ -239,9 +250,17 @@ class MainActivity : AppCompatActivity() {
         if (uri == null) {
             runCatching { videoView.stopPlayback() }
             videoView.visibility = View.GONE
+            if (ambientPausedForVideo) {
+                ambientPausedForVideo = false
+                if (ambientEnabled) resumeAmbientMusic()
+            }
             return
         }
 
+        if (sound && ambientPlayer?.isPlaying == true) {
+            runCatching { ambientPlayer?.pause() }
+            ambientPausedForVideo = true
+        }
         videoView.visibility = View.VISIBLE
         videoView.setVideoURI(uri)
         videoView.setOnPreparedListener { player ->
@@ -708,6 +727,77 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun openAmbientMusicPicker() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                type = "audio/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            },
+            REQ_AMBIENT_MUSIC
+        )
+    }
+
+    private fun updateAmbientMusic(enabled: Boolean, volume: Float) {
+        ambientEnabled = enabled
+        ambientVolume = volume.coerceIn(0f, 1f)
+        getSharedPreferences("photo_tv_music", MODE_PRIVATE).edit()
+            .putBoolean("enabled", ambientEnabled)
+            .putInt("volume", (ambientVolume * 100f).toInt())
+            .apply()
+        ambientPlayer?.setVolume(ambientVolume, ambientVolume)
+        if (ambientEnabled) resumeAmbientMusic() else runCatching { ambientPlayer?.pause() }
+        if (::ui.isInitialized) ui.setAmbientMusicState(ambientEnabled, ambientVolume, ambientUris.isNotEmpty())
+    }
+
+    private fun restoreAmbientMusic() {
+        val prefs = getSharedPreferences("photo_tv_music", MODE_PRIVATE)
+        ambientEnabled = prefs.getBoolean("enabled", false)
+        ambientVolume = prefs.getInt("volume", 35).coerceIn(0, 100) / 100f
+        ambientUris.clear()
+        prefs.getStringSet("uris", emptySet()).orEmpty()
+            .mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
+            .forEach { ambientUris += it }
+        if (::ui.isInitialized) ui.setAmbientMusicState(ambientEnabled, ambientVolume, ambientUris.isNotEmpty())
+        if (ambientEnabled && ambientUris.isNotEmpty()) startAmbientTrack(0)
+    }
+
+    private fun resumeAmbientMusic() {
+        if (!ambientEnabled || ambientUris.isEmpty() || ambientPausedForVideo) return
+        val player = ambientPlayer
+        if (player != null) {
+            runCatching {
+                player.setVolume(ambientVolume, ambientVolume)
+                if (!player.isPlaying) player.start()
+            }.onFailure { startAmbientTrack(ambientIndex) }
+        } else startAmbientTrack(ambientIndex)
+    }
+
+    private fun startAmbientTrack(index: Int) {
+        if (!ambientEnabled || ambientUris.isEmpty()) return
+        ambientIndex = ((index % ambientUris.size) + ambientUris.size) % ambientUris.size
+        runCatching { ambientPlayer?.release() }
+        ambientPlayer = null
+        val uri = ambientUris[ambientIndex]
+        val player = MediaPlayer()
+        ambientPlayer = player
+        runCatching {
+            player.setDataSource(this, uri)
+            player.setVolume(ambientVolume, ambientVolume)
+            player.setOnPreparedListener { if (ambientEnabled && !ambientPausedForVideo) it.start() }
+            player.setOnCompletionListener { startAmbientTrack(ambientIndex + 1) }
+            player.setOnErrorListener { _, _, _ ->
+                startAmbientTrack(ambientIndex + 1)
+                true
+            }
+            player.prepareAsync()
+        }.onFailure {
+            runCatching { player.release() }
+            if (ambientPlayer === player) ambientPlayer = null
+        }
+    }
+
     private fun openPhotoPicker() {
         startActivityForResult(
             Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -729,6 +819,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         networkRefreshHandler.removeCallbacksAndMessages(null)
+        runCatching { ambientPlayer?.release() }
+        ambientPlayer = null
         super.onDestroy()
     }
 
@@ -738,6 +830,29 @@ class MainActivity : AppCompatActivity() {
         if (resultCode != Activity.RESULT_OK || data == null) return
 
         when (requestCode) {
+            REQ_AMBIENT_MUSIC -> {
+                val uris = mutableListOf<Uri>()
+                data.clipData?.let { clip ->
+                    for (i in 0 until clip.itemCount) uris += clip.getItemAt(i).uri
+                }
+                if (uris.isEmpty()) data.data?.let { uris += it }
+                val distinct = uris.distinct()
+                distinct.forEach { uri ->
+                    runCatching {
+                        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                }
+                ambientUris.clear()
+                ambientUris.addAll(distinct)
+                getSharedPreferences("photo_tv_music", MODE_PRIVATE).edit()
+                    .putStringSet("uris", ambientUris.map { it.toString() }.toSet())
+                    .apply()
+                ambientIndex = 0
+                if (ambientEnabled && ambientUris.isNotEmpty()) startAmbientTrack(0)
+                ui.setAmbientMusicState(ambientEnabled, ambientVolume, ambientUris.isNotEmpty())
+                Toast.makeText(this, if (ambientUris.isEmpty()) "Aucune musique sélectionnée." else "${ambientUris.size} morceau(x) sélectionné(s).", Toast.LENGTH_SHORT).show()
+            }
+
             REQ_EXPORT_DIAGNOSTICS -> data.data?.let { uri ->
                 val text = pendingDiagnosticText ?: ui.diagnosticReport()
                 val ok = runCatching {
