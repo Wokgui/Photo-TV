@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
@@ -137,6 +138,29 @@ class TvRemoteNavigationTest {
 
         press(photos, { device.pressDPadDown() }, "photosRow=3", "navFocus=true")
         press(photos, { device.pressDPadLeft() }, "page=0", "navFocus=true")
+    }
+
+
+    @Test
+    fun accessibilityDescriptionTracksDpadFocus() {
+        val s = launch(1)
+        s.onActivity { activity ->
+            val description = activity.accessibilityDescriptionForTest()
+            assertTrue(description.contains("Sources"))
+            assertTrue(description.contains("Google Photos"))
+        }
+
+        press(s, { device.pressDPadRight() }, "sourceFocus=1")
+        s.onActivity { activity ->
+            val description = activity.accessibilityDescriptionForTest()
+            assertTrue(description.contains("Dossier local"))
+        }
+
+        press(s, { device.pressDPadDown() }, "photosRow=1")
+        s.onActivity { activity ->
+            val description = activity.accessibilityDescriptionForTest()
+            assertTrue(description.contains("Albums"))
+        }
     }
 
     @Test
