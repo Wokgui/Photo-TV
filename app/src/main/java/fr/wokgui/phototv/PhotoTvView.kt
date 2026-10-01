@@ -1333,27 +1333,36 @@ class PhotoTvView(
             }
         }
 
-        if (!NetworkLibrary.isNetworkUri(uri) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val source = ImageDecoder.createSource(context.contentResolver, uri)
-            val decoded = runCatching {
-                ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                    val srcW = info.size.width.coerceAtLeast(1)
-                    val srcH = info.size.height.coerceAtLeast(1)
-                    val scale = min(
-                        1f,
-                        min(
-                            targetWidth.toFloat() / srcW.toFloat(),
-                            targetHeight.toFloat() / srcH.toFloat()
-                        )
-                    )
-                    val outW = max(1, (srcW * scale).toInt())
-                    val outH = max(1, (srcH * scale).toInt())
-                    decoder.setTargetSize(outW, outH)
-                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    decoder.isMutableRequired = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = runCatching {
+                if (NetworkLibrary.isNetworkUri(uri)) {
+                    NetworkLibrary.materialize(context, uri)?.let(ImageDecoder::createSource)
+                } else {
+                    ImageDecoder.createSource(context.contentResolver, uri)
                 }
             }.getOrNull()
-            if (decoded != null) return decoded
+
+            if (source != null) {
+                val decoded = runCatching {
+                    ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                        val srcW = info.size.width.coerceAtLeast(1)
+                        val srcH = info.size.height.coerceAtLeast(1)
+                        val scale = min(
+                            1f,
+                            min(
+                                targetWidth.toFloat() / srcW.toFloat(),
+                                targetHeight.toFloat() / srcH.toFloat()
+                            )
+                        )
+                        val outW = max(1, (srcW * scale).toInt())
+                        val outH = max(1, (srcH * scale).toInt())
+                        decoder.setTargetSize(outW, outH)
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        decoder.isMutableRequired = false
+                    }
+                }.getOrNull()
+                if (decoded != null) return decoded
+            }
         }
 
         return null
