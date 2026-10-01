@@ -1193,6 +1193,7 @@ class PhotoTvView(
 
     private fun refreshLibraryState(resetCurrent: Boolean) {
         rebuildLibraryIndexes()
+        qualityScores.keys.retainAll(uriIndex.keys)
         selectedAlbums.clear()
         val allAlbums = albumIndex.keys.toList()
         val allSelectable = allAlbums + SmartAlbumPolicy.labels
@@ -1254,6 +1255,7 @@ class PhotoTvView(
         failedMediaUris.clear()
         decodeFailureCount = 0
         lastDecodeFailure = ""
+        qualityScores.clear()
         library = tagSource(items, sourceName)
         this.exactAlbums = exactAlbums
         this.sourceName = sourceName
@@ -4731,16 +4733,17 @@ class PhotoTvView(
                 invalidate()
             }
             "album_select" -> {
-                val all = library.flatMap { it.albums }.distinct()
+                val all = albumPairs().map { it.first }
                 selectedAlbums.clear()
                 if (commandValue.isBlank() || commandValue == "Tous les albums") {
-                    selectedAlbums.addAll(all)
+                    selectedAlbums.addAll(library.flatMap { it.albums }.distinct())
                 } else if (all.contains(commandValue)) {
                     selectedAlbums += commandValue
                 } else {
-                    selectedAlbums.addAll(all)
+                    selectedAlbums.addAll(library.flatMap { it.albums }.distinct())
                 }
                 currentPhoto = 0
+                rebuildShuffleBag()
                 preloadAroundCurrent()
                 savePrefs()
                 invalidate()
