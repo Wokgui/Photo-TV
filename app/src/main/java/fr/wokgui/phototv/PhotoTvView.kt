@@ -42,6 +42,12 @@ class PhotoTvView(
     private val onSettingsPin: () -> Unit = {},
     private val canOpenSettings: () -> Boolean = { true },
     private val onUnlockSettings: () -> Unit = {},
+    private val onManageProfiles: () -> Unit = {},
+    private val onPickMusic: () -> Unit = {},
+    private val profileNameProvider: () -> String = { "Principal" },
+    private val profileGuestProvider: () -> Boolean = { false },
+    private val musicTrackCountProvider: () -> Int = { 0 },
+    private val onMusicChanged: (Boolean, Int) -> Unit = { _, _ -> },
     private val onWeatherLocation: () -> Unit = {},
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
@@ -217,6 +223,7 @@ class PhotoTvView(
     @Volatile private var lastDecodeFailure = ""
     private val recentUris = java.util.ArrayDeque<String>()
     private val smartCropAnchorCache = java.util.concurrent.ConcurrentHashMap<String, List<SmartCropPolicy.Anchor>>()
+    private val qualityByUri = java.util.concurrent.ConcurrentHashMap<String, PhotoQualityPolicy.Result>()
     private var cacheHits = 0L
     private var cacheMisses = 0L
     private var decodeCount = 0L
@@ -254,6 +261,8 @@ class PhotoTvView(
     private var albumSearch = ""
     private var albumSort = 0
     private var videoSound = false
+    private var musicEnabled = false
+    private var musicVolume = 35
     private var remoteEnabled = false
     private var remoteToken = ""
     private var remoteServer: RemoteControlServer? = null
@@ -363,6 +372,8 @@ class PhotoTvView(
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
         videoSound = prefs.getBoolean("video_sound", false)
+        musicEnabled = prefs.getBoolean("music_enabled", false)
+        musicVolume = prefs.getInt("music_volume", 35).coerceIn(0, 100)
         remoteEnabled = prefs.getBoolean("remote_enabled", false)
         remoteToken = prefs.getString("remote_token", "").orEmpty().ifBlank {
             java.util.UUID.randomUUID().toString().replace("-", "").take(20)
@@ -435,6 +446,8 @@ class PhotoTvView(
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
             putBoolean("video_sound", videoSound)
+            putBoolean("music_enabled", musicEnabled)
+            putInt("music_volume", musicVolume)
             putBoolean("remote_enabled", remoteEnabled)
             putString("remote_token", remoteToken)
             putBoolean("interaction_diagnostics", interactionDiagnostics)
@@ -639,6 +652,8 @@ class PhotoTvView(
         root.put("albumSearch", albumSearch)
         root.put("albumSort", albumSort)
         root.put("videoSound", videoSound)
+        root.put("musicEnabled", musicEnabled)
+        root.put("musicVolume", musicVolume)
         root.put("albumRules", albumRulesJson())
         root.put("sourceRules", sourceRulesJson())
         root.put("networkSources", NetworkSourceStore.exportJson(context))
@@ -713,6 +728,8 @@ class PhotoTvView(
             albumSearch = root.optString("albumSearch", albumSearch)
             albumSort = root.optInt("albumSort", albumSort).coerceIn(0, 1)
             videoSound = root.optBoolean("videoSound", videoSound)
+            musicEnabled = root.optBoolean("musicEnabled", musicEnabled)
+            musicVolume = root.optInt("musicVolume", musicVolume).coerceIn(0, 100)
             root.optJSONArray("networkSources")?.let { NetworkSourceStore.importJson(context, it) }
             val networkPrefs = context.getSharedPreferences("photo_tv_network_settings", Context.MODE_PRIVATE)
             val importedCacheMb = root.optInt("networkCacheMb", networkPrefs.getInt("cache_mb", 512)).coerceIn(64, 2048)
@@ -748,9 +765,10 @@ class PhotoTvView(
             restoreSet("selectedAlbums", selectedAlbums)
             val availableAlbums = library.flatMap { it.albums }.distinct()
             if (availableAlbums.isNotEmpty()) {
-                selectedAlbums.retainAll(availableAlbums.toSet())
+                val validAlbums = (availableAlbums + SmartAlbumPolicy.names).toSet()
+                selectedAlbums.retainAll(validAlbums)
                 if (selectedAlbums.isEmpty()) selectedAlbums.addAll(availableAlbums)
-                hiddenAlbums.retainAll(availableAlbums.toSet())
+                hiddenAlbums.retainAll(validAlbums)
             }
 
             root.optJSONArray("styles")?.let { arr ->
@@ -769,6 +787,7 @@ class PhotoTvView(
             }
 
             savePrefs()
+            onMusicChanged(musicEnabled, musicVolume)
             loadWeather()
             scheduleInactivity()
             invalidate()
@@ -987,6 +1006,21 @@ class PhotoTvView(
 
     fun accessibilityDescriptionForTest(): String =
         if (automationMode) accessibilityDescription() else ""
+
+    fun onExternalProfileChanged() {
+        page = 0
+        navFocus = true
+        settingsColumn = 0
+        advancedRulesOpen = false
+        onMusicChanged(musicEnabled, musicVolume)
+        invalidate()
+        announceAccessibilityState()
+    }
+
+    fun onMusicLibraryChanged() {
+        invalidate()
+        announceAccessibilityState()
+    }
 
     fun openSettingsAfterUnlock() {
         page = 3
