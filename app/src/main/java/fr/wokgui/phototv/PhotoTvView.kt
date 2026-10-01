@@ -2495,6 +2495,7 @@ class PhotoTvView(
             appendLine("Cache réseau: " + cache.first + " fichiers • " + (cache.second / (1024L * 1024L)) + " Mo")
             appendLine("Performance réseau: " + NetworkLibrary.runtimeStats())
             appendLine("Index persistant: " + MediaMetadataStore.stats())
+            appendLine("Scan incrémental: " + FolderScanIndex.stats())
             appendLine("Réseau temporairement hors ligne: " + NetworkLibrary.isTemporarilyOffline())
             appendLine("Télécommande: " + remoteEnabled)
             appendLine("Mode nuit actif: " + isNightModeActive())
