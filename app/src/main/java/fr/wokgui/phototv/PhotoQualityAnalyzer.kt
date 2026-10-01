@@ -6,7 +6,11 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 object PhotoQualityAnalyzer {
-    fun analyze(bitmap: Bitmap): PhotoQualityPolicy.Result {
+    fun analyze(
+        bitmap: Bitmap,
+        originalWidth: Int = bitmap.width,
+        originalHeight: Int = bitmap.height
+    ): PhotoQualityPolicy.Result {
         if (bitmap.isRecycled || bitmap.width <= 1 || bitmap.height <= 1) {
             return PhotoQualityPolicy.evaluate(PhotoQualityPolicy.Metrics(0f, 0f, 0f, 0f))
         }
@@ -55,7 +59,9 @@ object PhotoQualityAnalyzer {
             }
         }
         val edgeEnergy = if (edgeCount == 0) 0f else (edgeSum / edgeCount * 5f).coerceIn(0f, 1f)
-        val megapixels = bitmap.width.toFloat() * bitmap.height.toFloat() / 1_000_000f
+        val scoreWidth = originalWidth.takeIf { it > 0 } ?: bitmap.width
+        val scoreHeight = originalHeight.takeIf { it > 0 } ?: bitmap.height
+        val megapixels = scoreWidth.toFloat() * scoreHeight.toFloat() / 1_000_000f
 
         return PhotoQualityPolicy.evaluate(
             PhotoQualityPolicy.Metrics(
