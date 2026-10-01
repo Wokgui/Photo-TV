@@ -31,6 +31,7 @@ object FolderScanIndex {
 
     fun signature(children: List<DocumentFile>, exactMode: Boolean): String {
         val digest = MessageDigest.getInstance("SHA-256")
+        digest.update("folder-index-v2".toByteArray(Charsets.UTF_8))
         digest.update(byteArrayOf((if (exactMode) 1 else 0).toByte()))
         children
             .sortedBy { it.uri.toString() }
