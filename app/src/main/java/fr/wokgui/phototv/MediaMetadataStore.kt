@@ -42,6 +42,10 @@ object MediaMetadataStore {
         val confidence: Float
     )
 
+    data class CachedQuality(
+        val score: Int
+    )
+
     private const val MAX_ROWS = 50_000
     @Volatile private var helper: Helper? = null
     @Volatile var infoHits: Long = 0
@@ -63,6 +67,10 @@ object MediaMetadataStore {
     @Volatile var sceneHits: Long = 0
         private set
     @Volatile var sceneMisses: Long = 0
+        private set
+    @Volatile var qualityHits: Long = 0
+        private set
+    @Volatile var qualityMisses: Long = 0
         private set
 
     fun signature(context: Context, uri: Uri, mime: String): Signature {
@@ -286,6 +294,52 @@ object MediaMetadataStore {
         trimIfNeeded(context)
     }
 
+    fun readQuality(
+        context: Context,
+        uri: Uri,
+        signature: Signature
+    ): CachedQuality? {
+        if (!signature.cacheable) {
+            qualityMisses++
+            return null
+        }
+        val row = db(context).query(
+            "quality_scores",
+            arrayOf("score"),
+            "uri=? AND modified=? AND size=?",
+            arrayOf(uri.toString(), signature.modified.toString(), signature.size.toString()),
+            null, null, null,
+            "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else CachedQuality(cursor.getInt(0).coerceIn(0, 100))
+        }
+        if (row != null) qualityHits++ else qualityMisses++
+        return row
+    }
+
+    fun writeQuality(
+        context: Context,
+        uri: Uri,
+        signature: Signature,
+        quality: CachedQuality
+    ) {
+        if (!signature.cacheable) return
+        val values = ContentValues().apply {
+            put("uri", uri.toString())
+            put("modified", signature.modified)
+            put("size", signature.size)
+            put("score", quality.score.coerceIn(0, 100))
+            put("last_seen", System.currentTimeMillis())
+        }
+        db(context).insertWithOnConflict(
+            "quality_scores",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE
+        )
+        trimIfNeeded(context)
+    }
+
     fun readExactDigest(
         context: Context,
         uri: Uri,
@@ -333,7 +387,7 @@ object MediaMetadataStore {
     }
 
     fun stats(): String =
-        "métadonnées $infoHits hits/$infoMisses miss • perceptuel $fingerprintHits/$fingerprintMisses • crop $cropHits/$cropMisses • scènes $sceneHits/$sceneMisses • SHA-256 $digestHits/$digestMisses"
+        "métadonnées $infoHits hits/$infoMisses miss • perceptuel $fingerprintHits/$fingerprintMisses • crop $cropHits/$cropMisses • scènes $sceneHits/$sceneMisses • qualité $qualityHits/$qualityMisses • SHA-256 $digestHits/$digestMisses"
 
     private fun touch(context: Context, uri: Uri) {
         val values = ContentValues().apply { put("last_seen", System.currentTimeMillis()) }
@@ -386,6 +440,17 @@ object MediaMetadataStore {
             )
         }
 
+        val qualityCount = database.rawQuery("SELECT COUNT(*) FROM quality_scores", null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+        if (qualityCount > MAX_ROWS) {
+            val remove = qualityCount - MAX_ROWS
+            database.execSQL(
+                "DELETE FROM quality_scores WHERE uri IN (" +
+                    "SELECT uri FROM quality_scores ORDER BY last_seen ASC LIMIT $remove)"
+            )
+        }
+
         val digestCount = database.rawQuery("SELECT COUNT(*) FROM exact_digests", null).use { cursor ->
             if (cursor.moveToFirst()) cursor.getLong(0) else 0L
         }
@@ -413,7 +478,7 @@ object MediaMetadataStore {
     }
 
     private class Helper(context: Context) :
-        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 5) {
+        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 6) {
 
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
@@ -486,6 +551,18 @@ object MediaMetadataStore {
                 """.trimIndent()
             )
             db.execSQL("CREATE INDEX idx_scene_seen ON scene_labels(last_seen)")
+            db.execSQL(
+                """
+                CREATE TABLE quality_scores (
+                    uri TEXT PRIMARY KEY,
+                    modified INTEGER NOT NULL,
+                    size INTEGER NOT NULL,
+                    score INTEGER NOT NULL,
+                    last_seen INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX idx_quality_seen ON quality_scores(last_seen)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -536,6 +613,20 @@ object MediaMetadataStore {
                     """.trimIndent()
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_scene_seen ON scene_labels(last_seen)")
+            }
+            if (oldVersion < 6) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS quality_scores (
+                        uri TEXT PRIMARY KEY,
+                        modified INTEGER NOT NULL,
+                        size INTEGER NOT NULL,
+                        score INTEGER NOT NULL,
+                        last_seen INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS idx_quality_seen ON quality_scores(last_seen)")
             }
         }
     }
