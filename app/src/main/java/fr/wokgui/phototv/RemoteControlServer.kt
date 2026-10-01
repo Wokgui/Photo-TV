@@ -104,6 +104,9 @@ class RemoteControlServer(
                 val st = stateProvider()
                 val albumsJson = st.albums.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
                 val sourcesJson = st.sources.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
+                val transitionsJson = st.transitions.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
+                val imageModesJson = st.imageModes.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
+                val smartModesJson = st.smartModes.joinToString(prefix = "[", postfix = "]") { "\"" + jsonEscape(it) + "\"" }
                 val filterJson = st.sourceFilter?.let { "\"" + jsonEscape(it) + "\"" } ?: "null"
                 val json = "{" +
                     "\"title\":\"" + jsonEscape(st.title) + "\"," +
@@ -116,10 +119,10 @@ class RemoteControlServer(
                     "\"albums\":" + albumsJson + "," +
                     "\"sources\":" + sourcesJson + "," +
                     "\"sourceFilter\":" + filterJson + "," +
-                    "\"transitions\":" + st.transitions.joinToString(prefix = "[", postfix = "]") { "\\\"" + jsonEscape(it) + "\\\"" } + "," +
-                    "\"imageModes\":" + st.imageModes.joinToString(prefix = "[", postfix = "]") { "\\\"" + jsonEscape(it) + "\\\"" } + "," +
-                    "\"smartModes\":" + st.smartModes.joinToString(prefix = "[", postfix = "]") { "\\\"" + jsonEscape(it) + "\\\"" } + "," +
-                    "\"smartMode\":\\"" + jsonEscape(st.smartMode) + "\\"}"
+                    "\"transitions\":" + transitionsJson + "," +
+                    "\"imageModes\":" + imageModesJson + "," +
+                    "\"smartModes\":" + smartModesJson + "," +
+                    "\"smartMode\":\"" + jsonEscape(st.smartMode) + "\"}"
                 respond(s, 200, "application/json; charset=utf-8", json)
                 return
             }
