@@ -21,10 +21,11 @@ Photo TV est un diaporama conçu pour Android TV / Google TV, avec une interface
 - Lecture des métadonnées Google Takeout avec repli sur EXIF.
 - Sélection de plusieurs albums et fusion des doublons exacts ou visuellement quasi identiques.
 - Favoris, masquage temporaire ou permanent, recherche et tri d'albums.
-- Sélection intelligente optionnelle : qualité, anti-répétition et souvenirs.
-- Diaporama intelligent autonome : adapte la sélection au moment de la journée et injecte ponctuellement des mosaïques sans modifier les réglages manuels.
+- Sélection intelligente optionnelle : score qualité local (netteté, exposition, contraste/bruit, résolution et portrait), anti-répétition et souvenirs.
+- Diaporama intelligent autonome : adapte la sélection au moment de la journée, la durée d’affichage selon le contenu et injecte ponctuellement des mosaïques sans modifier les réglages manuels.
 - Détection locale de scènes (portrait, nuit, mer / ciel, nature, intérieur, ville) pour diversifier le diaporama et les mosaïques.
-- Pré-analyse locale progressive des scènes et du recadrage intelligent, mise en cache entre les redémarrages.
+- Pré-analyse locale progressive des scènes, du recadrage intelligent et de la qualité, mise en cache entre les redémarrages.
+- Albums virtuels automatiques : favoris, année, souvenirs du jour, scène, qualité et lieu lorsqu’il est disponible, sans déplacer ni dupliquer les fichiers.
 - Page « Intelligence et performances » : centralise les automatismes, leur état et une explication claire de leur rôle ; permet d'activer le diaporama autonome, la sélection intelligente et la pré-analyse sans chercher dans plusieurs menus.
 - Vue Souvenirs dédiée.
 - Règles par album selon le jour, l'heure, la durée et la transition.
