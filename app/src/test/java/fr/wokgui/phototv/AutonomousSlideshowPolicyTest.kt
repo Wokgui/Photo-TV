@@ -22,4 +22,9 @@ class AutonomousSlideshowPolicyTest {
         assertEquals(5, AutonomousSlideshowPolicy.presentation(14,6,null).imageModeOverride)
         assertEquals(6, AutonomousSlideshowPolicy.presentation(14,10,null).imageModeOverride)
     }
+    @Test fun durationAdaptsToContentQuality() {
+        assertEquals(13, AutonomousSlideshowPolicy.presentation(14, 1, SceneClassifier.NATURE, 90).durationSecondsOverride)
+        assertEquals(12, AutonomousSlideshowPolicy.presentation(14, 1, SceneClassifier.PORTRAIT, 60).durationSecondsOverride)
+        assertEquals(7, AutonomousSlideshowPolicy.presentation(14, 1, SceneClassifier.GENERAL, 25).durationSecondsOverride)
+    }
 }
