@@ -965,6 +965,15 @@ class PhotoTvView(
     fun automationActiveCountForTest(): Int =
         if (automationMode) activePhotos().size else 0
 
+    fun setAutomationImageModeForTest(index: Int) {
+        if (!automationMode) return
+        imageMode = index.coerceIn(0, imageModes.lastIndex)
+        savePrefs()
+        syncVideoPlayback()
+        preloadAroundCurrent()
+        invalidate()
+    }
+
     fun startAutomationSlideshowForTest() {
         if (automationMode) startSlideshow()
     }
