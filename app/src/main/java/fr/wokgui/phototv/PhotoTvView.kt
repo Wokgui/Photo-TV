@@ -223,6 +223,7 @@ class PhotoTvView(
     private val recentUris = java.util.ArrayDeque<String>()
     private val smartCropAnchorCache = java.util.concurrent.ConcurrentHashMap<String, List<SmartCropPolicy.Anchor>>()
     private val sceneCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val qualityCache = java.util.concurrent.ConcurrentHashMap<String, MediaMetadataStore.CachedQuality>()
     @Volatile private var backgroundAnalysisGeneration = 0L
     @Volatile private var backgroundAnalysisDone = 0
     @Volatile private var backgroundAnalysisTotal = 0
@@ -547,7 +548,10 @@ class PhotoTvView(
                 weatherSummary = "Météo indisponible"
                 forecastLines.clear()
             }
-            postInvalidate()
+            post {
+                rebuildLibraryIndexes()
+                postInvalidate()
+            }
         }
     }
 
@@ -1148,6 +1152,21 @@ class PhotoTvView(
             "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size} " +
             "night=${isNightModeActive()} memory=${memoryDiagnostics()}"
 
+    private fun virtualAlbums(item: PhotoItem): Set<String> =
+        VirtualAlbumPolicy.labels(
+            favorite = favorites.contains(item.uri.toString()),
+            takenAt = item.takenAt,
+            location = item.location,
+            scene = sceneCache[item.uri.toString()].orEmpty(),
+            qualityScore = qualityCache[item.uri.toString()]?.score
+        )
+
+    private fun allAlbumKeys(item: PhotoItem): Set<String> =
+        LinkedHashSet<String>().apply {
+            addAll(item.albums)
+            addAll(virtualAlbums(item))
+        }
+
     private fun rebuildLibraryIndexes() {
         val albums = linkedMapOf<String, MutableList<PhotoItem>>()
         val sources = linkedMapOf<String, MutableList<PhotoItem>>()
@@ -1156,7 +1175,7 @@ class PhotoTvView(
         libraryHasNetworkItems = false
         library.forEach { item ->
             if (NetworkLibrary.isNetworkUri(item.uri)) libraryHasNetworkItems = true
-            item.albums.forEach { album ->
+            allAlbumKeys(item).forEach { album ->
                 albums.getOrPut(album) { mutableListOf() }.add(item)
             }
             val source = item.sourceLabel.ifBlank { "Source" }
@@ -1357,20 +1376,41 @@ class PhotoTvView(
                 val key = item.uri.toString()
                 val mime = runCatching { context.contentResolver.getType(item.uri) }.getOrNull().orEmpty()
                 val signature = MediaMetadataStore.signature(context, item.uri, mime)
-                val cached = MediaMetadataStore.readScene(context, item.uri, signature)
-                if (cached != null) {
-                    sceneCache[key] = cached.label
-                } else {
+                val cachedScene = MediaMetadataStore.readScene(context, item.uri, signature)
+                val cachedQuality = MediaMetadataStore.readQuality(context, item.uri, signature)
+                if (cachedScene != null) sceneCache[key] = cachedScene.label
+                if (cachedQuality != null) qualityCache[key] = cachedQuality
+
+                if (cachedScene == null || cachedQuality == null) {
                     val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                     if (bmp != null && !bmp.isRecycled) {
-                        val scene = OnDeviceSceneLabeler.classify(bmp)
-                        sceneCache[key] = scene
-                        MediaMetadataStore.writeScene(
-                            context,
-                            item.uri,
-                            signature,
-                            MediaMetadataStore.CachedScene(scene, .65f)
-                        )
+                        val scene = cachedScene?.label ?: OnDeviceSceneLabeler.classify(bmp).also { scene ->
+                            sceneCache[key] = scene
+                            MediaMetadataStore.writeScene(
+                                context,
+                                item.uri,
+                                signature,
+                                MediaMetadataStore.CachedScene(scene, .65f)
+                            )
+                        }
+                        if (cachedScene != null) sceneCache[key] = scene
+
+                        if (cachedQuality == null) {
+                            val analyzed = ImageQualityAnalyzer.analyze(
+                                bitmap = bmp,
+                                portrait = scene == "Portrait",
+                                favorite = favorites.contains(key)
+                            )
+                            val quality = MediaMetadataStore.CachedQuality(
+                                score = analyzed.score,
+                                sharpness = analyzed.sharpness,
+                                exposure = analyzed.exposure,
+                                contrast = analyzed.contrast,
+                                noiseQuality = analyzed.noiseQuality
+                            )
+                            qualityCache[key] = quality
+                            MediaMetadataStore.writeQuality(context, item.uri, signature, quality)
+                        }
                         smartCropAnchors(item, bmp)
                         if (bmp !== demoBitmap && !bmp.isRecycled) bmp.recycle()
                     }
@@ -1715,7 +1755,7 @@ class PhotoTvView(
         val filtered = library.filter { item ->
             (remoteSourceFilter == null || item.sourceLabel.ifBlank { "Source" } == remoteSourceFilter) &&
                 sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
-                item.albums.any {
+                allAlbumKeys(item).any {
                     selectedAlbums.contains(it) &&
                         !hiddenAlbums.contains(it) &&
                         albumAllowed(it, now)
@@ -5131,7 +5171,8 @@ class PhotoTvView(
                 takenAt = item.takenAt,
                 sourceLabel = item.sourceLabel,
                 albumKey = item.albums.firstOrNull().orEmpty(),
-                mediaType = item.mediaType
+                mediaType = item.mediaType,
+                qualityScore = qualityCache[item.uri.toString()]?.score ?: -1
             )
         }
         val activeSmartMode = effectiveSmartSelectionMode()
