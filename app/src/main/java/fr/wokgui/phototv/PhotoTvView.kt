@@ -2812,20 +2812,20 @@ class PhotoTvView(
         row(
             0, y + 74f,
             "Diaporama intelligent autonome",
-            "Adapte sélection, souvenirs, favoris et mosaïques au contenu et au moment de la journée.",
+            "Adapte sélection, durée, souvenirs, favoris et mosaïques au contenu et au moment de la journée.",
             if (autonomousSlideshow) "Activé" else "Désactivé",
             autonomousSlideshow
         )
         row(
             1, y + 139f,
             "Sélection intelligente",
-            "Privilégie les meilleures photos et limite les répétitions selon le mode choisi.",
+            "Utilise le score qualité local et limite les répétitions selon le mode choisi.",
             SmartSelectionPolicy.modeLabel(smartSelectionMode)
         )
         row(
             2, y + 204f,
             "Pré-analyse locale",
-            "Analyse progressivement scènes et recadrages pour accélérer les affichages suivants.",
+            "Analyse progressivement scènes, qualité et recadrages pour accélérer les affichages suivants.",
             "$backgroundAnalysisDone / $backgroundAnalysisTotal",
             backgroundAnalysis
         )
