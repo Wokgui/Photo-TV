@@ -30,8 +30,8 @@ object SmartAlbumPolicy {
         mediaType: String,
         takenAt: Long,
         qualityScore: Int?,
-        scene: String? = null,
-        nowMillis: Long = System.currentTimeMillis()
+        nowMillis: Long = System.currentTimeMillis(),
+        scene: String? = null
     ): Boolean = when (album) {
         FAVORITES -> favorite
         HIGH_QUALITY -> mediaType == "image" && (qualityScore ?: 0) >= 68
