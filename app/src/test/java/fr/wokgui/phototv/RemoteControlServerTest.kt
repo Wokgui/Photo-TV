@@ -36,6 +36,8 @@ class RemoteControlServerTest {
         assertTrue(page.contains("'X-Photo-TV-Token':t"))
         assertFalse(page.contains("/action?t="))
         assertTrue(page.contains("fetch('/status',{headers:auth})"))
+        assertTrue(page.contains("id=\"thumb0\""))
+        assertTrue(page.contains("/thumbnail?t='+encodeURIComponent(t)"))
     }
 
     @Test
