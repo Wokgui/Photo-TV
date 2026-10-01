@@ -366,17 +366,23 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Aucune source locale enregistrée", Toast.LENGTH_SHORT).show()
             return
         }
+        val sources = SourceStore.loadAll(this)
         AlertDialog.Builder(this)
             .setTitle("Sources locales")
             .setItems(labels.toTypedArray()) { _, which ->
                 val label = labels.getOrNull(which) ?: return@setItems
+                val source = sources.getOrNull(which) ?: return@setItems
+                val activeLabel = when (source) {
+                    is PhotoSourceSpec.Tree -> sourceLabelForTree(source.uri, source.exactMode)
+                    is PhotoSourceSpec.Picked -> "Sélection de photos"
+                }
                 AlertDialog.Builder(this)
                     .setTitle("Supprimer cette source ?")
                     .setMessage(label)
                     .setNegativeButton("Annuler", null)
                     .setPositiveButton("Supprimer") { _, _ ->
                         SourceStore.removeAt(this, which)
-                        ui.removeSourceByLabel(label)
+                        ui.removeSourceByLabel(activeLabel)
                         Toast.makeText(this, "Source supprimée", Toast.LENGTH_SHORT).show()
                     }
                     .show()
