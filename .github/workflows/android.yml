@@ -412,3 +412,51 @@ jobs:
           path: marathon-results
           if-no-files-found: warn
           retention-days: 30
+
+
+  publish-release:
+    needs:
+      - build
+      - android-tv
+      - resolution-smoke
+      - marathon-tv
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: Photo-TV-APK
+          path: release-bundle
+
+      - name: Publish version tag and GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd release-bundle
+          VERSION_NAME="$(sed -n 's/^versionName=//p' version-info.txt)"
+          COMMIT="$(sed -n 's/^commit=//p' version-info.txt)"
+          test -n "$VERSION_NAME"
+          test "$COMMIT" = "$GITHUB_SHA"
+          TAG="v$VERSION_NAME"
+
+          cd ..
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" "$GITHUB_SHA" -m "Photo TV $TAG"
+            git push origin "$TAG"
+          fi
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG"               release-bundle/Photo-TV-v*.apk               release-bundle/signing-mode.txt               release-bundle/version-info.txt               release-bundle/CHANGELOG.txt               --title "Photo TV $TAG"               --notes-file release-bundle/CHANGELOG.txt
+          fi
