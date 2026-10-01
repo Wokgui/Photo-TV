@@ -9,7 +9,8 @@ object SlideshowDiversityPolicy {
         val album: String,
         val width: Int,
         val height: Int,
-        val takenAt: Long
+        val takenAt: Long,
+        val scene: String = ""
     )
 
     fun reorder(indices: List<Int>, candidates: List<Candidate>, currentIndex: Int): List<Int> {
@@ -47,6 +48,7 @@ object SlideshowDiversityPolicy {
         var score = 0
         if (a.source != b.source) score += 12
         if (a.album != b.album) score += 8
+        if (a.scene.isNotBlank() && b.scene.isNotBlank() && a.scene != b.scene) score += 10
         if (a.takenAt > 0L && b.takenAt > 0L) {
             val delta = abs(a.takenAt - b.takenAt)
             score += when {
