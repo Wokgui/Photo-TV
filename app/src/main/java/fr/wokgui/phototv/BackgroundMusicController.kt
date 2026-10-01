@@ -21,6 +21,10 @@ class BackgroundMusicController(private val context: Context) {
     val playlist: List<Uri>
         get() = parsePlaylist(prefs.getString("playlist", "[]").orEmpty())
 
+    init {
+        if (enabled && playlist.isNotEmpty()) restartIfNeeded()
+    }
+
     fun setPlaylist(uris: List<Uri>) {
         val distinct = uris.distinct().take(200)
         val arr = JSONArray()
