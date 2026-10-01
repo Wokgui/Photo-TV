@@ -1432,6 +1432,14 @@ class PhotoTvView(
                 val cached = MediaMetadataStore.readScene(context, item.uri, signature)
                 if (cached != null) {
                     sceneCache[key] = cached.label
+                    if (!qualityScores.containsKey(key)) {
+                        val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
+                        if (bmp != null && !bmp.isRecycled) {
+                            qualityScores[key] = analyzeBitmapQuality(bmp)
+                            smartCropAnchors(item, bmp)
+                            if (bmp !== demoBitmap && !bmp.isRecycled) bmp.recycle()
+                        }
+                    }
                 } else {
                     val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                     if (bmp != null && !bmp.isRecycled) {
