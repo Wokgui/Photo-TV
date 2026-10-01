@@ -4584,6 +4584,8 @@ class PhotoTvView(
             "mode_next" -> {
                 imageMode = (imageMode + 1) % imageModes.size
                 savePrefs()
+                syncVideoPlayback()
+                preloadAroundCurrent()
                 invalidate()
             }
             "mode_select" -> {
@@ -4591,6 +4593,8 @@ class PhotoTvView(
                 if (idx >= 0) {
                     imageMode = idx
                     savePrefs()
+                    syncVideoPlayback()
+                    preloadAroundCurrent()
                     invalidate()
                 }
             }
