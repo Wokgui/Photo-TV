@@ -3739,8 +3739,17 @@ class PhotoTvView(
             4 -> { stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
             5 -> text(c, "♨", x, y + 7f, 18f, Color.WHITE, 0, 1)
             6 -> drawSourceIcon(c, x, y, 2)
-            7 -> drawGear(c, x, y, 9f)
-            8 -> text(c, "♫", x, y + 7f, 18f, Color.WHITE, 1, 1)
+            7 -> {
+                stroke.style = Paint.Style.STROKE
+                stroke.color = Color.WHITE
+                stroke.strokeWidth = 1.8f
+                c.drawCircle(x, y, 9f, stroke)
+                c.drawLine(x - 5f, y, x + 5f, y, stroke)
+                c.drawLine(x, y - 5f, x, y + 5f, stroke)
+                circle(c, x, y, 2.5f, Color.WHITE)
+            }
+            8 -> drawGear(c, x, y, 9f)
+            9 -> text(c, "♫", x, y + 7f, 18f, Color.WHITE, 1, 1)
             else -> drawGear(c, x, y, 9f)
         }
     }
@@ -4881,7 +4890,7 @@ class PhotoTvView(
                         5 -> toggleAllAlbums()
                         6 -> clearAllMasks()
                         7 -> onNetworkSource()
-                        9 -> adjustSettings(1)
+                        8 -> adjustSettings(1)
                     }
                     7 -> adjustSettings(1)
                     8 -> if (advancedRulesOpen) {
@@ -4903,7 +4912,7 @@ class PhotoTvView(
                         15 -> smartSelectionMode = (smartSelectionMode + 1) % 5
                         else -> adjustSettings(1)
                     }
-                    8 -> adjustSettings(1)
+                    9 -> adjustSettings(1)
                 }
             }
         }
