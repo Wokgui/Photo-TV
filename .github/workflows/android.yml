@@ -157,6 +157,9 @@ jobs:
       - name: Run JVM tests
         run: gradle --no-daemon --stacktrace testDebugUnitTest
 
+      - name: Verify optimized release build
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
       - name: Build APK
         shell: bash
         run: |
