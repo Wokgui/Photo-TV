@@ -139,6 +139,10 @@ class PhotoTvView(
     private var uriIndex: Map<String, PhotoItem> = emptyMap()
     private var albumIndex: Map<String, List<PhotoItem>> = emptyMap()
     private var sourceIndex: Map<String, List<PhotoItem>> = emptyMap()
+    private var libraryRevision = 0L
+    private var libraryHasNetworkItems = false
+    private var activePhotosCacheKey = Long.MIN_VALUE
+    private var activePhotosCache: List<PhotoItem> = emptyList()
     private var exactAlbums = false
     private var sourceName = "Démo"
     private var page = 0
@@ -1095,7 +1099,11 @@ class PhotoTvView(
     private fun rebuildLibraryIndexes() {
         val albums = linkedMapOf<String, MutableList<PhotoItem>>()
         val sources = linkedMapOf<String, MutableList<PhotoItem>>()
+        libraryRevision++
+        activePhotosCacheKey = Long.MIN_VALUE
+        libraryHasNetworkItems = false
         library.forEach { item ->
+            if (NetworkLibrary.isNetworkUri(item.uri)) libraryHasNetworkItems = true
             item.albums.forEach { album ->
                 albums.getOrPut(album) { mutableListOf() }.add(item)
             }
@@ -1561,8 +1569,26 @@ class PhotoTvView(
 
     private fun activePhotos(): List<PhotoItem> {
         if (library.isEmpty()) return emptyList()
+        val nowMs = System.currentTimeMillis()
+        val timeBucket = if (libraryHasNetworkItems) nowMs / 2_000L else nowMs / 60_000L
+        var key = 17L
+        fun mix(value: Int) { key = key * 31L + value.toLong() }
+        key = key * 31L + libraryRevision
+        key = key * 31L + timeBucket
+        mix(remoteSourceFilter?.hashCode() ?: 0)
+        mix(selectedAlbums.hashCode())
+        mix(hiddenAlbums.hashCode())
+        mix(excludedUris.hashCode())
+        mix(sessionExcludedUris.hashCode())
+        mix(failedMediaUris.hashCode())
+        mix(if (favoritesOnly) favorites.hashCode() else 0)
+        mix(if (favoritesOnly) 1 else 0)
+        mix(albumRules.hashCode())
+        mix(sourceRules.hashCode())
+        if (key == activePhotosCacheKey) return activePhotosCache
+
         val now = java.util.Calendar.getInstance()
-        return library.filter { item ->
+        val filtered = library.filter { item ->
             (remoteSourceFilter == null || item.sourceLabel.ifBlank { "Source" } == remoteSourceFilter) &&
                 sourceAllowed(item.sourceLabel.ifBlank { "Source" }, now) &&
                 item.albums.any {
@@ -1576,6 +1602,9 @@ class PhotoTvView(
                 !failedMediaUris.contains(item.uri.toString()) &&
                 (!favoritesOnly || favorites.contains(item.uri.toString()))
         }
+        activePhotosCache = filtered
+        activePhotosCacheKey = key
+        return filtered
     }
 
     private fun currentItem(): PhotoItem? {
