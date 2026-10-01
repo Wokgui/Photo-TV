@@ -52,14 +52,34 @@ object TakeoutLibrary {
         onProgress: ((foldersScanned: Int, mediaFound: Int) -> Unit)?
     ) {
         val children = runCatching { dir.listFiles().toList() }.getOrDefault(emptyList())
+        val directories = children.filter { it.isDirectory }
+        val folderSignature = FolderScanIndex.signature(children, exactMode)
+
+        state.foldersScanned++
+        FolderScanIndex.read(context, dir.uri, exactMode, folderSignature)?.let { cached ->
+            out += cached.items
+            state.mediaFound += cached.items.size
+            if (cached.items.isNotEmpty()) {
+                state.foldersWithMedia++
+                if (exactMode && cached.missingExactAlbumMetadata) {
+                    state.missingAlbumMetadata++
+                }
+            }
+            onProgress?.invoke(state.foldersScanned, state.mediaFound)
+            directories.forEach {
+                scanFolder(context, it, out, exactMode, state, onProgress)
+            }
+            return
+        }
+
         val media = children.filter {
             it.isFile && MediaTypeDetector.classify(it.name, it.type) != null
         }
         val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
 
-        state.foldersScanned++
         state.mediaFound += media.size
         onProgress?.invoke(state.foldersScanned, state.mediaFound)
+        val folderOutputStart = out.size
 
         val parsedJson = jsons.mapNotNull { file ->
             readJson(context, file)?.let { file to it }
@@ -140,7 +160,17 @@ object TakeoutLibrary {
             )
         }
 
-        children.filter { it.isDirectory }.forEach {
+        val folderItems = out.subList(folderOutputStart, out.size).toList()
+        FolderScanIndex.write(
+            context = context,
+            folderUri = dir.uri,
+            exactMode = exactMode,
+            signature = folderSignature,
+            items = folderItems,
+            missingExactAlbumMetadata = exactMode && media.isNotEmpty() && exactName == null
+        )
+
+        directories.forEach {
             scanFolder(context, it, out, exactMode, state, onProgress)
         }
     }
