@@ -1435,6 +1435,7 @@ class PhotoTvView(
                 } else {
                     val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                     if (bmp != null && !bmp.isRecycled) {
+                        qualityScores[key] = analyzeBitmapQuality(bmp)
                         val scene = OnDeviceSceneLabeler.classify(bmp)
                         sceneCache[key] = scene
                         MediaMetadataStore.writeScene(
@@ -1835,7 +1836,8 @@ class PhotoTvView(
                     height = item.height,
                     mediaType = item.mediaType,
                     takenAt = item.takenAt,
-                    qualityScore = qualityScores[item.uri.toString()]?.score
+                    qualityScore = qualityScores[item.uri.toString()]?.score,
+                    scene = currentScene(item)
                 )
         }
         return normalMatch || smartMatch
@@ -4493,6 +4495,9 @@ class PhotoTvView(
     private fun moveHorizontal(dir: Int) {
         if (navFocus) {
             val target = (page + dir + 4) % 4
+            if (target == 3 && ProfileStore.isGuest(activeProfile)) {
+                return
+            }
             if (target == 3 && !canOpenSettings()) {
                 onUnlockSettings()
                 return
@@ -5492,7 +5497,7 @@ class PhotoTvView(
                     photoFocus = 0
                     val name = albums[index].first
                     if (library.isNotEmpty()) {
-                        if (selectedAlbums.contains(name)) selectedAlbums.remove(name) else selectedAlbums.add(name)
+                        toggleAlbumSelection(name)
                     }
                 }
             }
@@ -5944,6 +5949,9 @@ class PhotoTvView(
 
         if (y >= 638f && x >= 218f && x <= 1090f) {
             val target = ((x - 218f) / 218f).toInt().coerceIn(0, 3)
+            if (target == 3 && ProfileStore.isGuest(activeProfile)) {
+                return true
+            }
             if (target == 3 && !canOpenSettings()) {
                 onUnlockSettings()
                 return true
