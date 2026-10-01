@@ -6,13 +6,33 @@ import kotlin.math.max
 import kotlin.math.min
 
 object SceneClassifier {
+    const val PEOPLE = "Personnes"
+    const val ANIMALS = "Animaux"
+    const val FOOD = "Nourriture"
     const val PORTRAIT = "Portrait"
     const val NIGHT = "Nuit"
     const val SEA_SKY = "Mer / ciel"
-    const val NATURE = "Nature"
+    const val NATURE = "Nature / paysage"
     const val WARM = "Intérieur / chaleureux"
     const val URBAN = "Ville / architecture"
     const val GENERAL = "Général"
+
+    fun fromLabels(labels: Collection<String>): String? {
+        if (labels.isEmpty()) return null
+        val text = labels.joinToString(" ").lowercase()
+        fun has(vararg words: String): Boolean = words.any(text::contains)
+        return when {
+            has("person", "people", "face", "family", "child", "selfie", "portrait") -> PEOPLE
+            has("animal", "dog", "cat", "bird", "horse", "pet", "wildlife", "mammal") -> ANIMALS
+            has("food", "dish", "meal", "dessert", "fruit", "cuisine", "breakfast", "lunch", "dinner") -> FOOD
+            has("sea", "ocean", "beach", "sky", "cloud", "coast") -> SEA_SKY
+            has("city", "building", "architecture", "street", "skyscraper", "bridge") -> URBAN
+            has("mountain", "landscape", "forest", "nature", "plant", "lake", "river", "garden") -> NATURE
+            has("night", "darkness") -> NIGHT
+            has("room", "interior", "home", "furniture") -> WARM
+            else -> null
+        }
+    }
 
     fun classify(bitmap: Bitmap, width: Int = bitmap.width, height: Int = bitmap.height): String {
         if (bitmap.width <= 0 || bitmap.height <= 0) return GENERAL
