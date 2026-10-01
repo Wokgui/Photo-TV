@@ -67,6 +67,8 @@ class MainActivity : AppCompatActivity() {
     private var currentNetworkSourceName = "Réseau"
     private var pendingDiagnosticText: String? = null
     private var settingsUnlockedSession = false
+    private var automationMode = false
+    private var lastResumeNetworkRefreshAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,7 +78,7 @@ class MainActivity : AppCompatActivity() {
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val automationMode = intent.getBooleanExtra("phototv_test_mode", false)
+        automationMode = intent.getBooleanExtra("phototv_test_mode", false)
         musicController = MusicController(this)
 
         videoView = VideoView(this).apply {
@@ -156,6 +158,32 @@ class MainActivity : AppCompatActivity() {
             restoreSavedSource()
             musicController.sync()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!automationMode) {
+            if (::musicController.isInitialized) musicController.onHostResume()
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (NetworkLibrary.isConfigured() && now - lastResumeNetworkRefreshAt >= 30_000L) {
+                lastResumeNetworkRefreshAt = now
+                Thread {
+                    val refreshed = runCatching { NetworkLibrary.reload() }.getOrNull()
+                    if (refreshed != null) {
+                        runOnUiThread {
+                            if (::ui.isInitialized) ui.replaceNetworkLibraries(refreshed)
+                        }
+                    }
+                }.start()
+            }
+            scheduleNetworkRefresh()
+        }
+    }
+
+    override fun onPause() {
+        networkRefreshHandler.removeCallbacksAndMessages(null)
+        if (::musicController.isInitialized) musicController.onHostPause()
+        super.onPause()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
