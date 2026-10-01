@@ -4669,7 +4669,7 @@ class PhotoTvView(
     private fun mosaicItems(count: Int): List<PhotoItem> {
         val items = activePhotos()
         if (items.isEmpty()) return emptyList()
-        val poolIndices = if (randomOrder && shuffleBag.isNotEmpty()) {
+        val poolIndices = if ((randomOrder || autonomousSlideshow) && shuffleBag.isNotEmpty()) {
             buildList {
                 add(currentPhoto.coerceIn(0, items.lastIndex))
                 shuffleBag.take(47).forEach { if (it in items.indices) add(it) }
@@ -4687,7 +4687,8 @@ class PhotoTvView(
                     width = item.width,
                     height = item.height,
                     takenAt = item.takenAt,
-                    mediaType = item.mediaType
+                    mediaType = item.mediaType,
+                    scene = currentScene(item).orEmpty()
                 )
             }
         }
@@ -4698,7 +4699,7 @@ class PhotoTvView(
     private fun remotePreviewItems(count: Int = 4): List<PhotoItem> {
         val items = activePhotos()
         if (items.isEmpty()) return emptyList()
-        val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
+        val indices = if ((randomOrder || autonomousSlideshow) && shuffleBag.isNotEmpty()) {
             buildList {
                 add(currentPhoto.coerceIn(0, items.lastIndex))
                 shuffleBag.take(count - 1).forEach { if (it in items.indices) add(it) }
@@ -5060,7 +5061,8 @@ class PhotoTvView(
                 album = item.albums.firstOrNull().orEmpty(),
                 width = item.width,
                 height = item.height,
-                takenAt = item.takenAt
+                takenAt = item.takenAt,
+                scene = currentScene(item).orEmpty()
             )
         }
         shuffleBag.addAll(
@@ -5087,7 +5089,7 @@ class PhotoTvView(
         val ahead = max(decision.ahead, mosaicCount - 1)
         val hdAhead = max(decision.hdAhead, if (displayMode >= 4) mosaicCount else 1)
 
-        val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
+        val indices = if ((randomOrder || autonomousSlideshow) && shuffleBag.isNotEmpty()) {
             buildList {
                 add(currentPhoto)
                 shuffleBag.take(ahead).forEach { if (it in items.indices) add(it) }
@@ -5166,7 +5168,7 @@ class PhotoTvView(
         currentPhoto = currentPhoto.coerceIn(0, items.lastIndex)
         previousPhoto = currentPhoto
 
-        if (randomOrder && items.size > 1) {
+        if ((randomOrder || autonomousSlideshow) && items.size > 1) {
             if (dir < 0) {
                 if (history.isNotEmpty()) {
                     currentPhoto = history.removeAt(history.lastIndex).coerceIn(0, items.lastIndex)
