@@ -13,7 +13,7 @@ object PickedLibrary {
             runCatching {
                 val name = displayName(context, uri)
                 val mime = context.contentResolver.getType(uri).orEmpty()
-                val info = MediaInfoReader.read(context, uri, mime)
+                val info = MediaInfoReader.read(context, uri, mime, name)
                 PhotoItem(
                     uri = uri,
                     title = stripExtension(name),
