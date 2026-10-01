@@ -2685,6 +2685,8 @@ class PhotoTvView(
             appendLine("Cache réseau: " + cache.first + " fichiers • " + (cache.second / (1024L * 1024L)) + " Mo")
             appendLine("Performance réseau: " + NetworkLibrary.runtimeStats())
             appendLine("Index persistant: " + MediaMetadataStore.stats())
+            val thumbStats = RemoteThumbnailCache.stats(context)
+            appendLine("Miniatures télécommande: " + thumbStats.first + " fichiers • " + (thumbStats.second / (1024L * 1024L)) + " Mo")
             appendLine("Scan incrémental: " + FolderScanIndex.stats())
             appendLine("Réseau temporairement hors ligne: " + NetworkLibrary.isTemporarilyOffline())
             appendLine("Télécommande: " + remoteEnabled)
@@ -3404,7 +3406,7 @@ class PhotoTvView(
 
     private fun drawMosaic(c: Canvas, x: Float, y: Float, w: Float, h: Float, requestedCount: Int) {
         val count = requestedCount.coerceIn(2, 4)
-        val items = remotePreviewItems(count * 2).filter { it.mediaType != "video" }.take(count)
+        val items = mosaicItems(count)
         if (items.isEmpty()) {
             drawBitmapSmartCrop(c, currentBitmap(), x, y, w, h, currentItem())
             return
@@ -3464,9 +3466,37 @@ class PhotoTvView(
     private fun smartCropAnchors(item: PhotoItem?, bmp: Bitmap): List<SmartCropPolicy.Anchor> {
         val key = item?.uri?.toString() ?: ("demo:" + bmp.width + "x" + bmp.height)
         smartCropAnchorCache[key]?.let { return it }
+
+        val signature = item?.let {
+            val mime = runCatching { context.contentResolver.getType(it.uri) }.getOrNull().orEmpty()
+            MediaMetadataStore.signature(context, it.uri, mime)
+        }
+        if (item != null && signature != null) {
+            MediaMetadataStore.readCropAnchor(context, item.uri, signature)?.let { cached ->
+                return listOf(
+                    SmartCropPolicy.Anchor(cached.x, cached.y, cached.weight)
+                ).also { smartCropAnchorCache[key] = it }
+            }
+        }
+
         val detected = detectFaceAnchors(bmp).ifEmpty { listOf(estimateSubjectAnchor(bmp)) }
-        smartCropAnchorCache[key] = detected
-        return detected
+        val totalWeight = detected.sumOf { it.weight.coerceAtLeast(.001f).toDouble() }.toFloat().coerceAtLeast(.001f)
+        val aggregate = SmartCropPolicy.Anchor(
+            x = (detected.sumOf { (it.x * it.weight.coerceAtLeast(.001f)).toDouble() }.toFloat() / totalWeight).coerceIn(0f, 1f),
+            y = (detected.sumOf { (it.y * it.weight.coerceAtLeast(.001f)).toDouble() }.toFloat() / totalWeight).coerceIn(0f, 1f),
+            weight = totalWeight
+        )
+        val result = listOf(aggregate)
+        smartCropAnchorCache[key] = result
+        if (item != null && signature != null) {
+            MediaMetadataStore.writeCropAnchor(
+                context,
+                item.uri,
+                signature,
+                MediaMetadataStore.CachedCropAnchor(aggregate.x, aggregate.y, aggregate.weight)
+            )
+        }
+        return result
     }
 
     @Suppress("DEPRECATION")
@@ -4431,6 +4461,35 @@ class PhotoTvView(
         }.also { it.start() }
     }
 
+    private fun mosaicItems(count: Int): List<PhotoItem> {
+        val items = activePhotos()
+        if (items.isEmpty()) return emptyList()
+        val poolIndices = if (randomOrder && shuffleBag.isNotEmpty()) {
+            buildList {
+                add(currentPhoto.coerceIn(0, items.lastIndex))
+                shuffleBag.take(47).forEach { if (it in items.indices) add(it) }
+            }
+        } else {
+            (0 until min(48, items.size)).map { (currentPhoto + it) % items.size }
+        }.distinct()
+
+        val candidates = poolIndices.mapNotNull { index ->
+            items.getOrNull(index)?.let { item ->
+                MosaicSelectionPolicy.Candidate(
+                    index = index,
+                    source = item.sourceLabel,
+                    album = item.albums.firstOrNull().orEmpty(),
+                    width = item.width,
+                    height = item.height,
+                    takenAt = item.takenAt,
+                    mediaType = item.mediaType
+                )
+            }
+        }
+        return MosaicSelectionPolicy.select(candidates, currentPhoto, count)
+            .mapNotNull { items.getOrNull(it) }
+    }
+
     private fun remotePreviewItems(count: Int = 4): List<PhotoItem> {
         val items = activePhotos()
         if (items.isEmpty()) return emptyList()
@@ -4449,6 +4508,17 @@ class PhotoTvView(
         val item = remotePreviewItems().getOrNull(slot) ?: return null
         if (item.mediaType == "video") return null
         val key = item.uri.toString()
+        val mime = runCatching { context.contentResolver.getType(item.uri) }.getOrNull().orEmpty()
+        val signature = MediaMetadataStore.signature(context, item.uri, mime)
+        val persistentKey = buildString {
+            append(key)
+            append('|').append(signature.modified)
+            append('|').append(signature.size)
+            append('|').append(item.width).append('x').append(item.height)
+            append('|').append(item.takenAt)
+        }
+        RemoteThumbnailCache.read(context, persistentKey)?.let { return it }
+
         val bmp = synchronized(highResCache) { highResCache[key] }
             ?: synchronized(bitmapCache) { bitmapCache[key] }
         if (bmp == null) {
@@ -4471,7 +4541,8 @@ class PhotoTvView(
                 out.compress(Bitmap.CompressFormat.JPEG, 78, stream)
                 stream.toByteArray()
             }
-        }.getOrNull().also {
+        }.getOrNull().also { bytes ->
+            if (bytes != null) RemoteThumbnailCache.write(context, persistentKey, bytes)
             if (out !== bmp && !out.isRecycled) out.recycle()
         }
     }
@@ -4749,11 +4820,7 @@ class PhotoTvView(
     private fun rebuildShuffleBag() {
         val items = activePhotos()
         shuffleBag.clear()
-        if (smartSelectionMode == SmartSelectionPolicy.OFF) {
-            shuffleBag.addAll(SlideshowOrder.newBag(items.size, currentPhoto))
-            return
-        }
-        val candidates = items.mapIndexed { index, item ->
+        val smartCandidates = items.mapIndexed { index, item ->
             SmartSelectionPolicy.Candidate(
                 index = index,
                 favorite = favorites.contains(item.uri.toString()),
@@ -4765,12 +4832,27 @@ class PhotoTvView(
                 mediaType = item.mediaType
             )
         }
-        shuffleBag.addAll(
+        val baseOrder = if (smartSelectionMode == SmartSelectionPolicy.OFF) {
+            SlideshowOrder.newBag(items.size, currentPhoto)
+        } else {
             SmartSelectionPolicy.buildOrder(
-                candidates = candidates,
+                candidates = smartCandidates,
                 currentIndex = currentPhoto,
                 mode = smartSelectionMode
             )
+        }
+        val diversityCandidates = items.mapIndexed { index, item ->
+            SlideshowDiversityPolicy.Candidate(
+                index = index,
+                source = item.sourceLabel,
+                album = item.albums.firstOrNull().orEmpty(),
+                width = item.width,
+                height = item.height,
+                takenAt = item.takenAt
+            )
+        }
+        shuffleBag.addAll(
+            SlideshowDiversityPolicy.reorder(baseOrder, diversityCandidates, currentPhoto)
         )
     }
 
