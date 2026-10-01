@@ -1399,7 +1399,7 @@ class PhotoTvView(
                             val analyzed = ImageQualityAnalyzer.analyze(
                                 bitmap = bmp,
                                 portrait = scene == "Portrait",
-                                favorite = favorites.contains(key)
+                                favorite = false
                             )
                             val quality = MediaMetadataStore.CachedQuality(
                                 score = analyzed.score,
@@ -1418,7 +1418,14 @@ class PhotoTvView(
                 backgroundAnalysisDone = index + 1
                 if ((index + 1) % 8 == 0) postInvalidate()
             }
-            postInvalidate()
+            if (generation == backgroundAnalysisGeneration) {
+                post {
+                    rebuildLibraryIndexes()
+                    postInvalidate()
+                }
+            } else {
+                postInvalidate()
+            }
         }
     }
 
@@ -4289,6 +4296,7 @@ class PhotoTvView(
             0 -> item?.let {
                 val key = it.uri.toString()
                 if (favorites.contains(key)) favorites.remove(key) else favorites.add(key)
+                rebuildLibraryIndexes()
             }
             1 -> item?.let {
                 sessionExcludedUris.add(it.uri.toString())
@@ -4949,6 +4957,7 @@ class PhotoTvView(
             "favorite" -> currentItem()?.let { item ->
                 val key = item.uri.toString()
                 if (favorites.contains(key)) favorites.remove(key) else favorites.add(key)
+                rebuildLibraryIndexes()
                 savePrefs()
                 invalidate()
             }
