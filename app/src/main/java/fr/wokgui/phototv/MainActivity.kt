@@ -56,10 +56,12 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_IMPORT_SETTINGS = 45
         private const val REQ_LOCAL_FOLDER = 46
         private const val REQ_EXPORT_DIAGNOSTICS = 47
+        private const val REQ_MUSIC = 48
     }
 
     private lateinit var ui: PhotoTvView
     private lateinit var videoView: VideoView
+    private lateinit var musicController: MusicController
     private val networkRefreshHandler = Handler(Looper.getMainLooper())
     private var networkRefreshMinutes = 15
     private var currentNetworkSourceName = "Réseau"
@@ -77,6 +79,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         automationMode = intent.getBooleanExtra("phototv_test_mode", false)
+        musicController = MusicController(this)
 
         videoView = VideoView(this).apply {
             visibility = View.GONE
@@ -92,8 +95,21 @@ class MainActivity : AppCompatActivity() {
             onNetworkSource = { requestNetworkSource() },
             onPrepareNetworkSource = { kind, url, user -> requestNetworkCredentials(kind, url, user) },
             onSettingsPin = { manageSettingsPin() },
-            canOpenSettings = { !SettingsPinStore.hasPin(this) || settingsUnlockedSession },
+            canOpenSettings = {
+                ProfileStore.isGuest(this) ||
+                    !SettingsPinStore.hasPin(this) ||
+                    settingsUnlockedSession
+            },
             onUnlockSettings = { requestSettingsUnlock() },
+            onManageProfiles = { manageProfiles() },
+            onPickMusic = { pickMusic() },
+            profileNameProvider = { ProfileStore.activeName(this) },
+            profileGuestProvider = { ProfileStore.isGuest(this) },
+            musicTrackCountProvider = { musicController.trackCount() },
+            onMusicChanged = { enabled, volume ->
+                musicController.setEnabled(enabled)
+                musicController.setVolume(volume)
+            },
             onWeatherLocation = { requestWeatherLocation() },
             onExportSettings = { exportSettings() },
             onImportSettings = { importSettings() },
@@ -140,12 +156,14 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             restoreSavedSource()
+            musicController.sync()
         }
     }
 
     override fun onResume() {
         super.onResume()
         if (!automationMode) {
+            if (::musicController.isInitialized) musicController.onHostResume()
             val now = android.os.SystemClock.elapsedRealtime()
             if (NetworkLibrary.isConfigured() && now - lastResumeNetworkRefreshAt >= 30_000L) {
                 lastResumeNetworkRefreshAt = now
@@ -164,6 +182,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         networkRefreshHandler.removeCallbacksAndMessages(null)
+        if (::musicController.isInitialized) musicController.onHostPause()
         super.onPause()
     }
 
@@ -236,6 +255,7 @@ class MainActivity : AppCompatActivity() {
         if (::ui.isInitialized) ui.automationActiveCountForTest() else 0
 
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
+        musicController.pauseForVideo(uri != null && sound)
         if (uri == null) {
             runCatching { videoView.stopPlayback() }
             videoView.visibility = View.GONE
@@ -260,6 +280,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestSettingsUnlock() {
+        if (ProfileStore.isGuest(this)) {
+            Toast.makeText(this, "Les réglages sont verrouillés en mode invités.", Toast.LENGTH_LONG).show()
+            return
+        }
         if (!SettingsPinStore.hasPin(this)) {
             settingsUnlockedSession = true
             ui.openSettingsAfterUnlock()
@@ -360,6 +384,133 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .show()
+    }
+    private fun manageProfiles() {
+        ProfileStore.saveActiveSnapshot(this, ui.exportSettingsJson())
+        val profiles = ProfileStore.list(this)
+        val activeId = ProfileStore.active(this).id
+        val labels = buildList {
+            profiles.forEach { profile ->
+                add((if (profile.id == activeId) "✓ " else "") + profile.name + if (profile.guest) " • invités" else "")
+            }
+            add("＋ Nouveau profil")
+            add("Mode invités")
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Profils")
+            .setItems(labels) { _, which ->
+                when {
+                    which < profiles.size -> manageProfileEntry(profiles[which])
+                    which == profiles.size -> createProfile()
+                    else -> activateGuestProfile()
+                }
+            }
+            .setNegativeButton("Fermer", null)
+            .show()
+    }
+
+    private fun manageProfileEntry(profile: PhotoTvProfile) {
+        val options = buildList {
+            add(if (ProfileStore.active(this@MainActivity).id == profile.id) "Profil actif" else "Activer")
+            add("Renommer")
+            if (profile.id != "default") add("Supprimer")
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(profile.name)
+            .setItems(options) { _, which ->
+                when (options[which]) {
+                    "Activer" -> activateProfile(profile)
+                    "Renommer" -> renameProfile(profile)
+                    "Supprimer" -> deleteProfile(profile)
+                }
+            }
+            .setNegativeButton("Fermer", null)
+            .show()
+    }
+
+    private fun activateProfile(profile: PhotoTvProfile) {
+        val snapshot = ProfileStore.switch(this, profile.id, ui.exportSettingsJson())
+        if (!snapshot.isNullOrBlank()) ui.importSettingsJson(snapshot)
+        ui.onExternalProfileChanged()
+        musicController.sync()
+        Toast.makeText(this, "Profil " + profile.name + " activé.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun createProfile() {
+        val input = EditText(this).apply {
+            hint = "Nom du profil"
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Nouveau profil")
+            .setView(input)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Créer") { _, _ ->
+                val profile = ProfileStore.create(
+                    this,
+                    input.text?.toString().orEmpty(),
+                    guest = false,
+                    snapshot = ui.exportSettingsJson()
+                )
+                ui.onExternalProfileChanged()
+                Toast.makeText(this, "Profil " + profile.name + " créé.", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun activateGuestProfile() {
+        val guest = ProfileStore.ensureGuest(this, ui.exportSettingsJson())
+        guest.snapshot.takeIf { it.isNotBlank() }?.let { ui.importSettingsJson(it) }
+        ui.onExternalProfileChanged()
+        musicController.sync()
+        Toast.makeText(this, "Mode invités activé.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun renameProfile(profile: PhotoTvProfile) {
+        val input = EditText(this).apply {
+            setText(profile.name)
+            setSelection(text.length)
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Renommer le profil")
+            .setView(input)
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Enregistrer") { _, _ ->
+                ProfileStore.rename(this, profile.id, input.text?.toString().orEmpty())
+                ui.onMusicLibraryChanged()
+            }
+            .show()
+    }
+
+    private fun deleteProfile(profile: PhotoTvProfile) {
+        AlertDialog.Builder(this)
+            .setTitle("Supprimer " + profile.name + " ?")
+            .setMessage("Les réglages propres à ce profil seront supprimés.")
+            .setNegativeButton("Annuler", null)
+            .setPositiveButton("Supprimer") { _, _ ->
+                val wasActive = ProfileStore.active(this).id == profile.id
+                if (ProfileStore.delete(this, profile.id) && wasActive) {
+                    ProfileStore.active(this).snapshot.takeIf { it.isNotBlank() }?.let { ui.importSettingsJson(it) }
+                    ui.onExternalProfileChanged()
+                    musicController.sync()
+                }
+            }
+            .show()
+    }
+
+    private fun pickMusic() {
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "audio/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            },
+            REQ_MUSIC
+        )
     }
     private fun requestNetworkSource() {
         val saved = NetworkSourceStore.list(this)
@@ -729,6 +880,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         networkRefreshHandler.removeCallbacksAndMessages(null)
+        if (::musicController.isInitialized) musicController.release()
         super.onDestroy()
     }
 
@@ -738,6 +890,25 @@ class MainActivity : AppCompatActivity() {
         if (resultCode != Activity.RESULT_OK || data == null) return
 
         when (requestCode) {
+            REQ_MUSIC -> {
+                val uris = mutableListOf<Uri>()
+                data.clipData?.let { clip ->
+                    for (i in 0 until clip.itemCount) uris += clip.getItemAt(i).uri
+                }
+                if (uris.isEmpty()) data.data?.let { uris += it }
+                val distinct = uris.distinct()
+                distinct.forEach { uri ->
+                    runCatching {
+                        contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
+                }
+                musicController.setTracks(distinct)
+                ui.onMusicLibraryChanged()
+                Toast.makeText(this, distinct.size.toString() + " morceau(x) sélectionné(s).", Toast.LENGTH_SHORT).show()
+            }
             REQ_EXPORT_DIAGNOSTICS -> data.data?.let { uri ->
                 val text = pendingDiagnosticText ?: ui.diagnosticReport()
                 val ok = runCatching {
