@@ -193,6 +193,9 @@ class MainActivity : AppCompatActivity() {
     fun importSettingsForTest(raw: String): Boolean =
         ::ui.isInitialized && ui.importSettingsForTest(raw)
 
+    fun accessibilityDescriptionForTest(): String =
+        if (::ui.isInitialized) ui.accessibilityDescriptionForTest() else ""
+
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
         if (uri == null) {
             runCatching { videoView.stopPlayback() }
