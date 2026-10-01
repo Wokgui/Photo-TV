@@ -19,11 +19,24 @@ data class MediaInfo(
 
 object MediaInfoReader {
     fun read(context: Context, uri: Uri, mime: String): MediaInfo {
-        return if (mime.startsWith("video/")) {
+        val signature = MediaMetadataStore.signature(context, uri, mime)
+        MediaMetadataStore.readInfo(context, uri, signature)?.let { cached ->
+            return MediaInfo(
+                width = cached.width,
+                height = cached.height,
+                takenAt = cached.takenAt,
+                camera = cached.camera,
+                location = cached.location
+            )
+        }
+
+        val info = if (mime.startsWith("video/")) {
             readVideo(context, uri)
         } else {
             readImage(context, uri)
         }
+        MediaMetadataStore.writeInfo(context, uri, signature, info)
+        return info
     }
 
     private fun readVideo(context: Context, uri: Uri): MediaInfo {
