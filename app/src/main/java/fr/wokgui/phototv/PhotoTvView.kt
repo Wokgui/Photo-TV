@@ -1435,7 +1435,9 @@ class PhotoTvView(
                 val signature = MediaMetadataStore.signature(context, item.uri, mime)
                 val cached = MediaMetadataStore.readScene(context, item.uri, signature)
                 if (cached != null) {
-                    sceneCache[key] = cached.label
+                    if (sceneCache.put(key, cached.label) != cached.label) {
+                        intelligenceRevision.incrementAndGet()
+                    }
                     if (!qualityScores.containsKey(key)) {
                         val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                         if (bmp != null && !bmp.isRecycled) {
@@ -2313,7 +2315,8 @@ class PhotoTvView(
                 height = item.height,
                 mediaType = item.mediaType,
                 takenAt = item.takenAt,
-                qualityScore = qualityScores[item.uri.toString()]?.score
+                qualityScore = qualityScores[item.uri.toString()]?.score,
+                scene = currentScene(item)
             )
         }
 
