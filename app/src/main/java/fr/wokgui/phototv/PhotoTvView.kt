@@ -212,6 +212,7 @@ class PhotoTvView(
     @Volatile private var decodeFailureCount = 0
     @Volatile private var lastDecodeFailure = ""
     private val recentUris = java.util.ArrayDeque<String>()
+    private val smartCropAnchorCache = java.util.concurrent.ConcurrentHashMap<String, List<SmartCropPolicy.Anchor>>()
     private var cacheHits = 0L
     private var cacheMisses = 0L
     private var decodeCount = 0L
@@ -348,7 +349,7 @@ class PhotoTvView(
         nightDimPercent = prefs.getInt("night_dim", 45).coerceIn(0, 85)
         nightHideOverlays = prefs.getBoolean("night_hide_overlays", true)
         weatherLocation = prefs.getString("weather_location", "") ?: ""
-        imageMode = prefs.getInt("image_mode", 0).coerceIn(0, 3)
+        imageMode = prefs.getInt("image_mode", 0).coerceIn(0, 6)
         gridSnap = prefs.getBoolean("grid_snap", true)
         oledProtection = prefs.getBoolean("oled", true)
         overlaysAutoHide = prefs.getBoolean("overlay_hide", false)
@@ -697,7 +698,7 @@ class PhotoTvView(
             nightDimPercent = root.optInt("nightDimPercent", nightDimPercent).coerceIn(0, 85)
             nightHideOverlays = root.optBoolean("nightHideOverlays", nightHideOverlays)
             weatherLocation = root.optString("weatherLocation", weatherLocation)
-            imageMode = root.optInt("imageMode", imageMode).coerceIn(0, 3)
+            imageMode = root.optInt("imageMode", imageMode).coerceIn(0, 6)
             gridSnap = root.optBoolean("gridSnap", gridSnap)
             oledProtection = root.optBoolean("oledProtection", oledProtection)
             overlaysAutoHide = root.optBoolean("overlaysAutoHide", overlaysAutoHide)
@@ -2715,8 +2716,11 @@ class PhotoTvView(
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
     }.getOrDefault("?")
 
+    private val imageModes: List<String>
+        get() = listOf("Remplir", "Adapter", "Original", "Fond flouté", "Mosaïque 2", "Mosaïque 3", "Mosaïque 4")
+
     private fun imageModeLabel(): String =
-        listOf("Remplir", "Adapter", "Original", "Fond flouté")[imageMode.coerceIn(0, 3)]
+        imageModes[imageMode.coerceIn(0, imageModes.lastIndex)]
 
     private fun presetName(i: Int): String =
         listOf("Standard", "Minimal", "Cinéma", "Horloge")[i.coerceIn(0, 3)]
@@ -2774,7 +2778,9 @@ class PhotoTvView(
 
         val localTransition = effectiveTransition(item)
         val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
-        if (item?.mediaType == "video" && supportsVideoPlayback) {
+        if (imageMode >= 4) {
+            drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current, item)
+        } else if (item?.mediaType == "video" && supportsVideoPlayback) {
             c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         } else if (item?.mediaType == "gif") {
             if (!drawAnimatedGif(c, item, 0f, 0f, 1280f, 720f)) {
@@ -3373,7 +3379,15 @@ class PhotoTvView(
         p.shader = null
     }
 
-    private fun drawBackgroundPhoto(c: Canvas, x: Float, y: Float, w: Float, h: Float, bmp: Bitmap?) {
+    private fun drawBackgroundPhoto(
+        c: Canvas,
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        bmp: Bitmap?,
+        item: PhotoItem? = currentItem()
+    ) {
         fill(c, x, y, x + w, y + h, Color.rgb(6, 12, 18))
         when (imageMode) {
             1 -> drawBitmapFit(c, bmp, x, y, w, h)
@@ -3383,8 +3397,140 @@ class PhotoTvView(
                 fill(c, x, y, x + w, y + h, Color.argb(75, 0, 0, 0))
                 drawBitmapFit(c, bmp, x, y, w, h)
             }
-            else -> drawBitmapCenterCrop(c, bmp, x, y, w, h)
+            in 4..6 -> drawMosaic(c, x, y, w, h, imageMode - 2)
+            else -> drawBitmapSmartCrop(c, bmp, x, y, w, h, item)
         }
+    }
+
+    private fun drawMosaic(c: Canvas, x: Float, y: Float, w: Float, h: Float, requestedCount: Int) {
+        val count = requestedCount.coerceIn(2, 4)
+        val items = remotePreviewItems(count * 2).filter { it.mediaType != "video" }.take(count)
+        if (items.isEmpty()) {
+            drawBitmapSmartCrop(c, currentBitmap(), x, y, w, h, currentItem())
+            return
+        }
+        val gap = 6f
+        val rects = when (count) {
+            2 -> listOf(
+                RectF(x, y, x + (w - gap) / 2f, y + h),
+                RectF(x + (w + gap) / 2f, y, x + w, y + h)
+            )
+            3 -> listOf(
+                RectF(x, y, x + w * .58f - gap / 2f, y + h),
+                RectF(x + w * .58f + gap / 2f, y, x + w, y + (h - gap) / 2f),
+                RectF(x + w * .58f + gap / 2f, y + (h + gap) / 2f, x + w, y + h)
+            )
+            else -> listOf(
+                RectF(x, y, x + (w - gap) / 2f, y + (h - gap) / 2f),
+                RectF(x + (w + gap) / 2f, y, x + w, y + (h - gap) / 2f),
+                RectF(x, y + (h + gap) / 2f, x + (w - gap) / 2f, y + h),
+                RectF(x + (w + gap) / 2f, y + (h + gap) / 2f, x + w, y + h)
+            )
+        }
+        rects.forEachIndexed { index, rect ->
+            val mosaicItem = items.getOrNull(index) ?: return@forEachIndexed
+            val key = mosaicItem.uri.toString()
+            val mosaicBitmap = synchronized(highResCache) { highResCache[key] }
+                ?: synchronized(bitmapCache) { bitmapCache[key] }
+            if (mosaicBitmap == null) {
+                preload(listOf(mosaicItem.uri))
+                fill(c, rect.left, rect.top, rect.right, rect.bottom, Color.rgb(10, 20, 30))
+            } else {
+                drawBitmapSmartCrop(c, mosaicBitmap, rect.left, rect.top, rect.width(), rect.height(), mosaicItem)
+            }
+        }
+    }
+
+    private fun drawBitmapSmartCrop(
+        c: Canvas,
+        bmp: Bitmap?,
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        item: PhotoItem?
+    ) {
+        if (bmp == null || bmp.isRecycled) return
+        val crop = SmartCropPolicy.compute(bmp.width, bmp.height, w, h, smartCropAnchors(item, bmp))
+        val src = Rect(
+            crop.left.toInt().coerceIn(0, max(0, bmp.width - 1)),
+            crop.top.toInt().coerceIn(0, max(0, bmp.height - 1)),
+            crop.right.toInt().coerceIn(1, bmp.width),
+            crop.bottom.toInt().coerceIn(1, bmp.height)
+        )
+        c.drawBitmap(bmp, src, RectF(x, y, x + w, y + h), imagePaint)
+    }
+
+    private fun smartCropAnchors(item: PhotoItem?, bmp: Bitmap): List<SmartCropPolicy.Anchor> {
+        val key = item?.uri?.toString() ?: ("demo:" + bmp.width + "x" + bmp.height)
+        smartCropAnchorCache[key]?.let { return it }
+        val detected = detectFaceAnchors(bmp).ifEmpty { listOf(estimateSubjectAnchor(bmp)) }
+        smartCropAnchorCache[key] = detected
+        return detected
+    }
+
+    @Suppress("DEPRECATION")
+    private fun detectFaceAnchors(source: Bitmap): List<SmartCropPolicy.Anchor> = runCatching {
+        val maxSide = 480f
+        val ratio = min(1f, maxSide / max(source.width, source.height).coerceAtLeast(1).toFloat())
+        var w = max(2, (source.width * ratio).toInt())
+        if (w % 2 != 0) w--
+        val h = max(2, (source.height * ratio).toInt())
+        val rgb = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
+        Canvas(rgb).drawBitmap(source, null, Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
+        val faces = arrayOfNulls<android.media.FaceDetector.Face>(6)
+        val detector = android.media.FaceDetector(w, h, faces.size)
+        val found = detector.findFaces(rgb, faces)
+        val point = PointF()
+        val result = (0 until found).mapNotNull { index ->
+            val face = faces[index] ?: return@mapNotNull null
+            if (face.confidence() < .25f) return@mapNotNull null
+            face.getMidPoint(point)
+            SmartCropPolicy.Anchor(
+                x = (point.x / w.toFloat()).coerceIn(0f, 1f),
+                y = (point.y / h.toFloat()).coerceIn(0f, 1f),
+                weight = max(1f, face.eyesDistance())
+            )
+        }
+        rgb.recycle()
+        result
+    }.getOrDefault(emptyList())
+
+    private fun estimateSubjectAnchor(source: Bitmap): SmartCropPolicy.Anchor {
+        val cols = 9
+        val rows = 7
+        var bestScore = Float.NEGATIVE_INFINITY
+        var bestX = .5f
+        var bestY = .5f
+        for (row in 0 until rows) {
+            for (col in 0 until cols) {
+                val nx = (col + .5f) / cols
+                val ny = (row + .5f) / rows
+                val px = (nx * (source.width - 1)).toInt().coerceIn(0, source.width - 1)
+                val py = (ny * (source.height - 1)).toInt().coerceIn(0, source.height - 1)
+                val color = source.getPixel(px, py)
+                val r = Color.red(color).toFloat()
+                val g = Color.green(color).toFloat()
+                val b = Color.blue(color).toFloat()
+                val maxC = max(r, max(g, b))
+                val minC = min(r, min(g, b))
+                val saturation = maxC - minC
+                val centerBias = 1f - (kotlin.math.abs(nx - .5f) * .55f + kotlin.math.abs(ny - .45f) * .35f)
+                val neighborX = min(source.width - 1, px + max(1, source.width / cols / 2))
+                val neighborY = min(source.height - 1, py + max(1, source.height / rows / 2))
+                val c2 = source.getPixel(neighborX, neighborY)
+                val contrast = kotlin.math.abs(r - Color.red(c2)) +
+                    kotlin.math.abs(g - Color.green(c2)) +
+                    kotlin.math.abs(b - Color.blue(c2))
+                val score = contrast + saturation * .55f + centerBias * 90f
+                if (score > bestScore) {
+                    bestScore = score
+                    bestX = nx
+                    bestY = ny
+                }
+            }
+        }
+        return SmartCropPolicy.Anchor(bestX, bestY, 1f)
     }
 
     private fun drawBitmapFit(c: Canvas, bmp: Bitmap?, x: Float, y: Float, w: Float, h: Float) {
@@ -4126,7 +4272,7 @@ class PhotoTvView(
             7 -> if (advancedRulesOpen) {
                 adjustAlbumRule(dir)
             } else when (settingsControl) {
-                0 -> imageMode = (imageMode + dir + 4) % 4
+                0 -> imageMode = (imageMode + dir + imageModes.size) % imageModes.size
                 1 -> gridSnap = !gridSnap
                 2 -> oledProtection = !oledProtection
                 3 -> overlaysAutoHide = !overlaysAutoHide
@@ -4272,14 +4418,62 @@ class PhotoTvView(
                     sources = sourceLabels(),
                     sourceFilter = remoteSourceFilter,
                     transitions = transitions,
-                    imageModes = listOf("Remplir", "Adapter", "Original", "Fond flouté"),
+                    imageModes = imageModes,
                     smartModes = (0..4).map(SmartSelectionPolicy::modeLabel),
+                    position = currentPhoto,
+                    previewTitles = remotePreviewItems().map { it.title },
                     smartMode = SmartSelectionPolicy.modeLabel(smartSelectionMode)
                 )
-            }
+            },
+            thumbnailProvider = { slot -> remoteThumbnail(slot) }
         ) { command ->
             post { handleRemoteCommand(command) }
         }.also { it.start() }
+    }
+
+    private fun remotePreviewItems(count: Int = 4): List<PhotoItem> {
+        val items = activePhotos()
+        if (items.isEmpty()) return emptyList()
+        val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
+            buildList {
+                add(currentPhoto.coerceIn(0, items.lastIndex))
+                shuffleBag.take(count - 1).forEach { if (it in items.indices) add(it) }
+            }
+        } else {
+            (0 until min(count, items.size)).map { (currentPhoto + it) % items.size }
+        }
+        return indices.distinct().mapNotNull { items.getOrNull(it) }
+    }
+
+    private fun remoteThumbnail(slot: Int): ByteArray? {
+        val item = remotePreviewItems().getOrNull(slot) ?: return null
+        if (item.mediaType == "video") return null
+        val key = item.uri.toString()
+        val bmp = synchronized(highResCache) { highResCache[key] }
+            ?: synchronized(bitmapCache) { bitmapCache[key] }
+        if (bmp == null) {
+            preload(listOf(item.uri))
+            return null
+        }
+        if (bmp.isRecycled) return null
+        val maxSide = 360
+        val scale = min(1f, maxSide.toFloat() / max(bmp.width, bmp.height).coerceAtLeast(1).toFloat())
+        val out = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                bmp,
+                max(1, (bmp.width * scale).toInt()),
+                max(1, (bmp.height * scale).toInt()),
+                true
+            )
+        } else bmp
+        return runCatching {
+            java.io.ByteArrayOutputStream().use { stream ->
+                out.compress(Bitmap.CompressFormat.JPEG, 78, stream)
+                stream.toByteArray()
+            }
+        }.getOrNull().also {
+            if (out !== bmp && !out.isRecycled) out.recycle()
+        }
     }
 
     private fun handleRemoteCommand(command: String) {
@@ -4388,16 +4582,19 @@ class PhotoTvView(
                 }
             }
             "mode_next" -> {
-                imageMode = (imageMode + 1) % 4
+                imageMode = (imageMode + 1) % imageModes.size
                 savePrefs()
+                syncVideoPlayback()
+                preloadAroundCurrent()
                 invalidate()
             }
             "mode_select" -> {
-                val modes = listOf("Remplir", "Adapter", "Original", "Fond flouté")
-                val idx = modes.indexOf(commandValue)
+                val idx = imageModes.indexOf(commandValue)
                 if (idx >= 0) {
                     imageMode = idx
                     savePrefs()
+                    syncVideoPlayback()
+                    preloadAroundCurrent()
                     invalidate()
                 }
             }
@@ -4473,6 +4670,10 @@ class PhotoTvView(
     }
 
     private fun syncVideoPlayback() {
+        if (imageMode >= 4) {
+            onVideoPlayback(null, videoSound)
+            return
+        }
         val item = if (slideshow) currentItem() else null
         if (item?.mediaType != "video" || !supportsVideoPlayback) {
             onVideoPlayback(null, videoSound)
@@ -4587,8 +4788,9 @@ class PhotoTvView(
             avgDecodeMs = if (decodeCount <= 0L) 0L else decodeTotalMs / decodeCount,
             avgNetworkMs = NetworkLibrary.averageRemoteReadMs()
         )
-        val ahead = decision.ahead
-        val hdAhead = decision.hdAhead
+        val mosaicCount = if (imageMode >= 4) (imageMode - 2).coerceIn(2, 4) else 1
+        val ahead = max(decision.ahead, mosaicCount - 1)
+        val hdAhead = max(decision.hdAhead, if (imageMode >= 4) mosaicCount else 1)
 
         val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
             buildList {
@@ -5035,7 +5237,7 @@ class PhotoTvView(
                     advancedRulesOpen = true
                     settingsControl = 0
                 }
-                y in 112f..166f -> { settingsControl = 0; imageMode = (imageMode + 1) % 4 }
+                y in 112f..166f -> { settingsControl = 0; imageMode = (imageMode + 1) % imageModes.size }
                 y in 168f..220f -> { settingsControl = 1; gridSnap = !gridSnap }
                 y in 221f..274f -> { settingsControl = 2; oledProtection = !oledProtection }
                 y in 275f..327f -> { settingsControl = 3; overlaysAutoHide = !overlaysAutoHide }
