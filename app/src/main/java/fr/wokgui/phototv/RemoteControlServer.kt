@@ -363,7 +363,7 @@ function updatePreviews(s){
   lastPreviewSignature=signature;
   for(let i=0;i<4;i++){
     const img=document.getElementById('thumb'+i);
-    if(titles[i]) img.src='/thumbnail?slot='+i+'&v='+encodeURIComponent(signature);
+    if(titles[i]) img.src='/thumbnail?t='+encodeURIComponent(t)+'&slot='+i+'&v='+encodeURIComponent(signature);
     else img.removeAttribute('src');
   }
 }
