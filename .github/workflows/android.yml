@@ -322,30 +322,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
-            adb shell wm size ${{ matrix.resolution }}
-            adb install -r Photo-TV.apk
-            adb shell am force-stop fr.wokgui.phototv
-            adb shell am start -n fr.wokgui.phototv/.MainActivity --ez phototv_test_mode true --ei phototv_test_page 0
-            sleep 3
-            adb shell dumpsys activity activities | grep -q "fr.wokgui.phototv"
-            mkdir -p resolution-results/${{ matrix.label }}
-            adb exec-out screencap -p > resolution-results/${{ matrix.label }}/preview.png
-            python3 - <<'PY'
-            from PIL import Image
-            from pathlib import Path
-            import os
-            expected = "${{ matrix.resolution }}"
-            w, h = map(int, expected.split("x"))
-            p = Path("resolution-results/${{ matrix.label }}/preview.png")
-            im = Image.open(p)
-            actual = im.size
-            if actual != (w, h):
-                raise SystemExit(f"Unexpected screenshot size: {actual}, expected {(w, h)}")
-            print(f"Verified {actual[0]}x{actual[1]}")
-            PY
-            adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime.*fr.wokgui.phototv" && exit 1 || true
-
+            bash visual/resolution_smoke.sh "${{ matrix.resolution }}" "${{ matrix.label }}" Photo-TV.apk
       - name: Upload ${{ matrix.label }} screenshot
         if: always()
         uses: actions/upload-artifact@v4
@@ -394,36 +371,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
-            mkdir -p marathon-results
-            adb install -r Photo-TV.apk
-            adb shell am force-stop fr.wokgui.phototv
-            adb shell am start -n fr.wokgui.phototv/.MainActivity --ez phototv_test_mode true --ei phototv_test_page 0
-            sleep 2
-            : > marathon-results/memory.txt
-            for i in $(seq 1 2500); do
-              case $((i % 8)) in
-                0) adb shell input keyevent 22 ;;
-                1) adb shell input keyevent 21 ;;
-                2) adb shell input keyevent 20 ;;
-                3) adb shell input keyevent 19 ;;
-                4) adb shell input keyevent 23 ;;
-                5) adb shell input keyevent 4 ;;
-                6) adb shell input keyevent 22 ;;
-                7) adb shell input keyevent 23 ;;
-              esac
-              if (( i % 500 == 0 )); then
-                echo "=== step $i ===" >> marathon-results/memory.txt
-                adb shell dumpsys meminfo fr.wokgui.phototv | grep -E "TOTAL PSS|TOTAL RSS|Java Heap|Native Heap" >> marathon-results/memory.txt || true
-              fi
-            done
-            adb shell dumpsys activity activities | grep -q "fr.wokgui.phototv"
-            adb logcat -d > marathon-results/logcat.txt
-            if grep -E "FATAL EXCEPTION|OutOfMemoryError" marathon-results/logcat.txt | grep -q "fr.wokgui.phototv"; then
-              echo "Crash or OOM detected" >&2
-              exit 1
-            fi
-
+            bash visual/marathon_tv.sh Photo-TV.apk marathon-results
       - name: Upload marathon diagnostics
         if: always()
         uses: actions/upload-artifact@v4
