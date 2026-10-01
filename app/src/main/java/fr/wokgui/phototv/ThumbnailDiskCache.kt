@@ -7,6 +7,9 @@ import java.security.MessageDigest
 object ThumbnailDiskCache {
     private const val MAX_BYTES = 256L * 1024L * 1024L
     private const val MAX_FILES = 3000
+    private const val TRIM_EVERY_WRITES = 32
+    private val writesSinceTrim = java.util.concurrent.atomic.AtomicInteger(0)
+    @Volatile private var legacyCleaned = false
 
     fun read(context: Context, key: String): ByteArray? {
         val file = fileFor(context, key)
@@ -26,7 +29,10 @@ object ThumbnailDiskCache {
                 target.writeBytes(bytes)
                 tmp.delete()
             }
-            trim(dir)
+            if (writesSinceTrim.incrementAndGet() >= TRIM_EVERY_WRITES) {
+                writesSinceTrim.set(0)
+                trim(dir)
+            }
         }
     }
 
@@ -40,8 +46,17 @@ object ThumbnailDiskCache {
         return digest.joinToString("") { "%02x".format(it) }
     }
 
-    private fun directory(context: Context): File =
-        File(context.cacheDir, "photo_tv_thumbnails").apply { mkdirs() }
+    private fun directory(context: Context): File {
+        if (!legacyCleaned) {
+            synchronized(this) {
+                if (!legacyCleaned) {
+                    runCatching { File(context.cacheDir, "remote_thumbnails").deleteRecursively() }
+                    legacyCleaned = true
+                }
+            }
+        }
+        return File(context.cacheDir, "photo_tv_thumbnails").apply { mkdirs() }
+    }
 
     private fun fileFor(context: Context, key: String): File =
         File(directory(context), stableKey(key) + ".jpg")
