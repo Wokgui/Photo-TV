@@ -37,6 +37,11 @@ object MediaMetadataStore {
         val weight: Float
     )
 
+    data class CachedScene(
+        val label: String,
+        val confidence: Float
+    )
+
     private const val MAX_ROWS = 50_000
     @Volatile private var helper: Helper? = null
     @Volatile var infoHits: Long = 0
@@ -54,6 +59,10 @@ object MediaMetadataStore {
     @Volatile var cropHits: Long = 0
         private set
     @Volatile var cropMisses: Long = 0
+        private set
+    @Volatile var sceneHits: Long = 0
+        private set
+    @Volatile var sceneMisses: Long = 0
         private set
 
     fun signature(context: Context, uri: Uri, mime: String): Signature {
@@ -227,6 +236,56 @@ object MediaMetadataStore {
         trimIfNeeded(context)
     }
 
+    fun readScene(
+        context: Context,
+        uri: Uri,
+        signature: Signature
+    ): CachedScene? {
+        if (!signature.cacheable) {
+            sceneMisses++
+            return null
+        }
+        val row = db(context).query(
+            "scene_labels",
+            arrayOf("label", "confidence"),
+            "uri=? AND modified=? AND size=?",
+            arrayOf(uri.toString(), signature.modified.toString(), signature.size.toString()),
+            null, null, null,
+            "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else CachedScene(
+                label = cursor.getString(0).orEmpty(),
+                confidence = cursor.getFloat(1)
+            )
+        }
+        if (row != null) sceneHits++ else sceneMisses++
+        return row
+    }
+
+    fun writeScene(
+        context: Context,
+        uri: Uri,
+        signature: Signature,
+        scene: CachedScene
+    ) {
+        if (!signature.cacheable || scene.label.isBlank()) return
+        val values = ContentValues().apply {
+            put("uri", uri.toString())
+            put("modified", signature.modified)
+            put("size", signature.size)
+            put("label", scene.label)
+            put("confidence", scene.confidence.coerceIn(0f, 1f))
+            put("last_seen", System.currentTimeMillis())
+        }
+        db(context).insertWithOnConflict(
+            "scene_labels",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE
+        )
+        trimIfNeeded(context)
+    }
+
     fun readExactDigest(
         context: Context,
         uri: Uri,
@@ -274,7 +333,7 @@ object MediaMetadataStore {
     }
 
     fun stats(): String =
-        "métadonnées $infoHits hits/$infoMisses miss • perceptuel $fingerprintHits/$fingerprintMisses • crop $cropHits/$cropMisses • SHA-256 $digestHits/$digestMisses"
+        "métadonnées $infoHits hits/$infoMisses miss • perceptuel $fingerprintHits/$fingerprintMisses • crop $cropHits/$cropMisses • scènes $sceneHits/$sceneMisses • SHA-256 $digestHits/$digestMisses"
 
     private fun touch(context: Context, uri: Uri) {
         val values = ContentValues().apply { put("last_seen", System.currentTimeMillis()) }
@@ -316,6 +375,17 @@ object MediaMetadataStore {
             )
         }
 
+        val sceneCount = database.rawQuery("SELECT COUNT(*) FROM scene_labels", null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+        if (sceneCount > MAX_ROWS) {
+            val remove = sceneCount - MAX_ROWS
+            database.execSQL(
+                "DELETE FROM scene_labels WHERE uri IN (" +
+                    "SELECT uri FROM scene_labels ORDER BY last_seen ASC LIMIT $remove)"
+            )
+        }
+
         val digestCount = database.rawQuery("SELECT COUNT(*) FROM exact_digests", null).use { cursor ->
             if (cursor.moveToFirst()) cursor.getLong(0) else 0L
         }
@@ -343,7 +413,7 @@ object MediaMetadataStore {
     }
 
     private class Helper(context: Context) :
-        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 4) {
+        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 5) {
 
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
@@ -403,6 +473,19 @@ object MediaMetadataStore {
             db.execSQL("CREATE INDEX idx_fp_seen ON visual_fingerprints(last_seen)")
             db.execSQL("CREATE INDEX idx_digest_seen ON exact_digests(last_seen)")
             db.execSQL("CREATE INDEX idx_crop_seen ON smart_crop_anchors(last_seen)")
+            db.execSQL(
+                """
+                CREATE TABLE scene_labels (
+                    uri TEXT PRIMARY KEY,
+                    modified INTEGER NOT NULL,
+                    size INTEGER NOT NULL,
+                    label TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    last_seen INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX idx_scene_seen ON scene_labels(last_seen)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -438,6 +521,21 @@ object MediaMetadataStore {
                     """.trimIndent()
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_crop_seen ON smart_crop_anchors(last_seen)")
+            }
+            if (oldVersion < 5) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS scene_labels (
+                        uri TEXT PRIMARY KEY,
+                        modified INTEGER NOT NULL,
+                        size INTEGER NOT NULL,
+                        label TEXT NOT NULL,
+                        confidence REAL NOT NULL,
+                        last_seen INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS idx_scene_seen ON scene_labels(last_seen)")
             }
         }
     }
