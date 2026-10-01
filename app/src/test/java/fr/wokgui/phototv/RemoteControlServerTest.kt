@@ -37,7 +37,11 @@ class RemoteControlServerTest {
         assertFalse(page.contains("/action?t="))
         assertTrue(page.contains("fetch('/status',{headers:auth})"))
         assertTrue(page.contains("id=\"thumb0\""))
-        assertTrue(page.contains("/thumbnail?t='+encodeURIComponent(t)"))
+        assertFalse(page.contains("/thumbnail?t="))
+        assertTrue(page.contains("fetch('/thumbnail?slot='"))
+        assertTrue(page.contains("touchstart"))
+        assertTrue(page.contains("id=\"lightbox\""))
+        assertTrue(page.contains("id=\"favoriteBtn\""))
     }
 
     @Test
