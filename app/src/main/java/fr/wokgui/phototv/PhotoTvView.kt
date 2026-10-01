@@ -4243,36 +4243,14 @@ class PhotoTvView(
         val rt = Runtime.getRuntime()
         val freeRatio = ((rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())).toDouble() /
             rt.maxMemory().coerceAtLeast(1L).toDouble()).coerceIn(0.0, 1.0)
-        val seconds = effectiveDuration(currentItem()).coerceAtLeast(1)
-        val avgDecodeMs = if (decodeCount <= 0L) 0L else decodeTotalMs / decodeCount
-        val avgNetworkMs = NetworkLibrary.averageRemoteReadMs()
-        val observedLoadMs = max(avgDecodeMs, avgNetworkMs)
-        val latencyAhead = when {
-            observedLoadMs >= 2500L -> 7
-            observedLoadMs >= 1200L -> 6
-            observedLoadMs >= 600L -> 5
-            observedLoadMs >= 250L -> 4
-            else -> 3
-        }
-        val cadenceAhead = when {
-            seconds <= 3 -> 6
-            seconds <= 5 -> 5
-            seconds <= 10 -> 4
-            else -> 3
-        }
-        val ahead = when {
-            freeRatio < .18 -> 1
-            freeRatio < .25 -> min(2, max(latencyAhead, cadenceAhead))
-            freeRatio > .55 -> min(10, max(latencyAhead, cadenceAhead) + 2)
-            freeRatio > .40 -> min(8, max(latencyAhead, cadenceAhead) + 1)
-            else -> min(6, max(latencyAhead, cadenceAhead))
-        }
-        val hdAhead = when {
-            freeRatio < .22 -> 1
-            observedLoadMs >= 1200L && freeRatio > .45 -> min(5, ahead)
-            freeRatio > .45 -> min(4, ahead)
-            else -> min(2, ahead)
-        }
+        val decision = PreloadPolicy.decide(
+            freeRatio = freeRatio,
+            secondsPerItem = effectiveDuration(currentItem()),
+            avgDecodeMs = if (decodeCount <= 0L) 0L else decodeTotalMs / decodeCount,
+            avgNetworkMs = NetworkLibrary.averageRemoteReadMs()
+        )
+        val ahead = decision.ahead
+        val hdAhead = decision.hdAhead
 
         val indices = if (randomOrder && shuffleBag.isNotEmpty()) {
             buildList {
