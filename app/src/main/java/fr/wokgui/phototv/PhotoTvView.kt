@@ -1624,27 +1624,22 @@ class PhotoTvView(
         val items = activePhotos()
         if (items.isEmpty()) return emptyList()
         val now = java.util.Calendar.getInstance()
-        val month = now.get(java.util.Calendar.MONTH)
-        val day = now.get(java.util.Calendar.DAY_OF_MONTH)
 
         return when (memoriesMode) {
-            0 -> items.filter { item ->
-                if (item.takenAt <= 0L) false else {
-                    val date = java.util.Calendar.getInstance().apply { timeInMillis = item.takenAt }
-                    date.get(java.util.Calendar.MONTH) == month &&
-                        date.get(java.util.Calendar.DAY_OF_MONTH) == day
-                }
-            }.sortedByDescending { it.takenAt }.take(12)
-            1 -> items.filter { item ->
-                if (item.takenAt <= 0L) false else {
-                    val date = java.util.Calendar.getInstance().apply { timeInMillis = item.takenAt }
-                    date.get(java.util.Calendar.MONTH) == month
-                }
-            }.sortedByDescending { it.takenAt }.take(12)
+            0 -> items
+                .filter { MemoriesPolicy.isSameDayPreviousYear(it.takenAt, now) }
+                .sortedByDescending { it.takenAt }
+                .take(12)
+            1 -> items
+                .filter { MemoriesPolicy.isSameMonth(it.takenAt, now) }
+                .sortedByDescending { it.takenAt }
+                .take(12)
             else -> items.sortedByDescending { item ->
-                val favoriteBoost = if (favorites.contains(item.uri.toString())) 10_000_000_000_000L else 0L
-                favoriteBoost +
-                    item.width.toLong().coerceAtLeast(0L) * item.height.toLong().coerceAtLeast(0L)
+                MemoriesPolicy.bestScore(
+                    favorite = favorites.contains(item.uri.toString()),
+                    width = item.width,
+                    height = item.height
+                )
             }.take(12)
         }
     }
