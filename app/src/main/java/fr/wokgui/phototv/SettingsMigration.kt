@@ -4,7 +4,7 @@ import android.content.SharedPreferences
 import java.util.UUID
 
 object SettingsMigration {
-    const val CURRENT_VERSION = 2
+    const val CURRENT_VERSION = 3
     const val VERSION_KEY = "_prefs_schema_version"
 
     fun migrate(prefs: SharedPreferences) {
@@ -42,6 +42,14 @@ object SettingsMigration {
                 )
             }
             editor.putInt(VERSION_KEY, 2).commit()
+            version = 2
+        }
+
+        if (version < 3) {
+            prefs.edit()
+                .putInt("image_mode", prefs.getInt("image_mode", 0).coerceIn(0, 6))
+                .putInt(VERSION_KEY, 3)
+                .commit()
         }
     }
 }
