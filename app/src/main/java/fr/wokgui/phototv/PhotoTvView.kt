@@ -1240,6 +1240,7 @@ class PhotoTvView(
         this.exactAlbums = exactAlbums
         this.sourceName = sourceName
         refreshLibraryState(resetCurrent = true)
+        scheduleBackgroundAnalysis()
 
         val count = activePhotos().size
         if (resumeWasSlideshow && count > 0) {
@@ -1334,6 +1335,53 @@ class PhotoTvView(
                     bitmapLoading.remove(key)
                 }
             }
+        }
+    }
+
+    private fun scheduleBackgroundAnalysis() {
+        val generation = ++backgroundAnalysisGeneration
+        if (!backgroundAnalysis || automationMode || library.isEmpty()) {
+            backgroundAnalysisDone = 0
+            backgroundAnalysisTotal = 0
+            return
+        }
+        val snapshot = library.filter { item ->
+            item.mediaType == "image" && !NetworkLibrary.isNetworkUri(item.uri)
+        }
+        backgroundAnalysisDone = 0
+        backgroundAnalysisTotal = snapshot.size
+        analysisExecutor.execute {
+            for ((index, item) in snapshot.withIndex()) {
+                if (generation != backgroundAnalysisGeneration || Thread.currentThread().isInterrupted) break
+                val key = item.uri.toString()
+                val mime = runCatching { context.contentResolver.getType(item.uri) }.getOrNull().orEmpty()
+                val signature = MediaMetadataStore.signature(context, item.uri, mime)
+                val cached = MediaMetadataStore.readScene(context, item.uri, signature)
+                if (cached != null) {
+                    sceneCache[key] = cached.label
+                } else {
+                    val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
+                    if (bmp != null && !bmp.isRecycled) {
+                        val scene = SceneClassifier.classify(
+                            bmp,
+                            item.width.takeIf { it > 0 } ?: bmp.width,
+                            item.height.takeIf { it > 0 } ?: bmp.height
+                        )
+                        sceneCache[key] = scene
+                        MediaMetadataStore.writeScene(
+                            context,
+                            item.uri,
+                            signature,
+                            MediaMetadataStore.CachedScene(scene, .65f)
+                        )
+                        smartCropAnchors(item, bmp)
+                        if (bmp !== demoBitmap && !bmp.isRecycled) bmp.recycle()
+                    }
+                }
+                backgroundAnalysisDone = index + 1
+                if ((index + 1) % 8 == 0) postInvalidate()
+            }
+            postInvalidate()
         }
     }
 
