@@ -270,7 +270,7 @@ object MediaMetadataStore {
     }
 
     private class Helper(context: Context) :
-        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 2) {
+        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 3) {
 
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
@@ -332,6 +332,9 @@ object MediaMetadataStore {
                     """.trimIndent()
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS idx_digest_seen ON exact_digests(last_seen)")
+            }
+            if (oldVersion < 3) {
+                db.delete("media_metadata", null, null)
             }
         }
     }
