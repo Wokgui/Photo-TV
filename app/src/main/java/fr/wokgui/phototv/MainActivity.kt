@@ -157,6 +157,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (!automationMode) {
+            if (ambientEnabled && !ambientPausedForVideo) resumeAmbientMusic()
             val now = android.os.SystemClock.elapsedRealtime()
             if (NetworkLibrary.isConfigured() && now - lastResumeNetworkRefreshAt >= 30_000L) {
                 lastResumeNetworkRefreshAt = now
@@ -175,6 +176,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         networkRefreshHandler.removeCallbacksAndMessages(null)
+        if (!automationMode) runCatching { ambientPlayer?.pause() }
         super.onPause()
     }
 
