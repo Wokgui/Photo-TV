@@ -193,9 +193,9 @@ class TvRemoteNavigationTest {
     fun settingsCategoriesControlsAndNestedAdvancedPagesAreReachable() {
         val s = launch(3)
 
-        repeat(7) { device.pressDPadDown() }
-        awaitState(s, "settingsCategory=7")
-        repeat(7) { device.pressDPadUp() }
+        repeat(8) { device.pressDPadDown() }
+        awaitState(s, "settingsCategory=8")
+        repeat(8) { device.pressDPadUp() }
         awaitState(s, "settingsCategory=0")
 
         press(s, { device.pressDPadRight() }, "settingsColumn=1")
@@ -207,6 +207,14 @@ class TvRemoteNavigationTest {
 
         repeat(7) { device.pressDPadDown() }
         awaitState(s, "settingsCategory=7")
+        press(s, { device.pressDPadRight() }, "settingsColumn=1")
+        repeat(6) { device.pressDPadDown() }
+        awaitState(s, "settingsControl=6")
+        repeat(6) { device.pressDPadUp() }
+        awaitState(s, "settingsControl=0")
+        press(s, { device.pressDPadLeft() }, "settingsColumn=0")
+
+        press(s, { device.pressDPadDown() }, "settingsCategory=8")
         press(s, { device.pressDPadRight() }, "settingsColumn=1")
 
         repeat(12) { device.pressDPadDown() }
