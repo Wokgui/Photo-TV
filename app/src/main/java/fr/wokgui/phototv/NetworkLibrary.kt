@@ -93,7 +93,7 @@ object NetworkLibrary {
     private const val CACHE_MAX_FILES = 300
     @Volatile private var cacheMaxBytes = 512L * 1024L * 1024L
     @Volatile private var cacheFreshMs = 24L * 60L * 60L * 1000L
-    @Volatile private var offlineUntilMs = 0L
+    private val offlineUntilBySource = linkedMapOf<String, Long>()
     @Volatile private var cacheReadHits = 0L
     @Volatile private var remoteReads = 0L
     @Volatile private var remoteReadTotalMs = 0L
@@ -220,7 +220,9 @@ object NetworkLibrary {
             }
             cached.setLastModified(now)
             trimCache(cacheDir)
-            offlineUntilMs = 0L
+            synchronized(offlineUntilBySource) {
+                offlineUntilBySource.remove(pair.first.key)
+            }
             true
         }.onFailure {
             remoteError = it
@@ -232,7 +234,9 @@ object NetworkLibrary {
         if (downloaded) {
             recordHealthSuccess(pair.first, elapsed)
         } else {
-            offlineUntilMs = now + 60_000L
+            synchronized(offlineUntilBySource) {
+                offlineUntilBySource[pair.first.key] = now + 60_000L
+            }
             recordHealthFailure(pair.first, remoteError)
         }
 
@@ -251,7 +255,29 @@ object NetworkLibrary {
 
     fun isNetworkUri(uri: Uri): Boolean = uri.scheme == "phototv-network"
 
-    fun isTemporarilyOffline(): Boolean = System.currentTimeMillis() < offlineUntilMs
+    fun isTemporarilyOffline(): Boolean {
+        val now = System.currentTimeMillis()
+        return synchronized(offlineUntilBySource) {
+            offlineUntilBySource.entries.removeAll { it.value <= now }
+            offlineUntilBySource.isNotEmpty()
+        }
+    }
+
+    private fun isSourceTemporarilyOffline(uri: Uri): Boolean {
+        if (!isNetworkUri(uri)) return false
+        val id = uri.host ?: uri.schemeSpecificPart.removePrefix("//")
+        val sourceKey = synchronized(entries) { entries[id]?.sourceKey } ?: return false
+        val now = System.currentTimeMillis()
+        return synchronized(offlineUntilBySource) {
+            val until = offlineUntilBySource[sourceKey] ?: return@synchronized false
+            if (until <= now) {
+                offlineUntilBySource.remove(sourceKey)
+                false
+            } else {
+                true
+            }
+        }
+    }
 
     fun isCached(context: Context, uri: Uri): Boolean {
         if (!isNetworkUri(uri)) return false
@@ -261,7 +287,7 @@ object NetworkLibrary {
     }
 
     fun canUseOffline(context: Context, uri: Uri): Boolean =
-        !isNetworkUri(uri) || !isTemporarilyOffline() || isCached(context, uri)
+        !isNetworkUri(uri) || !isSourceTemporarilyOffline(uri) || isCached(context, uri)
 
     fun materialize(context: Context, uri: Uri): File? {
         if (!isNetworkUri(uri)) return null
@@ -337,6 +363,7 @@ object NetworkLibrary {
         val removed = synchronized(entries) {
             configs.remove(key)
             synchronized(sourceHealth) { sourceHealth.remove(key) }
+            synchronized(offlineUntilBySource) { offlineUntilBySource.remove(key) }
             val label = entries.values.firstOrNull { it.sourceKey == key }?.sourceLabel
             entries.entries.removeAll { it.value.sourceKey == key }
             label
