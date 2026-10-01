@@ -4543,6 +4543,8 @@ class PhotoTvView(
                     imageModes = imageModes,
                     smartModes = (0..4).map(SmartSelectionPolicy::modeLabel),
                     position = currentPhoto,
+                    total = activePhotos().size,
+                    favorite = item?.uri?.toString()?.let(favorites::contains) == true,
                     previewTitles = remotePreviewItems().map { it.title },
                     smartMode = SmartSelectionPolicy.modeLabel(smartSelectionMode)
                 )
