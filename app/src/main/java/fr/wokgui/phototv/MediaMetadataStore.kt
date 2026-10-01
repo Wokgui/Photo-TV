@@ -41,6 +41,10 @@ object MediaMetadataStore {
         private set
     @Volatile var fingerprintMisses: Long = 0
         private set
+    @Volatile var digestHits: Long = 0
+        private set
+    @Volatile var digestMisses: Long = 0
+        private set
 
     fun signature(context: Context, uri: Uri, mime: String): Signature {
         val doc = runCatching { DocumentFile.fromSingleUri(context, uri) }.getOrNull()
@@ -161,8 +165,54 @@ object MediaMetadataStore {
         trimIfNeeded(context)
     }
 
+    fun readExactDigest(
+        context: Context,
+        uri: Uri,
+        signature: Signature
+    ): String? {
+        if (!signature.cacheable) {
+            digestMisses++
+            return null
+        }
+        val value = db(context).query(
+            "exact_digests",
+            arrayOf("sha256"),
+            "uri=? AND modified=? AND size=?",
+            arrayOf(uri.toString(), signature.modified.toString(), signature.size.toString()),
+            null, null, null,
+            "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else cursor.getString(0)
+        }
+        if (value != null) digestHits++ else digestMisses++
+        return value
+    }
+
+    fun writeExactDigest(
+        context: Context,
+        uri: Uri,
+        signature: Signature,
+        sha256: String
+    ) {
+        if (!signature.cacheable || sha256.isBlank()) return
+        val values = ContentValues().apply {
+            put("uri", uri.toString())
+            put("modified", signature.modified)
+            put("size", signature.size)
+            put("sha256", sha256)
+            put("last_seen", System.currentTimeMillis())
+        }
+        db(context).insertWithOnConflict(
+            "exact_digests",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE
+        )
+        trimIfNeeded(context)
+    }
+
     fun stats(): String =
-        "métadonnées $infoHits hits/$infoMisses miss • hash $fingerprintHits hits/$fingerprintMisses miss"
+        "métadonnées $infoHits hits/$infoMisses miss • perceptuel $fingerprintHits/$fingerprintMisses • SHA-256 $digestHits/$digestMisses"
 
     private fun touch(context: Context, uri: Uri) {
         val values = ContentValues().apply { put("last_seen", System.currentTimeMillis()) }
@@ -192,6 +242,17 @@ object MediaMetadataStore {
                     "SELECT uri FROM visual_fingerprints ORDER BY last_seen ASC LIMIT $remove)"
             )
         }
+
+        val digestCount = database.rawQuery("SELECT COUNT(*) FROM exact_digests", null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+        if (digestCount > MAX_ROWS) {
+            val remove = digestCount - MAX_ROWS
+            database.execSQL(
+                "DELETE FROM exact_digests WHERE uri IN (" +
+                    "SELECT uri FROM exact_digests ORDER BY last_seen ASC LIMIT $remove)"
+            )
+        }
     }
 
     private fun db(context: Context): SQLiteDatabase {
@@ -209,7 +270,7 @@ object MediaMetadataStore {
     }
 
     private class Helper(context: Context) :
-        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 1) {
+        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 2) {
 
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
@@ -241,10 +302,37 @@ object MediaMetadataStore {
                 )
                 """.trimIndent()
             )
+            db.execSQL(
+                """
+                CREATE TABLE exact_digests (
+                    uri TEXT PRIMARY KEY,
+                    modified INTEGER NOT NULL,
+                    size INTEGER NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    last_seen INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
             db.execSQL("CREATE INDEX idx_media_seen ON media_metadata(last_seen)")
             db.execSQL("CREATE INDEX idx_fp_seen ON visual_fingerprints(last_seen)")
+            db.execSQL("CREATE INDEX idx_digest_seen ON exact_digests(last_seen)")
         }
 
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            if (oldVersion < 2) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS exact_digests (
+                        uri TEXT PRIMARY KEY,
+                        modified INTEGER NOT NULL,
+                        size INTEGER NOT NULL,
+                        sha256 TEXT NOT NULL,
+                        last_seen INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS idx_digest_seen ON exact_digests(last_seen)")
+            }
+        }
     }
 }
