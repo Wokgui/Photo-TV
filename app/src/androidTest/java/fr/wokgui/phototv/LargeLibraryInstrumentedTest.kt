@@ -33,4 +33,26 @@ class LargeLibraryInstrumentedTest {
         assertTrue("Large library setup took ${elapsed}ms", elapsed < 12_000L)
         scenario.close()
     }
+
+    @Test
+    fun fiftyThousandMediaRemainNavigableWithinMemoryBudget() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val started = SystemClock.elapsedRealtime()
+        val scenario = ActivityScenario.launch<MainActivity>(
+            Intent(context, MainActivity::class.java)
+                .putExtra("phototv_test_mode", true)
+                .putExtra("phototv_test_page", 0)
+                .putExtra("phototv_test_library_count", 50_000)
+        )
+
+        scenario.onActivity { activity ->
+            assertEquals(50_000, activity.automationLibrarySizeForTest())
+            assertEquals(50_000, activity.automationActiveCountForTest())
+            assertTrue(activity.automationStateForTest().contains("currentPhoto=0"))
+        }
+        val elapsed = SystemClock.elapsedRealtime() - started
+        assertTrue("50k library setup took ${elapsed}ms", elapsed < 30_000L)
+        scenario.close()
+    }
+
 }
