@@ -3367,7 +3367,11 @@ class PhotoTvView(
             if (paused) "Reprendre" else "Pause",
             "Historique visuel",
             "Diagnostics techniques",
-            "Souvenirs"
+            "Souvenirs",
+            "Profil : $activeProfile",
+            if (musicEnabled()) "♫ Musique : ON" else "♫ Musique : OFF",
+            "♫ Choisir la musique (${musicTrackCount()} titres)",
+            "♫ Volume musique : ${musicVolume()} %"
         )
         val x = 855f
         val y = 185f
@@ -3377,9 +3381,9 @@ class PhotoTvView(
         strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(51, 80, 111), 1.5f)
         text(c, "Photo courante", x + 22f, y + 35f, 16f, Color.WHITE, 1)
         labels.forEachIndexed { i, label ->
-            val yy = y + 56f + i * 47f
-            if (quickMenuIndex == i) gradientRound(c, x + 14f, yy, x + w - 14f, yy + 39f, 10f, Color.rgb(14, 119, 243), Color.rgb(8, 85, 207))
-            text(c, label, x + 31f, yy + 26f, 13f, Color.WHITE)
+            val yy = y + 56f + i * 32f
+            if (quickMenuIndex == i) gradientRound(c, x + 14f, yy, x + w - 14f, yy + 28f, 9f, Color.rgb(14, 119, 243), Color.rgb(8, 85, 207))
+            text(c, label, x + 31f, yy + 20f, 11.5f, Color.WHITE)
         }
     }
 
@@ -3387,7 +3391,7 @@ class PhotoTvView(
         val x = 35f
         val y = 112f
         val w = 470f
-        val h = 355f
+        val h = 390f
         round(c, x, y, x + w, y + h, 16f, Color.argb(232, 5, 17, 29))
         strokeRound(c, x, y, x + w, y + h, 16f, Color.rgb(50, 82, 114), 1.3f)
         text(c, "Informations", x + 22f, y + 34f, 18f, Color.WHITE, 1)
@@ -3399,7 +3403,10 @@ class PhotoTvView(
             "Appareil" to (item?.camera?.ifBlank { "—" } ?: "—"),
             "Dimensions" to (item?.dimensionsLabel?.ifBlank { "—" } ?: "—"),
             "Orientation" to (item?.orientationLabel?.ifBlank { "—" } ?: "—"),
-            "Type" to (item?.mediaType ?: "—")
+            "Type" to (item?.mediaType ?: "—"),
+            "Qualité" to (item?.let { qualityScores[it.uri.toString()] }?.let { q ->
+                "${q.label} • ${q.score}/100"
+            } ?: "Analyse en cours")
         )
         rows.forEachIndexed { i, row ->
             val yy = y + 72f + i * 33f
@@ -4300,12 +4307,12 @@ class PhotoTvView(
         if (quickMenuVisible) {
             return when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP -> {
-                    quickMenuIndex = (quickMenuIndex - 1 + 8) % 8
+                    quickMenuIndex = (quickMenuIndex - 1 + 12) % 12
                     invalidate()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    quickMenuIndex = (quickMenuIndex + 1) % 8
+                    quickMenuIndex = (quickMenuIndex + 1) % 12
                     invalidate()
                     true
                 }
@@ -4425,6 +4432,13 @@ class PhotoTvView(
                 memoriesTabFocus = true
                 memoriesOverlayVisible = true
             }
+            8 -> switchProfile(1)
+            9 -> onMusicToggle()
+            10 -> {
+                quickMenuVisible = false
+                onMusicPick()
+            }
+            11 -> onMusicVolumeStep()
         }
         savePrefs()
         invalidate()
@@ -4770,7 +4784,7 @@ class PhotoTvView(
                 1 -> {
                     val name = currentAlbumName()
                     if (library.isNotEmpty()) {
-                        if (selectedAlbums.contains(name)) selectedAlbums.remove(name) else selectedAlbums.add(name)
+                        toggleAlbumSelection(name)
                     }
                 }
                 2 -> if (library.isNotEmpty()) {
@@ -4993,16 +5007,17 @@ class PhotoTvView(
                 invalidate()
             }
             "album_select" -> {
-                val all = library.flatMap { it.albums }.distinct()
+                val all = albumPairs().map { it.first }
                 selectedAlbums.clear()
                 if (commandValue.isBlank() || commandValue == "Tous les albums") {
-                    selectedAlbums.addAll(all)
+                    selectedAlbums.addAll(library.flatMap { it.albums }.distinct())
                 } else if (all.contains(commandValue)) {
                     selectedAlbums += commandValue
                 } else {
-                    selectedAlbums.addAll(all)
+                    selectedAlbums.addAll(library.flatMap { it.albums }.distinct())
                 }
                 currentPhoto = 0
+                rebuildShuffleBag()
                 preloadAroundCurrent()
                 savePrefs()
                 invalidate()
@@ -5127,6 +5142,22 @@ class PhotoTvView(
                 }
             }
         }
+    }
+
+    private fun toggleAlbumSelection(name: String) {
+        if (SmartAlbumPolicy.isSmart(name)) {
+            if (selectedAlbums.size == 1 && selectedAlbums.contains(name)) {
+                selectedAlbums.clear()
+            } else {
+                selectedAlbums.clear()
+                selectedAlbums.add(name)
+            }
+        } else {
+            selectedAlbums.removeAll(SmartAlbumPolicy.labels.toSet())
+            if (selectedAlbums.contains(name)) selectedAlbums.remove(name) else selectedAlbums.add(name)
+        }
+        currentPhoto = 0
+        rebuildShuffleBag()
     }
 
     private fun clearAllMasks() {
@@ -5889,7 +5920,7 @@ class PhotoTvView(
 
         if (quickMenuVisible) {
             if (x in 855f..1225f && y in 241f..616f) {
-                quickMenuIndex = (((y - 241f) / 47f).toInt()).coerceIn(0, 7)
+                quickMenuIndex = (((y - 241f) / 32f).toInt()).coerceIn(0, 11)
                 activateQuickMenu()
             } else {
                 quickMenuVisible = false
