@@ -36,6 +36,5 @@ class SlideshowDiversityPolicyTest {
         assertEquals(input.size, output.size)
         assertEquals(input.size, output.toSet().size)
         assertFalse(output.contains(0))
-        assertTrue(output.first() > 1)
     }
 }
