@@ -2200,8 +2200,8 @@ class PhotoTvView(
                 }
             }
             else -> {
-                repeat(8) { i ->
-                    val y = 116f + i * 55f
+                repeat(9) { i ->
+                    val y = 116f + i * 53f
                     box(32f, y, 352f, y + 50f, "Catégorie ${i + 1}", amber)
                 }
                 if (settingsCategory == 7 && !advancedRulesOpen) {
@@ -2846,7 +2846,7 @@ class PhotoTvView(
             4
         )
 
-        val allAlbums = library.flatMap { it.albums }.distinct()
+        val allAlbums = allSelectableAlbumNames()
         val allSelected = allAlbums.isNotEmpty() && selectedAlbums.containsAll(allAlbums)
         controlBox(
             c,
@@ -3686,6 +3686,8 @@ class PhotoTvView(
             4 -> { stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
             5 -> text(c, "♨", x, y + 7f, 18f, Color.WHITE, 0, 1)
             6 -> drawSourceIcon(c, x, y, 2)
+            7 -> drawGear(c, x, y, 9f)
+            8 -> text(c, "♫", x, y + 7f, 18f, Color.WHITE, 1, 1)
             else -> drawGear(c, x, y, 9f)
         }
     }
@@ -4987,7 +4989,7 @@ class PhotoTvView(
                 invalidate()
             }
             "album_select" -> {
-                val all = library.flatMap { it.albums }.distinct()
+                val all = allSelectableAlbumNames()
                 selectedAlbums.clear()
                 if (commandValue.isBlank() || commandValue == "Tous les albums") {
                     selectedAlbums.addAll(all)
