@@ -12,7 +12,10 @@ object MediaMetadataStore {
         val modified: Long,
         val size: Long,
         val mime: String
-    )
+    ) {
+        val cacheable: Boolean
+            get() = modified > 0L || size > 0L
+    }
 
     data class CachedInfo(
         val width: Int,
@@ -49,6 +52,10 @@ object MediaMetadataStore {
     }
 
     fun readInfo(context: Context, uri: Uri, signature: Signature): CachedInfo? {
+        if (!signature.cacheable) {
+            infoMisses++
+            return null
+        }
         val row = db(context).query(
             "media_metadata",
             arrayOf("width", "height", "taken_at", "camera", "location"),
@@ -80,6 +87,7 @@ object MediaMetadataStore {
         signature: Signature,
         info: MediaInfo
     ) {
+        if (!signature.cacheable) return
         val values = ContentValues().apply {
             put("uri", uri.toString())
             put("modified", signature.modified)
@@ -106,6 +114,10 @@ object MediaMetadataStore {
         uri: Uri,
         signature: Signature
     ): CachedFingerprint? {
+        if (!signature.cacheable) {
+            fingerprintMisses++
+            return null
+        }
         val row = db(context).query(
             "visual_fingerprints",
             arrayOf("hash_value", "mean_luma", "aspect_ratio"),
@@ -130,6 +142,7 @@ object MediaMetadataStore {
         signature: Signature,
         fingerprint: CachedFingerprint
     ) {
+        if (!signature.cacheable) return
         val values = ContentValues().apply {
             put("uri", uri.toString())
             put("modified", signature.modified)
