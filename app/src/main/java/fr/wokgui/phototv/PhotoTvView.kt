@@ -1634,7 +1634,14 @@ class PhotoTvView(
 
     private fun recordQuality(key: String, bitmap: Bitmap) {
         if (qualityByUri.containsKey(key) || bitmap.isRecycled) return
-        val result = runCatching { PhotoQualityAnalyzer.analyze(bitmap) }.getOrNull() ?: return
+        val item = uriIndex[key]
+        val result = runCatching {
+            PhotoQualityAnalyzer.analyze(
+                bitmap,
+                originalWidth = item?.width ?: bitmap.width,
+                originalHeight = item?.height ?: bitmap.height
+            )
+        }.getOrNull() ?: return
         if (qualityByUri.putIfAbsent(key, result) == null) {
             post {
                 libraryRevision++
