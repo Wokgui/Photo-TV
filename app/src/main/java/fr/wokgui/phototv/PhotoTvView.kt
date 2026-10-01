@@ -2476,6 +2476,7 @@ class PhotoTvView(
         settingsSlider(c, "Durée de la transition", transitionSeconds, .2f, 4f, "${format1(transitionSeconds)} secondes", x, y + 390f, 5)
         settingsToggle(c, "Effet panoramique (Ken Burns)", kenBurns, x, y + 430f, 6)
         settingsSegment(c, "Style d'agrandissement", listOf("Léger", "Moyen", "Fort"), zoomLevel, x, y + 471f, 7)
+        settingsToggle(c, "Diaporama intelligent autonome", autonomousSlideshow, x, y + 510f, 8)
     }
 
     private fun drawSettingsElements(c: Canvas, x: Float, y: Float, w: Float) {
@@ -2678,6 +2679,7 @@ class PhotoTvView(
             "Tout réafficher",
             settingsColumn == 1 && settingsControl == 6 && !navFocus
         )
+        settingsToggle(c, "Pré-analyse locale en arrière-plan", backgroundAnalysis, x, y + 510f, 8)
     }
 
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
@@ -4259,13 +4261,13 @@ class PhotoTvView(
     }
 
     private fun settingsControlMax(): Int = when(settingsCategory) {
-        0 -> 7
+        0 -> 8
         1 -> elementNames.lastIndex
         2 -> elementNames.lastIndex
         3 -> transitions.lastIndex
         4 -> 9
         5 -> 2
-        6 -> 7
+        6 -> 8
         else -> if (advancedRulesOpen) 9 else 15
     }
 
@@ -4382,6 +4384,10 @@ class PhotoTvView(
                 5 -> transitionSeconds = (transitionSeconds + dir * .1f).coerceIn(.2f, 4f)
                 6 -> kenBurns = !kenBurns
                 7 -> zoomLevel = (zoomLevel + dir + 3) % 3
+                8 -> {
+                    autonomousSlideshow = !autonomousSlideshow
+                    if (!autonomousSlideshow) autonomousImageModeOverride = null
+                }
             }
             1 -> toggleElement(settingsControl)
             2 -> editorElement = (editorElement + dir + elementNames.size) % elementNames.size
@@ -4407,6 +4413,10 @@ class PhotoTvView(
                 5 -> toggleAllAlbums()
                 6 -> clearAllMasks()
                 7 -> onNetworkSource()
+                8 -> {
+                    backgroundAnalysis = !backgroundAnalysis
+                    if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
+                }
             }
             7 -> if (advancedRulesOpen) {
                 adjustAlbumRule(dir)
@@ -4510,6 +4520,7 @@ class PhotoTvView(
                         5 -> toggleAllAlbums()
                         6 -> clearAllMasks()
                         7 -> onNetworkSource()
+                        8 -> adjustSettings(1)
                     }
                     7 -> if (advancedRulesOpen) {
                         adjustAlbumRule(1)
