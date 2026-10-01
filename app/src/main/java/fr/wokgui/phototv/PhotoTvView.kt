@@ -2785,6 +2785,9 @@ class PhotoTvView(
             appendLine("Photo courante: " + currentPhoto)
             appendLine("Mode aléatoire: " + randomOrder)
             appendLine("Sélection intelligente: " + SmartSelectionPolicy.modeLabel(smartSelectionMode))
+            appendLine("Diaporama autonome: " + autonomousSlideshow)
+            appendLine("Scène courante: " + (currentScene(currentItem()) ?: "non analysée"))
+            appendLine("Pré-analyse: " + backgroundAnalysisDone + "/" + backgroundAnalysisTotal)
             appendLine("Santé réseau: " + NetworkLibrary.healthSummary())
             appendLine("Transition demandée: " + transitions[transitionIndex.coerceIn(0, transitions.lastIndex)])
             appendLine("Transition effective: " + transitions[effectiveTransition(currentItem()).coerceIn(0, transitions.lastIndex)])
@@ -4935,6 +4938,8 @@ class PhotoTvView(
         quickMenuVisible = false
         infoPanelVisible = false
         history.clear()
+        autonomousSlideNumber = 0L
+        updateAutonomousPresentation()
         rememberCurrentUri()
         rebuildShuffleBag()
         transitionProgress = 1f
@@ -5145,6 +5150,8 @@ class PhotoTvView(
         }
 
         slideStartedAt = System.currentTimeMillis()
+        autonomousSlideNumber++
+        updateAutonomousPresentation()
         rememberCurrentUri()
         savePrefs()
         preloadAroundCurrent()
@@ -5677,5 +5684,6 @@ class PhotoTvView(
         onVideoPlayback(null, videoSound)
         executor.shutdownNow()
         highResExecutor.shutdownNow()
+        analysisExecutor.shutdownNow()
     }
 }
