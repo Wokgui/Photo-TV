@@ -15,18 +15,27 @@ object SlideshowDiversityPolicy {
     fun reorder(indices: List<Int>, candidates: List<Candidate>, currentIndex: Int): List<Int> {
         if (indices.size < 2) return indices
         val byIndex = candidates.associateBy { it.index }
-        val out = mutableListOf<Int>()
-        val remaining = indices.toMutableList()
+        val pool = indices.toMutableList()
+        val out = ArrayList<Int>(indices.size)
         var previous = byIndex[currentIndex]
 
-        while (remaining.isNotEmpty()) {
-            val pickPos = if (previous == null) 0 else {
-                val limit = minOf(remaining.size, 24)
-                (0 until limit).maxByOrNull { pos ->
-                    separationScore(previous, byIndex[remaining[pos]])
-                } ?: 0
+        for (cursor in pool.indices) {
+            val endExclusive = minOf(pool.size, cursor + 24)
+            var bestPos = cursor
+            var bestScore = Int.MIN_VALUE
+            for (pos in cursor until endExclusive) {
+                val score = if (previous == null) 0 else separationScore(previous, byIndex[pool[pos]])
+                if (score > bestScore) {
+                    bestScore = score
+                    bestPos = pos
+                }
             }
-            val picked = remaining.removeAt(pickPos)
+            if (bestPos != cursor) {
+                val tmp = pool[cursor]
+                pool[cursor] = pool[bestPos]
+                pool[bestPos] = tmp
+            }
+            val picked = pool[cursor]
             out += picked
             previous = byIndex[picked] ?: previous
         }
