@@ -4163,7 +4163,7 @@ class PhotoTvView(
                     sources = sourceLabels(),
                     sourceFilter = remoteSourceFilter,
                     transitions = transitions,
-                    imageModes = listOf("Ajuster", "Remplir", "Original", "Flou"),
+                    imageModes = listOf("Remplir", "Adapter", "Original", "Fond flouté"),
                     smartModes = (0..4).map(SmartSelectionPolicy::modeLabel),
                     smartMode = SmartSelectionPolicy.modeLabel(smartSelectionMode)
                 )
@@ -4284,7 +4284,7 @@ class PhotoTvView(
                 invalidate()
             }
             "mode_select" -> {
-                val modes = listOf("Ajuster", "Remplir", "Original", "Flou")
+                val modes = listOf("Remplir", "Adapter", "Original", "Fond flouté")
                 val idx = modes.indexOf(commandValue)
                 if (idx >= 0) {
                     imageMode = idx
