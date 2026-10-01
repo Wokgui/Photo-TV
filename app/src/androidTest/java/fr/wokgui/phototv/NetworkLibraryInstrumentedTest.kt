@@ -67,6 +67,39 @@ class NetworkLibraryInstrumentedTest {
     }
 
     @Test
+    fun cachedMediaSurvivesOutageAndHealthTurnsOffline() {
+        val base = "http://127.0.0.1:" + server.port + "/photos/"
+        val items = NetworkLibrary.load(
+            kind = NetworkLibrary.Kind.WEBDAV,
+            baseUrl = base,
+            username = "",
+            password = ""
+        )
+        val target = items.first { it.title == "nested" }
+
+        val first = NetworkLibrary.open(context, target.uri)?.use { it.readBytes() }
+        assertTrue(first != null && first.isNotEmpty())
+
+        val id = target.uri.host ?: error("Missing network id")
+        val cached = java.io.File(java.io.File(context.cacheDir, "network-media"), id + ".bin")
+        assertTrue(cached.isFile)
+
+        server.close()
+        repeat(2) {
+            cached.setLastModified(1L)
+            val fallback = NetworkLibrary.open(context, target.uri)?.use { it.readBytes() }
+            assertTrue(fallback != null && fallback.isNotEmpty())
+        }
+
+        val health = NetworkLibrary.sourceHealthSnapshot().firstOrNull {
+            it.label.contains("127.0.0.1")
+        }
+        assertTrue(health != null)
+        assertTrue(health!!.consecutiveFailures >= 2)
+        assertEquals("hors ligne", health.state)
+    }
+
+    @Test
     fun savedNetworkSourceNeverStoresPassword() {
         val secret = "mot-de-passe-test"
         NetworkSourceStore.upsert(
