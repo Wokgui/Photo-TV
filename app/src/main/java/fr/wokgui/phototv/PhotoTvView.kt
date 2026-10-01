@@ -4756,7 +4756,7 @@ class PhotoTvView(
                     if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
                 }
             }
-            else -> if (advancedRulesOpen) {
+            8 -> if (advancedRulesOpen) {
                 adjustAlbumRule(dir)
             } else when (settingsControl) {
                 0 -> imageMode = (imageMode + dir + imageModes.size) % imageModes.size
@@ -4783,6 +4783,26 @@ class PhotoTvView(
                 }
                 14 -> onSettingsPin()
                 15 -> smartSelectionMode = (smartSelectionMode + dir + 5) % 5
+            }
+            9 -> when (settingsControl) {
+                0 -> switchProfile(activeProfile + dir)
+                1 -> {
+                    ambientMusicEnabled = !ambientMusicEnabled
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                2 -> onPickAmbientMusic()
+                3 -> {
+                    ambientMusicVolume = (ambientMusicVolume + dir * .05f).coerceIn(0f, 1f)
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                4 -> {
+                    smartAlbumsEnabled = !smartAlbumsEnabled
+                    refreshLibraryState(resetCurrent = false)
+                }
+                5 -> {
+                    qualityMinimum = (qualityMinimum + dir * 5).coerceIn(0, 90)
+                    activePhotosCacheKey = Long.MIN_VALUE
+                }
             }
         }
         scheduleSlideshow()
@@ -4861,7 +4881,7 @@ class PhotoTvView(
                         8 -> adjustSettings(1)
                     }
                     7 -> adjustSettings(1)
-                    else -> if (advancedRulesOpen) {
+                    8 -> if (advancedRulesOpen) {
                         adjustAlbumRule(1)
                     } else when (settingsControl) {
                         8 -> onExportSettings()
@@ -4878,6 +4898,10 @@ class PhotoTvView(
                         }
                         14 -> onSettingsPin()
                         15 -> smartSelectionMode = (smartSelectionMode + 1) % 5
+                        else -> adjustSettings(1)
+                    }
+                    9 -> when (settingsControl) {
+                        2 -> onPickAmbientMusic()
                         else -> adjustSettings(1)
                     }
                 }
@@ -5619,8 +5643,8 @@ class PhotoTvView(
     }
 
     private fun handleSettingsTap(x: Float, y: Float) {
-        if (x in 32f..352f && y in 116f..566f) {
-            val i = ((y - 116f) / 50f).toInt().coerceIn(0, 8)
+        if (x in 32f..352f && y in 116f..586f) {
+            val i = ((y - 116f) / 46f).toInt().coerceIn(0, 9)
             settingsCategory = i
             settingsColumn = 0
             settingsControl = settingsControl.coerceIn(0, settingsControlMax())
@@ -5763,23 +5787,7 @@ class PhotoTvView(
                 y in 340f..599f -> settingsControl = (((y - 346f) / 65f).toInt() + 3).coerceIn(3, 6)
             }
 
-            7 -> {
-                val slot = (((y - 149f) / 64f).toInt()).coerceIn(0, 6)
-                settingsControl = slot
-                when (slot) {
-                    0 -> {
-                        autonomousSlideshow = !autonomousSlideshow
-                        if (!autonomousSlideshow) autonomousImageModeOverride = null
-                    }
-                    1 -> smartSelectionMode = (smartSelectionMode + 1) % 5
-                    2 -> {
-                        backgroundAnalysis = !backgroundAnalysis
-                        if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
-                    }
-                }
-            }
-
-            else -> if (advancedRulesOpen) {
+            8 -> if (advancedRulesOpen) {
                 when {
                     x in 855f..1045f && y in 75f..125f -> {
                         settingsControl = 9
@@ -5834,6 +5842,38 @@ class PhotoTvView(
                 y in 536f..578f && x < 1000f -> { settingsControl = 8; onExportSettings() }
                 y in 536f..578f && x >= 1000f -> { settingsControl = 9; onImportSettings() }
                 y in 579f..626f -> { settingsControl = 10; videoSound = !videoSound; syncVideoPlayback() }
+            }
+
+            9 -> when {
+                y in 130f..190f -> {
+                    settingsControl = 0
+                    val segment = (((x - 730f) / (375f / 3f)).toInt()).coerceIn(0, 2)
+                    switchProfile(segment)
+                }
+                y in 190f..250f -> {
+                    settingsControl = 1
+                    ambientMusicEnabled = !ambientMusicEnabled
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                y in 250f..315f -> {
+                    settingsControl = 2
+                    onPickAmbientMusic()
+                }
+                y in 315f..365f -> {
+                    settingsControl = 3
+                    ambientMusicVolume = (setSliderFromTap(x, 0f, 100f) / 100f).coerceIn(0f, 1f)
+                    onAmbientMusicChange(ambientMusicEnabled, ambientMusicVolume)
+                }
+                y in 365f..425f -> {
+                    settingsControl = 4
+                    smartAlbumsEnabled = !smartAlbumsEnabled
+                    refreshLibraryState(resetCurrent = false)
+                }
+                y in 425f..490f -> {
+                    settingsControl = 5
+                    qualityMinimum = setSliderFromTap(x, 0f, 90f).toInt().coerceIn(0, 90)
+                    activePhotosCacheKey = Long.MIN_VALUE
+                }
             }
         }
 
