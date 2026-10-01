@@ -13,7 +13,8 @@ object SmartSelectionPolicy {
         val takenAt: Long,
         val sourceLabel: String,
         val albumKey: String,
-        val mediaType: String
+        val mediaType: String,
+        val qualityScore: Int = -1
     )
 
     const val OFF = 0
@@ -49,6 +50,9 @@ object SmartSelectionPolicy {
                     pixels >= 2_000_000L -> 12.0
                     pixels in 1..699_999L -> -20.0
                     else -> 0.0
+                }
+                if (candidate.qualityScore >= 0) {
+                    score += candidate.qualityScore.coerceIn(0, 100) * 0.75
                 }
                 if (candidate.favorite) score += 55.0
                 if (candidate.mediaType == "image") score += 8.0
