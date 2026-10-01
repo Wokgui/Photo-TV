@@ -51,6 +51,34 @@ object NetworkLibrary {
         val contentType: String
     )
 
+    data class SourceHealth(
+        val label: String,
+        val lastSuccessMs: Long,
+        val lastFailureMs: Long,
+        val consecutiveFailures: Int,
+        val averageLatencyMs: Long,
+        val samples: Long,
+        val lastError: String
+    ) {
+        val state: String
+            get() = when {
+                consecutiveFailures >= 2 -> "hors ligne"
+                averageLatencyMs >= 2500L -> "très lent"
+                averageLatencyMs >= 1000L -> "lent"
+                else -> "OK"
+            }
+    }
+
+    private data class MutableSourceHealth(
+        var label: String,
+        var lastSuccessMs: Long = 0L,
+        var lastFailureMs: Long = 0L,
+        var consecutiveFailures: Int = 0,
+        var totalLatencyMs: Long = 0L,
+        var samples: Long = 0L,
+        var lastError: String = ""
+    )
+
     private val http = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
@@ -58,6 +86,7 @@ object NetworkLibrary {
 
     private val configs = linkedMapOf<String, Config>()
     private val entries = linkedMapOf<String, Entry>()
+    private val sourceHealth = linkedMapOf<String, MutableSourceHealth>()
 
     private const val MAX_NETWORK_ITEMS = 5000
     private const val MAX_RECURSION_DEPTH = 8
@@ -69,6 +98,57 @@ object NetworkLibrary {
     @Volatile private var remoteReads = 0L
     @Volatile private var remoteReadTotalMs = 0L
 
+    private fun recordHealthSuccess(cfg: Config, latencyMs: Long) {
+        synchronized(sourceHealth) {
+            val health = sourceHealth.getOrPut(cfg.key) {
+                MutableSourceHealth(label = sourceDisplayLabel(cfg))
+            }
+            health.label = sourceDisplayLabel(cfg)
+            health.lastSuccessMs = System.currentTimeMillis()
+            health.consecutiveFailures = 0
+            health.totalLatencyMs += latencyMs.coerceAtLeast(0L)
+            health.samples++
+            health.lastError = ""
+        }
+    }
+
+    private fun recordHealthFailure(cfg: Config, error: Throwable?) {
+        synchronized(sourceHealth) {
+            val health = sourceHealth.getOrPut(cfg.key) {
+                MutableSourceHealth(label = sourceDisplayLabel(cfg))
+            }
+            health.label = sourceDisplayLabel(cfg)
+            health.lastFailureMs = System.currentTimeMillis()
+            health.consecutiveFailures++
+            health.lastError = error?.message.orEmpty().take(160)
+        }
+    }
+
+    fun sourceHealthSnapshot(): List<SourceHealth> =
+        synchronized(sourceHealth) {
+            sourceHealth.values.map { health ->
+                SourceHealth(
+                    label = health.label,
+                    lastSuccessMs = health.lastSuccessMs,
+                    lastFailureMs = health.lastFailureMs,
+                    consecutiveFailures = health.consecutiveFailures,
+                    averageLatencyMs = if (health.samples <= 0L) 0L else health.totalLatencyMs / health.samples,
+                    samples = health.samples,
+                    lastError = health.lastError
+                )
+            }.sortedBy { it.label.lowercase() }
+        }
+
+    fun healthSummary(): String {
+        val all = sourceHealthSnapshot()
+        if (all.isEmpty()) return "aucune source réseau active"
+        return all.joinToString(" | ") { health ->
+            health.label + " : " + health.state +
+                " • " + health.averageLatencyMs + " ms" +
+                if (health.consecutiveFailures > 0) " • échecs " + health.consecutiveFailures else ""
+        }
+    }
+
     fun load(
         kind: Kind,
         baseUrl: String,
@@ -78,10 +158,17 @@ object NetworkLibrary {
         val clean = normalizeBase(kind, baseUrl)
         val cleanUser = username.trim()
         val cfg = Config(sourceKey(kind, clean, cleanUser), kind, clean, cleanUser, password)
-        val discovered = when (kind) {
-            Kind.WEBDAV -> listWebDavRecursive(cfg)
-            Kind.SMB -> listSmbRecursive(cfg)
-        }.take(MAX_NETWORK_ITEMS)
+        val started = android.os.SystemClock.elapsedRealtime()
+        val discovered = runCatching {
+            when (kind) {
+                Kind.WEBDAV -> listWebDavRecursive(cfg)
+                Kind.SMB -> listSmbRecursive(cfg)
+            }.take(MAX_NETWORK_ITEMS)
+        }.onSuccess {
+            recordHealthSuccess(cfg, android.os.SystemClock.elapsedRealtime() - started)
+        }.onFailure {
+            recordHealthFailure(cfg, it)
+        }.getOrThrow()
 
         synchronized(entries) {
             entries.entries.removeAll { it.value.sourceKey == cfg.key }
@@ -117,6 +204,7 @@ object NetworkLibrary {
         tmp.delete()
 
         val remoteStarted = android.os.SystemClock.elapsedRealtime()
+        var remoteError: Throwable? = null
         val downloaded = runCatching {
             openRemote(pair.first, pair.second.remoteUrl)?.use { input ->
                 tmp.outputStream().buffered().use { output ->
@@ -134,13 +222,19 @@ object NetworkLibrary {
             trimCache(cacheDir)
             offlineUntilMs = 0L
             true
-        }.getOrElse {
-            false
-        }
+        }.onFailure {
+            remoteError = it
+        }.getOrDefault(false)
 
+        val elapsed = (android.os.SystemClock.elapsedRealtime() - remoteStarted).coerceAtLeast(0L)
         remoteReads++
-        remoteReadTotalMs += (android.os.SystemClock.elapsedRealtime() - remoteStarted).coerceAtLeast(0L)
-        if (!downloaded) offlineUntilMs = now + 60_000L
+        remoteReadTotalMs += elapsed
+        if (downloaded) {
+            recordHealthSuccess(pair.first, elapsed)
+        } else {
+            offlineUntilMs = now + 60_000L
+            recordHealthFailure(pair.first, remoteError)
+        }
 
         return when {
             downloaded && cached.isFile -> cached.inputStream()
@@ -215,10 +309,17 @@ object NetworkLibrary {
 
         val all = mutableListOf<Entry>()
         snapshot.forEach { cfg ->
-            val discovered = when (cfg.kind) {
-                Kind.WEBDAV -> listWebDavRecursive(cfg)
-                Kind.SMB -> listSmbRecursive(cfg)
-            }.take(MAX_NETWORK_ITEMS)
+            val started = android.os.SystemClock.elapsedRealtime()
+            val discovered = runCatching {
+                when (cfg.kind) {
+                    Kind.WEBDAV -> listWebDavRecursive(cfg)
+                    Kind.SMB -> listSmbRecursive(cfg)
+                }.take(MAX_NETWORK_ITEMS)
+            }.onSuccess {
+                recordHealthSuccess(cfg, android.os.SystemClock.elapsedRealtime() - started)
+            }.onFailure {
+                recordHealthFailure(cfg, it)
+            }.getOrElse { emptyList() }
             all += discovered
         }
 
@@ -235,6 +336,7 @@ object NetworkLibrary {
         val key = sourceKey(kind, clean, username.trim())
         val removed = synchronized(entries) {
             configs.remove(key)
+            synchronized(sourceHealth) { sourceHealth.remove(key) }
             val label = entries.values.firstOrNull { it.sourceKey == key }?.sourceLabel
             entries.entries.removeAll { it.value.sourceKey == key }
             label
