@@ -22,6 +22,9 @@ Photo TV est un diaporama conçu pour Android TV / Google TV, avec une interface
 - Sélection de plusieurs albums et fusion des doublons exacts ou visuellement quasi identiques.
 - Favoris, masquage temporaire ou permanent, recherche et tri d'albums.
 - Sélection intelligente optionnelle : qualité, anti-répétition et souvenirs.
+- Diaporama intelligent autonome : adapte la sélection au moment de la journée et injecte ponctuellement des mosaïques sans modifier les réglages manuels.
+- Détection locale de scènes (portrait, nuit, mer / ciel, nature, intérieur, ville) pour diversifier le diaporama et les mosaïques.
+- Pré-analyse locale progressive des scènes et du recadrage intelligent, mise en cache entre les redémarrages.
 - Vue Souvenirs dédiée.
 - Règles par album selon le jour, l'heure, la durée et la transition.
 - Éditeur visuel des textes : police, taille, couleur, position, alignement, ombre et visibilité.
@@ -51,7 +54,7 @@ https://wokgui.github.io/Photo-TV/
 
 Le workflow GitHub Actions vérifie le preview Web, exécute les tests JVM et Android, contrôle les captures de régression, compile l'APK et vérifie sa signature.
 
-L'artefact produit s'appelle `Photo-TV-APK` et contient l'APK générique, un APK nommé `Photo-TV-v<version>.apk`, les informations de version / signature et un changelog récent.
+L'artefact produit s'appelle `Photo-TV-APK` et contient l'APK générique, un APK nommé `Photo-TV-v<version>.apk`, les informations de version / signature et un changelog récent. Après validation complète d'une version poussée sur `main`, la CI crée également automatiquement le tag et la GitHub Release correspondants.
 
 ## Remarque sur Google Photos
 
