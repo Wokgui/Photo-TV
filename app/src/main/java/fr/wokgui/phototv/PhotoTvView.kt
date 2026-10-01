@@ -767,7 +767,7 @@ class PhotoTvView(
             restoreSet("hiddenAlbums", hiddenAlbums)
             restoreSet("excludedUris", excludedUris)
             restoreSet("selectedAlbums", selectedAlbums)
-            val availableAlbums = library.flatMap { it.albums }.distinct()
+            val availableAlbums = albumIndex.keys.toList()
             if (availableAlbums.isNotEmpty()) {
                 selectedAlbums.retainAll(availableAlbums.toSet())
                 if (selectedAlbums.isEmpty()) selectedAlbums.addAll(availableAlbums)
@@ -4923,7 +4923,7 @@ class PhotoTvView(
                 invalidate()
             }
             "album_select" -> {
-                val all = library.flatMap { it.albums }.distinct()
+                val all = albumIndex.keys.toList()
                 selectedAlbums.clear()
                 if (commandValue.isBlank() || commandValue == "Tous les albums") {
                     selectedAlbums.addAll(all)
@@ -5068,7 +5068,7 @@ class PhotoTvView(
     }
 
     private fun toggleAllAlbums() {
-        val all = library.flatMap { it.albums }.distinct()
+        val all = albumIndex.keys.toList()
         if (all.isEmpty()) return
         if (selectedAlbums.containsAll(all)) selectedAlbums.clear()
         else {
