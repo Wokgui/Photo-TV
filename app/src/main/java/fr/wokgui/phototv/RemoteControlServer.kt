@@ -22,7 +22,11 @@ data class RemoteControlState(
     val imageMode: String,
     val albums: List<String>,
     val sources: List<String>,
-    val sourceFilter: String?
+    val sourceFilter: String?,
+    val transitions: List<String>,
+    val imageModes: List<String>,
+    val smartModes: List<String>,
+    val smartMode: String
 )
 
 class RemoteControlServer(
@@ -111,14 +115,18 @@ class RemoteControlServer(
                     "\"imageMode\":\"" + jsonEscape(st.imageMode) + "\"," +
                     "\"albums\":" + albumsJson + "," +
                     "\"sources\":" + sourcesJson + "," +
-                    "\"sourceFilter\":" + filterJson + "}"
+                    "\"sourceFilter\":" + filterJson + "," +
+                    "\"transitions\":" + st.transitions.joinToString(prefix = "[", postfix = "]") { "\\\"" + jsonEscape(it) + "\\\"" } + "," +
+                    "\"imageModes\":" + st.imageModes.joinToString(prefix = "[", postfix = "]") { "\\\"" + jsonEscape(it) + "\\\"" } + "," +
+                    "\"smartModes\":" + st.smartModes.joinToString(prefix = "[", postfix = "]") { "\\\"" + jsonEscape(it) + "\\\"" } + "," +
+                    "\"smartMode\":\\"" + jsonEscape(st.smartMode) + "\\"}"
                 respond(s, 200, "application/json; charset=utf-8", json)
                 return
             }
 
             if (path == "/action") {
                 val cmd = params["cmd"].orEmpty()
-                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev", "sources", "album_select", "source_select", "search", "network_prepare")) {
+                if (cmd in setOf("prev", "next", "pause", "stop", "favorite", "hide", "duration_down", "duration_up", "transition_next", "mode_next", "album_next", "history_prev", "sources", "album_select", "source_select", "search", "network_prepare", "transition_select", "mode_select", "smart_select", "start")) {
                     val value = params["value"].orEmpty()
                     onCommand(if (value.isBlank()) cmd else cmd + "|" + value)
                     respond(s, 200, "application/json; charset=utf-8", "{\"ok\":true}")
@@ -160,6 +168,10 @@ small{display:block;margin-top:18px;color:#9fb3c8}
 <button onclick="send('duration_up')">+ Durée</button>
 <button onclick="send('transition_next')">Transition</button>
 <button onclick="send('mode_next')">Affichage</button>
+<select id="transition" onchange="sendValue('transition_select',this.value)" style="grid-column:1/-1;padding:14px;border-radius:12px;font-size:17px"></select>
+<select id="imageMode" onchange="sendValue('mode_select',this.value)" style="grid-column:1/-1;padding:14px;border-radius:12px;font-size:17px"></select>
+<select id="smartMode" onchange="sendValue('smart_select',this.value)" style="grid-column:1/-1;padding:14px;border-radius:12px;font-size:17px"></select>
+<button class="wide" onclick="send('start')">Démarrer le diaporama</button>
 <button onclick="send('album_next')">Album suivant</button>
 <button onclick="send('history_prev')">Historique</button>
 <button onclick="send('sources')">Sources</button><button onclick="send('stop')">Arrêter</button>
@@ -209,6 +221,9 @@ function refresh(){
         s.title+' • '+s.album+' • '+s.duration+' s • '+s.transition+' • '+s.imageMode+(s.paused?' • pause':'');
       fillSelect('album',s.albums,s.album,'Tous les albums');
       fillSelect('source',s.sources,s.sourceFilter,'Toutes les sources');
+      fillSelect('transition',s.transitions,s.transition,'Transition');
+      fillSelect('imageMode',s.imageModes,s.imageMode,'Affichage');
+      fillSelect('smartMode',s.smartModes,s.smartMode,'Sélection intelligente');
     })
     .catch(()=>{});
 }
