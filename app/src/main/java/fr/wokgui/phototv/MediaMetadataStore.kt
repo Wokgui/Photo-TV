@@ -31,6 +31,12 @@ object MediaMetadataStore {
         val aspectRatio: Float
     )
 
+    data class CachedCropAnchor(
+        val x: Float,
+        val y: Float,
+        val weight: Float
+    )
+
     private const val MAX_ROWS = 50_000
     @Volatile private var helper: Helper? = null
     @Volatile var infoHits: Long = 0
@@ -44,6 +50,10 @@ object MediaMetadataStore {
     @Volatile var digestHits: Long = 0
         private set
     @Volatile var digestMisses: Long = 0
+        private set
+    @Volatile var cropHits: Long = 0
+        private set
+    @Volatile var cropMisses: Long = 0
         private set
 
     fun signature(context: Context, uri: Uri, mime: String): Signature {
@@ -165,6 +175,58 @@ object MediaMetadataStore {
         trimIfNeeded(context)
     }
 
+    fun readCropAnchor(
+        context: Context,
+        uri: Uri,
+        signature: Signature
+    ): CachedCropAnchor? {
+        if (!signature.cacheable) {
+            cropMisses++
+            return null
+        }
+        val row = db(context).query(
+            "smart_crop_anchors",
+            arrayOf("anchor_x", "anchor_y", "anchor_weight"),
+            "uri=? AND modified=? AND size=?",
+            arrayOf(uri.toString(), signature.modified.toString(), signature.size.toString()),
+            null, null, null,
+            "1"
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) null else CachedCropAnchor(
+                x = cursor.getFloat(0),
+                y = cursor.getFloat(1),
+                weight = cursor.getFloat(2)
+            )
+        }
+        if (row != null) cropHits++ else cropMisses++
+        return row
+    }
+
+    fun writeCropAnchor(
+        context: Context,
+        uri: Uri,
+        signature: Signature,
+        anchor: CachedCropAnchor
+    ) {
+        if (!signature.cacheable) return
+        val values = ContentValues().apply {
+            put("uri", uri.toString())
+            put("modified", signature.modified)
+            put("size", signature.size)
+            put("anchor_x", anchor.x.coerceIn(0f, 1f))
+            put("anchor_y", anchor.y.coerceIn(0f, 1f))
+            put("anchor_weight", anchor.weight.coerceAtLeast(.001f))
+            put("last_seen", System.currentTimeMillis())
+        }
+        db(context).insertWithOnConflict(
+            "smart_crop_anchors",
+            null,
+            values,
+            SQLiteDatabase.CONFLICT_REPLACE
+        )
+        trimIfNeeded(context)
+    }
+
     fun readExactDigest(
         context: Context,
         uri: Uri,
@@ -212,7 +274,7 @@ object MediaMetadataStore {
     }
 
     fun stats(): String =
-        "métadonnées $infoHits hits/$infoMisses miss • perceptuel $fingerprintHits/$fingerprintMisses • SHA-256 $digestHits/$digestMisses"
+        "métadonnées $infoHits hits/$infoMisses miss • perceptuel $fingerprintHits/$fingerprintMisses • crop $cropHits/$cropMisses • SHA-256 $digestHits/$digestMisses"
 
     private fun touch(context: Context, uri: Uri) {
         val values = ContentValues().apply { put("last_seen", System.currentTimeMillis()) }
@@ -243,6 +305,17 @@ object MediaMetadataStore {
             )
         }
 
+        val cropCount = database.rawQuery("SELECT COUNT(*) FROM smart_crop_anchors", null).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+        if (cropCount > MAX_ROWS) {
+            val remove = cropCount - MAX_ROWS
+            database.execSQL(
+                "DELETE FROM smart_crop_anchors WHERE uri IN (" +
+                    "SELECT uri FROM smart_crop_anchors ORDER BY last_seen ASC LIMIT $remove)"
+            )
+        }
+
         val digestCount = database.rawQuery("SELECT COUNT(*) FROM exact_digests", null).use { cursor ->
             if (cursor.moveToFirst()) cursor.getLong(0) else 0L
         }
@@ -270,7 +343,7 @@ object MediaMetadataStore {
     }
 
     private class Helper(context: Context) :
-        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 3) {
+        SQLiteOpenHelper(context, "photo_tv_media_cache.db", null, 4) {
 
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
@@ -313,9 +386,23 @@ object MediaMetadataStore {
                 )
                 """.trimIndent()
             )
+            db.execSQL(
+                """
+                CREATE TABLE smart_crop_anchors (
+                    uri TEXT PRIMARY KEY,
+                    modified INTEGER NOT NULL,
+                    size INTEGER NOT NULL,
+                    anchor_x REAL NOT NULL,
+                    anchor_y REAL NOT NULL,
+                    anchor_weight REAL NOT NULL,
+                    last_seen INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
             db.execSQL("CREATE INDEX idx_media_seen ON media_metadata(last_seen)")
             db.execSQL("CREATE INDEX idx_fp_seen ON visual_fingerprints(last_seen)")
             db.execSQL("CREATE INDEX idx_digest_seen ON exact_digests(last_seen)")
+            db.execSQL("CREATE INDEX idx_crop_seen ON smart_crop_anchors(last_seen)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -335,6 +422,22 @@ object MediaMetadataStore {
             }
             if (oldVersion < 3) {
                 db.delete("media_metadata", null, null)
+            }
+            if (oldVersion < 4) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS smart_crop_anchors (
+                        uri TEXT PRIMARY KEY,
+                        modified INTEGER NOT NULL,
+                        size INTEGER NOT NULL,
+                        anchor_x REAL NOT NULL,
+                        anchor_y REAL NOT NULL,
+                        anchor_weight REAL NOT NULL,
+                        last_seen INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS idx_crop_seen ON smart_crop_anchors(last_seen)")
             }
         }
     }
