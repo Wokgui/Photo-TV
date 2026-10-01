@@ -4296,7 +4296,11 @@ class PhotoTvView(
             }
             3 -> {
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
+                    settingsCategory = if (profileGuestProvider()) {
+                        8
+                    } else {
+                        (settingsCategory + dir).coerceIn(0, 8)
+                    }
                     settingsControl = settingsControl.coerceIn(0, settingsControlMax())
                 } else {
                     settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
@@ -4316,6 +4320,11 @@ class PhotoTvView(
                 return
             }
             page = target
+            if (target == 3 && profileGuestProvider()) {
+                settingsCategory = 8
+                settingsControl = 0
+                settingsColumn = 0
+            }
             invalidate()
             announceAccessibilityState()
             return
@@ -4389,7 +4398,7 @@ class PhotoTvView(
         5 -> 2
         6 -> 7
         7 -> if (advancedRulesOpen) 9 else 15
-        else -> 3
+        else -> if (profileGuestProvider()) 0 else 3
     }
 
     private fun adjustEditor(dir: Int) {
@@ -4663,7 +4672,9 @@ class PhotoTvView(
                         15 -> smartSelectionMode = (smartSelectionMode + 1) % 5
                         else -> adjustSettings(1)
                     }
-                    8 -> when (settingsControl) {
+                    8 -> if (profileGuestProvider()) {
+                        onManageProfiles()
+                    } else when (settingsControl) {
                         0 -> onManageProfiles()
                         1 -> {
                             musicEnabled = !musicEnabled
@@ -5405,7 +5416,7 @@ class PhotoTvView(
     private fun handleSettingsTap(x: Float, y: Float) {
         if (x in 32f..352f && y in 116f..566f) {
             val i = ((y - 116f) / 50f).toInt().coerceIn(0, 8)
-            settingsCategory = i
+            settingsCategory = if (profileGuestProvider()) 8 else i
             settingsColumn = 0
             settingsControl = settingsControl.coerceIn(0, settingsControlMax())
             invalidate()
@@ -5594,6 +5605,10 @@ class PhotoTvView(
             }
 
             8 -> when {
+                profileGuestProvider() -> {
+                    settingsControl = 0
+                    onManageProfiles()
+                }
                 y in 112f..205f -> {
                     settingsControl = 0
                     onManageProfiles()
