@@ -226,6 +226,10 @@ class PhotoTvView(
     private var quickMenuIndex = 0
     private var historyOverlayVisible = false
     private var historyOverlayIndex = 0
+    private var memoriesOverlayVisible = false
+    private var memoriesMode = 0
+    private var memoriesIndex = 0
+    private var memoriesTabFocus = true
     private var technicalDiagnosticsVisible = false
     private var infoPanelVisible = false
     private var slideStartedAt = System.currentTimeMillis()
@@ -1566,6 +1570,7 @@ class PhotoTvView(
         if (interactionDiagnostics) drawInteractionDiagnostics(canvas)
         loadingText?.let { drawLoading(canvas, it) }
         if (historyOverlayVisible) drawHistoryOverlay(canvas)
+        if (memoriesOverlayVisible) drawMemoriesOverlay(canvas)
         if (technicalDiagnosticsVisible) drawTechnicalDiagnosticsOverlay(canvas)
         if (remoteQrVisible) drawRemoteQrOverlay(canvas)
         canvas.restore()
@@ -1613,6 +1618,93 @@ class PhotoTvView(
             text(c, "Connexion réseau locale indisponible", 640f, 365f, 16f, Color.rgb(255, 183, 120), 1, 1)
         }
         text(c, "OK, Retour ou appui sur l’écran pour fermer", 640f, 580f, 12f, Color.rgb(163, 179, 198), 0, 1)
+    }
+
+    private fun memoriesItems(): List<PhotoItem> {
+        val items = activePhotos()
+        if (items.isEmpty()) return emptyList()
+        val now = java.util.Calendar.getInstance()
+        val month = now.get(java.util.Calendar.MONTH)
+        val day = now.get(java.util.Calendar.DAY_OF_MONTH)
+
+        return when (memoriesMode) {
+            0 -> items.filter { item ->
+                if (item.takenAt <= 0L) false else {
+                    val date = java.util.Calendar.getInstance().apply { timeInMillis = item.takenAt }
+                    date.get(java.util.Calendar.MONTH) == month &&
+                        date.get(java.util.Calendar.DAY_OF_MONTH) == day
+                }
+            }.sortedByDescending { it.takenAt }.take(12)
+            1 -> items.filter { item ->
+                if (item.takenAt <= 0L) false else {
+                    val date = java.util.Calendar.getInstance().apply { timeInMillis = item.takenAt }
+                    date.get(java.util.Calendar.MONTH) == month
+                }
+            }.sortedByDescending { it.takenAt }.take(12)
+            else -> items.sortedByDescending { item ->
+                val favoriteBoost = if (favorites.contains(item.uri.toString())) 10_000_000_000_000L else 0L
+                favoriteBoost +
+                    item.width.toLong().coerceAtLeast(0L) * item.height.toLong().coerceAtLeast(0L)
+            }.take(12)
+        }
+    }
+
+    private fun drawMemoriesOverlay(c: Canvas) {
+        fill(c, 0f, 0f, 1280f, 720f, Color.argb(220, 0, 0, 0))
+        round(c, 85f, 50f, 1195f, 665f, 22f, Color.rgb(9, 22, 35))
+        strokeRound(c, 85f, 50f, 1195f, 665f, 22f, Color.rgb(58, 91, 124), 1.5f)
+        text(c, "Souvenirs", 120f, 92f, 24f, Color.WHITE, 1)
+
+        val tabs = listOf("Ce jour-là", "Ce mois-ci", "Meilleures")
+        tabs.forEachIndexed { index, label ->
+            val x = 120f + index * 250f
+            val selected = memoriesMode == index
+            if (selected) {
+                gradientRound(c, x, 110f, x + 220f, 153f, 12f, Color.rgb(12, 128, 255), Color.rgb(7, 91, 237))
+            } else {
+                round(c, x, 110f, x + 220f, 153f, 12f, Color.rgb(18, 37, 57))
+            }
+            if (memoriesTabFocus && selected) {
+                strokeRound(c, x - 2f, 108f, x + 222f, 155f, 13f, Color.rgb(178, 220, 255), 2.5f)
+            }
+            text(c, label, x + 110f, 138f, 13f, Color.WHITE, 1, 1)
+        }
+
+        val items = memoriesItems()
+        if (items.isEmpty()) {
+            text(
+                c,
+                when (memoriesMode) {
+                    0 -> "Aucune photo prise à cette date dans les années précédentes."
+                    1 -> "Aucune photo datée pour ce mois."
+                    else -> "Aucune photo disponible."
+                },
+                640f, 375f, 16f, Color.rgb(180, 198, 218), 0, 1
+            )
+            text(c, "← → : catégorie • Retour : fermer", 640f, 625f, 11f, Color.rgb(147, 168, 193), 0, 1)
+            return
+        }
+
+        memoriesIndex = memoriesIndex.coerceIn(0, items.lastIndex)
+        items.forEachIndexed { index, item ->
+            val col = index % 4
+            val row = index / 4
+            val x = 120f + col * 255f
+            val y = 180f + row * 135f
+            val key = item.uri.toString()
+            val bmp = synchronized(highResCache) { highResCache[key] }
+                ?: synchronized(bitmapCache) { bitmapCache[key] }
+            if (bmp == null) preload(listOf(item.uri))
+            round(c, x, y, x + 230f, y + 112f, 10f, Color.rgb(6, 16, 27))
+            if (bmp != null && !bmp.isRecycled) {
+                drawBitmapCenterCrop(c, bmp, x + 3f, y + 3f, 224f, 82f, 7f)
+            }
+            if (!memoriesTabFocus && index == memoriesIndex) {
+                strokeRound(c, x - 3f, y - 3f, x + 233f, y + 115f, 12f, Color.rgb(76, 170, 255), 3f)
+            }
+            ellipsizedText(c, item.title, x + 9f, y + 103f, 212f, 10.5f, Color.WHITE)
+        }
+        text(c, "↑ vers catégories • OK : ouvrir • Retour : fermer", 640f, 625f, 11f, Color.rgb(147, 168, 193), 0, 1)
     }
 
     private fun recentItemsForOverlay(): List<PhotoItem> =
@@ -2785,12 +2877,13 @@ class PhotoTvView(
             "Informations",
             if (paused) "Reprendre" else "Pause",
             "Historique visuel",
-            "Diagnostics techniques"
+            "Diagnostics techniques",
+            "Souvenirs"
         )
         val x = 855f
         val y = 185f
         val w = 370f
-        val h = 402f
+        val h = 449f
         round(c, x, y, x + w, y + h, 18f, Color.argb(238, 5, 17, 29))
         strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(51, 80, 111), 1.5f)
         text(c, "Photo courante", x + 22f, y + 35f, 16f, Color.WHITE, 1)
@@ -3425,6 +3518,72 @@ class PhotoTvView(
             return handleLongAction()
         }
 
+        if (memoriesOverlayVisible) {
+            val items = memoriesItems()
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    if (memoriesTabFocus) {
+                        memoriesMode = (memoriesMode - 1 + 3) % 3
+                        memoriesIndex = 0
+                    } else if (items.isNotEmpty()) {
+                        memoriesIndex = (memoriesIndex - 1 + items.size) % items.size
+                    }
+                    invalidate()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (memoriesTabFocus) {
+                        memoriesMode = (memoriesMode + 1) % 3
+                        memoriesIndex = 0
+                    } else if (items.isNotEmpty()) {
+                        memoriesIndex = (memoriesIndex + 1) % items.size
+                    }
+                    invalidate()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (!memoriesTabFocus) {
+                        if (memoriesIndex < 4) memoriesTabFocus = true
+                        else if (items.isNotEmpty()) memoriesIndex = (memoriesIndex - 4).coerceAtLeast(0)
+                    }
+                    invalidate()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    if (memoriesTabFocus) {
+                        memoriesTabFocus = false
+                        memoriesIndex = 0
+                    } else if (items.isNotEmpty()) {
+                        memoriesIndex = (memoriesIndex + 4).coerceAtMost(items.lastIndex)
+                    }
+                    invalidate()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    if (memoriesTabFocus) {
+                        memoriesTabFocus = false
+                        memoriesIndex = 0
+                    } else {
+                        items.getOrNull(memoriesIndex)?.let { item ->
+                            val active = activePhotos()
+                            val idx = active.indexOfFirst { it.uri == item.uri }
+                            if (idx >= 0) currentPhoto = idx
+                            memoriesOverlayVisible = false
+                            preloadAroundCurrent()
+                            invalidate()
+                        }
+                    }
+                    true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    memoriesOverlayVisible = false
+                    invalidate()
+                    true
+                }
+                else -> true
+            }
+        }
+
         if (historyOverlayVisible) {
             val items = recentItemsForOverlay()
             return when (keyCode) {
@@ -3461,12 +3620,12 @@ class PhotoTvView(
         if (quickMenuVisible) {
             return when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP -> {
-                    quickMenuIndex = (quickMenuIndex - 1 + 7) % 7
+                    quickMenuIndex = (quickMenuIndex - 1 + 8) % 8
                     invalidate()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    quickMenuIndex = (quickMenuIndex + 1) % 7
+                    quickMenuIndex = (quickMenuIndex + 1) % 8
                     invalidate()
                     true
                 }
@@ -3578,6 +3737,13 @@ class PhotoTvView(
             6 -> {
                 quickMenuVisible = false
                 technicalDiagnosticsVisible = true
+            }
+            7 -> {
+                quickMenuVisible = false
+                memoriesMode = 0
+                memoriesIndex = 0
+                memoriesTabFocus = true
+                memoriesOverlayVisible = true
             }
         }
         savePrefs()
@@ -4349,7 +4515,6 @@ class PhotoTvView(
                 bitmapCache.remove(first.key)
             }
         }
-        softBitmap?.let { if (!it.isRecycled) it.recycle() }
         softBitmap = null
         softSource = null
         postInvalidate()
@@ -4832,6 +4997,34 @@ class PhotoTvView(
 
         if (event.actionMasked != MotionEvent.ACTION_UP) return true
 
+        if (memoriesOverlayVisible) {
+            if (y in 110f..155f && x in 120f..840f) {
+                memoriesMode = (((x - 120f) / 250f).toInt()).coerceIn(0, 2)
+                memoriesIndex = 0
+                memoriesTabFocus = true
+                invalidate()
+                return true
+            }
+            if (x in 120f..1140f && y in 180f..585f) {
+                val col = ((x - 120f) / 255f).toInt().coerceIn(0, 3)
+                val row = ((y - 180f) / 135f).toInt().coerceIn(0, 2)
+                val index = row * 4 + col
+                val items = memoriesItems()
+                items.getOrNull(index)?.let { item ->
+                    val active = activePhotos()
+                    val idx = active.indexOfFirst { it.uri == item.uri }
+                    if (idx >= 0) currentPhoto = idx
+                }
+                memoriesOverlayVisible = false
+                preloadAroundCurrent()
+                invalidate()
+                return true
+            }
+            memoriesOverlayVisible = false
+            invalidate()
+            return true
+        }
+
         if (historyOverlayVisible) {
             if (x in 145f..1125f && y in 145f..610f) {
                 val col = ((x - 145f) / 245f).toInt().coerceIn(0, 3)
@@ -4856,8 +5049,8 @@ class PhotoTvView(
         }
 
         if (quickMenuVisible) {
-            if (x in 855f..1225f && y in 241f..570f) {
-                quickMenuIndex = (((y - 241f) / 47f).toInt()).coerceIn(0, 6)
+            if (x in 855f..1225f && y in 241f..616f) {
+                quickMenuIndex = (((y - 241f) / 47f).toInt()).coerceIn(0, 7)
                 activateQuickMenu()
             } else {
                 quickMenuVisible = false
