@@ -1102,7 +1102,8 @@ class PhotoTvView(
             else -> {
                 val categories = listOf(
                     "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-                    "Heure et date", "Température", "Source des photos", "Avancés"
+                    "Heure et date", "Température", "Source des photos", "Avancés",
+                    "Profils et musique"
                 )
                 val category = categories[settingsCategory.coerceIn(0, categories.lastIndex)]
                 if (settingsColumn == 0) {
@@ -2003,9 +2004,9 @@ class PhotoTvView(
                 }
             }
             else -> {
-                repeat(8) { i ->
-                    val y = 116f + i * 55f
-                    box(32f, y, 352f, y + 50f, "Catégorie ${i + 1}", amber)
+                repeat(9) { i ->
+                    val y = 116f + i * 50f
+                    box(32f, y, 352f, y + 45f, "Catégorie " + (i + 1), amber)
                 }
                 if (settingsCategory == 7 && !advancedRulesOpen) {
                     box(825f, 85f, 1030f, 123f, "Zones diagnostic", magenta)
@@ -2431,15 +2432,16 @@ class PhotoTvView(
 
         val cats = listOf(
             "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-            "Heure et date", "Température", "Source des photos", "Avancés"
+            "Heure et date", "Température", "Source des photos", "Avancés",
+            "Profils et musique"
         )
         cats.forEachIndexed { i, name ->
-            val yy = sideY + 8f + i * 55f
+            val yy = sideY + 8f + i * 50f
             val active = settingsCategory == i
-            if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 50f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
-            if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 53f, 12f, Color.rgb(136, 197, 255), 2f)
-            drawSideIcon(c, sideX + 30f, yy + 25f, i)
-            text(c, name, sideX + 58f, yy + 31f, 14f, Color.WHITE)
+            if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 45f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
+            if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 48f, 12f, Color.rgb(136, 197, 255), 2f)
+            drawSideIcon(c, sideX + 30f, yy + 22f, i)
+            text(c, name, sideX + 58f, yy + 28f, 13.5f, Color.WHITE)
         }
 
         val panelX = 380f
@@ -2457,7 +2459,8 @@ class PhotoTvView(
             4 -> drawSettingsTime(c, panelX, panelY)
             5 -> drawSettingsTemp(c, panelX, panelY)
             6 -> drawSettingsSource(c, panelX, panelY, panelW)
-            else -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
+            7 -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
+            else -> drawSettingsProfilesMusic(c, panelX, panelY)
         }
     }
 
@@ -2723,6 +2726,57 @@ class PhotoTvView(
         settingsToggle(c, "Afficher les métadonnées", rule.showMetadata, x, y + 461f, 7)
         text(c, "Une photo multi-albums reste visible si au moins une règle autorise son affichage.", x + 22f, y + 528f, 10.5f, Color.rgb(128, 151, 178))
     }
+    private fun drawSettingsProfilesMusic(c: Canvas, x: Float, y: Float) {
+        text(c, "Profils et musique", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+
+        val profileLabel = profileNameProvider() + if (profileGuestProvider()) " • invités" else ""
+        settingsChoice(c, "Profil actif", profileLabel, x, y + 55f, 0)
+        text(
+            c,
+            if (profileGuestProvider()) "Les réglages sont verrouillés dans ce profil." else "OK : gérer, créer, renommer ou supprimer les profils.",
+            x + 22f,
+            y + 122f,
+            11f,
+            if (profileGuestProvider()) Color.rgb(255, 184, 105) else Color.rgb(135, 158, 184)
+        )
+
+        settingsToggle(c, "Musique d’ambiance", musicEnabled, x, y + 150f, 1)
+        settingsSlider(
+            c,
+            "Volume de la musique",
+            musicVolume.toFloat(),
+            0f,
+            100f,
+            musicVolume.toString() + " %",
+            x,
+            y + 208f,
+            2
+        )
+
+        val trackCount = musicTrackCountProvider()
+        settingsChoice(
+            c,
+            "Bibliothèque musicale",
+            if (trackCount == 0) "Aucun morceau" else trackCount.toString() + " morceau(x)",
+            x,
+            y + 270f,
+            3
+        )
+        controlBox(
+            c,
+            x + 350f,
+            y + 335f,
+            380f,
+            42f,
+            if (trackCount == 0) "Choisir des morceaux" else "Remplacer la sélection musicale",
+            settingsColumn == 1 && settingsControl == 3 && !navFocus
+        )
+
+        text(c, "La musique continue pendant les photos et se met en pause pour une vidéo avec son.", x + 22f, y + 415f, 11f, Color.rgb(135, 158, 184))
+        text(c, "Les albums intelligents apparaissent automatiquement dans Photos.", x + 22f, y + 445f, 11f, Color.rgb(135, 158, 184))
+        text(c, "Analyse locale uniquement : aucune photo n’est envoyée vers un service externe.", x + 22f, y + 475f, 11f, Color.rgb(135, 158, 184))
+    }
+
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
         text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         controlBox(c, x + 22f, y + 8f, 82f, 38f, "Sélect.", settingsColumn == 1 && settingsControl == 15 && !navFocus)
@@ -4171,7 +4225,7 @@ class PhotoTvView(
             }
             3 -> {
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 7)
+                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
                     settingsControl = settingsControl.coerceIn(0, settingsControlMax())
                 } else {
                     settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
@@ -4263,7 +4317,8 @@ class PhotoTvView(
         4 -> 9
         5 -> 2
         6 -> 7
-        else -> if (advancedRulesOpen) 9 else 15
+        7 -> if (advancedRulesOpen) 9 else 15
+        else -> 3
     }
 
     private fun adjustEditor(dir: Int) {
@@ -4433,6 +4488,16 @@ class PhotoTvView(
                 14 -> onSettingsPin()
                 15 -> smartSelectionMode = (smartSelectionMode + dir + 5) % 5
             }
+            8 -> when (settingsControl) {
+                1 -> {
+                    musicEnabled = !musicEnabled
+                    onMusicChanged(musicEnabled, musicVolume)
+                }
+                2 -> {
+                    musicVolume = (musicVolume + dir * 5).coerceIn(0, 100)
+                    onMusicChanged(musicEnabled, musicVolume)
+                }
+            }
         }
         scheduleSlideshow()
         scheduleInactivity()
@@ -4526,6 +4591,18 @@ class PhotoTvView(
                         14 -> onSettingsPin()
                         15 -> smartSelectionMode = (smartSelectionMode + 1) % 5
                         else -> adjustSettings(1)
+                    }
+                    8 -> when (settingsControl) {
+                        0 -> onManageProfiles()
+                        1 -> {
+                            musicEnabled = !musicEnabled
+                            onMusicChanged(musicEnabled, musicVolume)
+                        }
+                        2 -> {
+                            musicVolume = (musicVolume + 5).coerceIn(0, 100)
+                            onMusicChanged(musicEnabled, musicVolume)
+                        }
+                        3 -> onPickMusic()
                     }
                 }
             }
@@ -5256,7 +5333,7 @@ class PhotoTvView(
 
     private fun handleSettingsTap(x: Float, y: Float) {
         if (x in 32f..352f && y in 116f..566f) {
-            val i = ((y - 116f) / 55f).toInt().coerceIn(0, 7)
+            val i = ((y - 116f) / 50f).toInt().coerceIn(0, 8)
             settingsCategory = i
             settingsColumn = 0
             settingsControl = settingsControl.coerceIn(0, settingsControlMax())
@@ -5443,6 +5520,27 @@ class PhotoTvView(
                 y in 536f..578f && x < 1000f -> { settingsControl = 8; onExportSettings() }
                 y in 536f..578f && x >= 1000f -> { settingsControl = 9; onImportSettings() }
                 y in 579f..626f -> { settingsControl = 10; videoSound = !videoSound; syncVideoPlayback() }
+            }
+
+            8 -> when {
+                y in 112f..205f -> {
+                    settingsControl = 0
+                    onManageProfiles()
+                }
+                y in 205f..270f -> {
+                    settingsControl = 1
+                    musicEnabled = !musicEnabled
+                    onMusicChanged(musicEnabled, musicVolume)
+                }
+                y in 270f..345f -> {
+                    settingsControl = 2
+                    musicVolume = setSliderFromTap(x, 0f, 100f).toInt().coerceIn(0, 100)
+                    onMusicChanged(musicEnabled, musicVolume)
+                }
+                y in 345f..470f -> {
+                    settingsControl = 3
+                    onPickMusic()
+                }
             }
         }
 
