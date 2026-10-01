@@ -262,6 +262,10 @@ object TakeoutLibrary {
     }
 
     private fun mediaFingerprint(context: Context, uri: Uri): String? {
+        val mime = context.contentResolver.getType(uri).orEmpty()
+        val signature = MediaMetadataStore.signature(context, uri, mime)
+        MediaMetadataStore.readExactDigest(context, uri, signature)?.let { return it }
+
         return runCatching {
             val digest = java.security.MessageDigest.getInstance("SHA-256")
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -272,7 +276,9 @@ object TakeoutLibrary {
                     digest.update(buffer, 0, read)
                 }
             } ?: return@runCatching null
-            digest.digest().joinToString("") { "%02x".format(it) }
+            digest.digest().joinToString("") { "%02x".format(it) }.also { sha ->
+                MediaMetadataStore.writeExactDigest(context, uri, signature, sha)
+            }
         }.getOrNull()
     }
 
