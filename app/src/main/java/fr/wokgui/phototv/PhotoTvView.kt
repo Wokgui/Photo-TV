@@ -5053,7 +5053,7 @@ class PhotoTvView(
     }
 
     private fun toggleAllAlbums() {
-        val all = library.flatMap { it.albums }.distinct()
+        val all = allSelectableAlbumNames()
         if (all.isEmpty()) return
         if (selectedAlbums.containsAll(all)) selectedAlbums.clear()
         else {
