@@ -1144,6 +1144,7 @@ class PhotoTvView(
             "settingsCategory=$settingsCategory settingsColumn=$settingsColumn settingsControl=$settingsControl " +
             "rulesOpen=$advancedRulesOpen diagnostics=$interactionDiagnostics " +
             "slideshow=$slideshow paused=$paused currentPhoto=$currentPhoto quickMenu=$quickMenuVisible " +
+            "autonomous=$autonomousSlideshow analysis=$backgroundAnalysisDone/$backgroundAnalysisTotal " +
             "decodeFailures=$decodeFailureCount failedMedia=${failedMediaUris.size} " +
             "night=${isNightModeActive()} memory=${memoryDiagnostics()}"
 
@@ -4688,7 +4689,7 @@ class PhotoTvView(
                     height = item.height,
                     takenAt = item.takenAt,
                     mediaType = item.mediaType,
-                    scene = currentScene(item).orEmpty()
+                    scene = sceneCache[item.uri.toString()].orEmpty()
                 )
             }
         }
