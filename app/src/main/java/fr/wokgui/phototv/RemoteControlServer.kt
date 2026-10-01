@@ -14,6 +14,7 @@ import java.util.Collections
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 data class RemoteControlState(
     val title: String,
@@ -54,6 +55,7 @@ class RemoteControlServer(
     private val executor = Executors.newCachedThreadPool()
     private val serverSockets = Collections.synchronizedList(mutableListOf<ServerSocket>())
     private val rateWindows = ConcurrentHashMap<String, RateWindow>()
+    private val serverAttempts = AtomicInteger(0)
     @Volatile private var running = false
     @Volatile private var bindAddresses: List<Inet4Address> = emptyList()
 
@@ -62,6 +64,7 @@ class RemoteControlServer(
         val addresses = localIpv4Addresses()
         if (addresses.isEmpty()) return
         bindAddresses = addresses
+        serverAttempts.set(addresses.size)
         running = true
         addresses.forEach { address ->
             executor.execute { runServer(address) }
@@ -82,9 +85,13 @@ class RemoteControlServer(
         }
         synchronized(serverSockets) {
             serverSockets.removeAll { it.isClosed }
-            if (serverSockets.isEmpty() && running) {
-                running = false
-                bindAddresses = emptyList()
+        }
+        if (serverAttempts.decrementAndGet() == 0 && running) {
+            synchronized(serverSockets) {
+                if (serverSockets.isEmpty()) {
+                    running = false
+                    bindAddresses = emptyList()
+                }
             }
         }
     }
