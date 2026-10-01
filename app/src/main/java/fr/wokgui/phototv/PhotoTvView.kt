@@ -1460,11 +1460,7 @@ class PhotoTvView(
                 } else {
                     val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                     if (bmp != null && !bmp.isRecycled) {
-                        val scene = SceneClassifier.classify(
-                            bmp,
-                            item.width.takeIf { it > 0 } ?: bmp.width,
-                            item.height.takeIf { it > 0 } ?: bmp.height
-                        )
+                        val scene = OnDeviceSceneLabeler.classify(bmp)
                         sceneCache[key] = scene
                         MediaMetadataStore.writeScene(
                             context,
