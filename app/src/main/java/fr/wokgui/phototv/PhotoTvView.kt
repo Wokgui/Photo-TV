@@ -1200,7 +1200,7 @@ class PhotoTvView(
             else -> {
                 val categories = listOf(
                     "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-                    "Heure et date", "Température", "Source des photos", "Avancés"
+                    "Heure et date", "Température", "Source des photos", "Avancés", "Profils et audio"
                 )
                 val category = categories[settingsCategory.coerceIn(0, categories.lastIndex)]
                 if (settingsColumn == 0) {
@@ -1454,21 +1454,35 @@ class PhotoTvView(
                 val key = item.uri.toString()
                 val mime = runCatching { context.contentResolver.getType(item.uri) }.getOrNull().orEmpty()
                 val signature = MediaMetadataStore.signature(context, item.uri, mime)
-                val cached = MediaMetadataStore.readScene(context, item.uri, signature)
-                if (cached != null) {
-                    sceneCache[key] = cached.label
-                } else {
+                val cachedScene = MediaMetadataStore.readScene(context, item.uri, signature)
+                val cachedQuality = MediaMetadataStore.readQuality(context, item.uri, signature)
+                if (cachedScene != null) sceneCache[key] = cachedScene.label
+                if (cachedQuality != null) qualityScores[key] = cachedQuality.score
+                if (cachedScene == null || cachedQuality == null) {
                     val bmp = runCatching { decodeThumb(item.uri) }.getOrNull()
                     if (bmp != null && !bmp.isRecycled) {
-                        val scene = OnDeviceSceneLabeler.classify(bmp)
-                        sceneCache[key] = scene
-                        MediaMetadataStore.writeScene(
-                            context,
-                            item.uri,
-                            signature,
-                            MediaMetadataStore.CachedScene(scene, .65f)
-                        )
-                        smartCropAnchors(item, bmp)
+                        if (cachedScene == null) {
+                            val scene = OnDeviceSceneLabeler.classify(bmp)
+                            sceneCache[key] = scene
+                            MediaMetadataStore.writeScene(
+                                context,
+                                item.uri,
+                                signature,
+                                MediaMetadataStore.CachedScene(scene, .65f)
+                            )
+                            smartCropAnchors(item, bmp)
+                        }
+                        if (cachedQuality == null) {
+                            analyzeQualityIfNeeded(key, bmp)
+                            qualityScores[key]?.let { score ->
+                                MediaMetadataStore.writeQuality(
+                                    context,
+                                    item.uri,
+                                    signature,
+                                    MediaMetadataStore.CachedQuality(score)
+                                )
+                            }
+                        }
                         if (bmp !== demoBitmap && !bmp.isRecycled) bmp.recycle()
                     }
                 }
