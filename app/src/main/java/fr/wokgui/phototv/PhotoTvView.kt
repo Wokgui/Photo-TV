@@ -912,7 +912,26 @@ class PhotoTvView(
     private fun effectiveTransition(item: PhotoItem?): Int {
         val source = sourceRuleForItem(item)?.transitionIndex?.takeIf { it >= 0 }
         val album = ruleForItem(item)?.transitionIndex?.takeIf { it >= 0 }
-        return source ?: album ?: transitionIndex
+        val requested = source ?: album ?: transitionIndex
+
+        val rt = Runtime.getRuntime()
+        val freeRatio = ((rt.maxMemory() - (rt.totalMemory() - rt.freeMemory())).toDouble() /
+            rt.maxMemory().coerceAtLeast(1L).toDouble()).coerceIn(0.0, 1.0)
+        val jankRate = if (animatedFrameCount == 0L) 0L
+        else slowFrameCount * 100L / animatedFrameCount
+
+        return TransitionPolicy.choose(
+            requestedIndex = requested,
+            fadeIndex = 0,
+            noneIndex = transitions.lastIndex,
+            mediaType = item?.mediaType.orEmpty(),
+            imageMode = imageMode,
+            width = item?.width ?: 0,
+            height = item?.height ?: 0,
+            measuredFps = measuredFps,
+            jankPercent = jankRate,
+            freeRatio = freeRatio
+        )
     }
 
     private fun effectiveShowMetadata(item: PhotoItem?): Boolean =
@@ -2891,7 +2910,8 @@ class PhotoTvView(
             appendLine("Mode aléatoire: " + randomOrder)
             appendLine("Sélection intelligente: " + SmartSelectionPolicy.modeLabel(smartSelectionMode))
             appendLine("Santé réseau: " + NetworkLibrary.healthSummary())
-            appendLine("Transition: " + transitions[transitionIndex.coerceIn(0, transitions.lastIndex)])
+            appendLine("Transition demandée: " + transitions[transitionIndex.coerceIn(0, transitions.lastIndex)])
+            appendLine("Transition effective: " + transitions[effectiveTransition(currentItem()).coerceIn(0, transitions.lastIndex)])
             appendLine("Mode image: " + imageModeLabel())
             appendLine("Fichiers illisibles: " + decodeFailureCount)
             appendLine("Dernière erreur: " + lastDecodeFailure)
@@ -4716,6 +4736,8 @@ class PhotoTvView(
                     imageModes = imageModes,
                     smartModes = (0..4).map(SmartSelectionPolicy::modeLabel),
                     position = currentPhoto,
+                    total = activePhotos().size,
+                    favorite = item?.uri?.toString()?.let(favorites::contains) == true,
                     previewTitles = remotePreviewItems().map { it.title },
                     smartMode = SmartSelectionPolicy.modeLabel(smartSelectionMode)
                 )
