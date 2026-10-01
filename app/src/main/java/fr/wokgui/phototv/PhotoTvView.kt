@@ -2259,17 +2259,13 @@ class PhotoTvView(
         settingsToggle(c, "Masquer les informations la nuit", nightHideOverlays, x, y + 500f, 9)
     }
 
-    private fun isNightModeActive(now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean {
-        if (!nightModeEnabled) return false
-        val hour = now.get(java.util.Calendar.HOUR_OF_DAY)
-        return if (nightStartHour == nightEndHour) {
-            true
-        } else if (nightStartHour < nightEndHour) {
-            hour in nightStartHour until nightEndHour
-        } else {
-            hour >= nightStartHour || hour < nightEndHour
-        }
-    }
+    private fun isNightModeActive(now: java.util.Calendar = java.util.Calendar.getInstance()): Boolean =
+        NightSchedule.isActive(
+            enabled = nightModeEnabled,
+            startHour = nightStartHour,
+            endHour = nightEndHour,
+            currentHour = now.get(java.util.Calendar.HOUR_OF_DAY)
+        )
 
     private fun drawSettingsTemp(c: Canvas, x: Float, y: Float) {
         text(c, "Température", x + 22f, y + 34f, 18f, Color.WHITE, 1)
