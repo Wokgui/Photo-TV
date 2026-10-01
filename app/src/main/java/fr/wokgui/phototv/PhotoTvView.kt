@@ -323,6 +323,7 @@ class PhotoTvView(
     }
 
     private fun loadPrefs() {
+        SettingsMigration.migrate(prefs)
         durationSeconds = prefs.getInt("duration", 10)
         fixedImage = prefs.getBoolean("fixed", false)
         loop = prefs.getBoolean("loop", true)
