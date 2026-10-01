@@ -481,7 +481,7 @@ setInterval(refresh,2000);
         writer.write("X-Frame-Options: DENY\r\n")
         writer.write("Referrer-Policy: no-referrer\r\n")
         writer.write("Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n")
-        writer.write("Content-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n")
+        writer.write("Content-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'\r\n")
         writer.write("Connection: close\r\n\r\n")
         writer.flush()
         socket.getOutputStream().write(bytes)
