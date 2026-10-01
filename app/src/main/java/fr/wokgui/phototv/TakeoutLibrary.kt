@@ -53,10 +53,11 @@ object TakeoutLibrary {
     ) {
         val children = runCatching { dir.listFiles().toList() }.getOrDefault(emptyList())
         val directories = children.filter { it.isDirectory }
+        val reliableFolderSignature = FolderScanIndex.isReliable(children)
         val folderSignature = FolderScanIndex.signature(children, exactMode)
 
         state.foldersScanned++
-        FolderScanIndex.read(context, dir.uri, exactMode, folderSignature)?.let { cached ->
+        if (reliableFolderSignature) FolderScanIndex.read(context, dir.uri, exactMode, folderSignature)?.let { cached ->
             out += cached.items
             state.mediaFound += cached.items.size
             if (cached.items.isNotEmpty()) {
@@ -161,14 +162,16 @@ object TakeoutLibrary {
         }
 
         val folderItems = out.subList(folderOutputStart, out.size).toList()
-        FolderScanIndex.write(
-            context = context,
-            folderUri = dir.uri,
-            exactMode = exactMode,
-            signature = folderSignature,
-            items = folderItems,
-            missingExactAlbumMetadata = exactMode && media.isNotEmpty() && exactName == null
-        )
+        if (reliableFolderSignature) {
+            FolderScanIndex.write(
+                context = context,
+                folderUri = dir.uri,
+                exactMode = exactMode,
+                signature = folderSignature,
+                items = folderItems,
+                missingExactAlbumMetadata = exactMode && media.isNotEmpty() && exactName == null
+            )
+        }
 
         directories.forEach {
             scanFolder(context, it, out, exactMode, state, onProgress)
