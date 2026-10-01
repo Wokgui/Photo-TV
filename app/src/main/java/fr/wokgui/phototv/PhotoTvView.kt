@@ -5062,7 +5062,7 @@ class PhotoTvView(
                 width = item.width,
                 height = item.height,
                 takenAt = item.takenAt,
-                scene = currentScene(item).orEmpty()
+                scene = if (autonomousSlideshow) currentScene(item).orEmpty() else ""
             )
         }
         shuffleBag.addAll(
