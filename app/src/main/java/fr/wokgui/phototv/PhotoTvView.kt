@@ -1427,14 +1427,18 @@ class PhotoTvView(
                     append('|').append(item?.takenAt ?: 0L)
                     append("|tv1200x900")
                 }
-                ThumbnailDiskCache.read(context, persistentKey)?.let { bytes ->
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { return@runCatching it }
+                if (signature.cacheable) {
+                    ThumbnailDiskCache.read(context, persistentKey)?.let { bytes ->
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { return@runCatching it }
+                    }
                 }
                 val decoded = decodeBitmap(uri, 1200, 900)
                 if (decoded != null && !decoded.isRecycled) {
                     runCatching {
                         java.io.ByteArrayOutputStream().use { stream ->
-                            if (decoded.compress(Bitmap.CompressFormat.JPEG, 82, stream)) {
+                            if (signature.cacheable &&
+                                decoded.compress(Bitmap.CompressFormat.JPEG, 82, stream)
+                            ) {
                                 ThumbnailDiskCache.write(context, persistentKey, stream.toByteArray())
                             }
                         }
@@ -4585,7 +4589,9 @@ class PhotoTvView(
             append('|').append(item.width).append('x').append(item.height)
             append('|').append(item.takenAt)
         }
-        ThumbnailDiskCache.read(context, persistentKey)?.let { return it }
+        if (signature.cacheable) {
+            ThumbnailDiskCache.read(context, persistentKey)?.let { return it }
+        }
 
         val bmp = synchronized(highResCache) { highResCache[key] }
             ?: synchronized(bitmapCache) { bitmapCache[key] }
@@ -4610,7 +4616,9 @@ class PhotoTvView(
                 stream.toByteArray()
             }
         }.getOrNull().also { bytes ->
-            if (bytes != null) ThumbnailDiskCache.write(context, persistentKey, bytes)
+            if (bytes != null && signature.cacheable) {
+                ThumbnailDiskCache.write(context, persistentKey, bytes)
+            }
             if (out !== bmp && !out.isRecycled) out.recycle()
         }
     }
