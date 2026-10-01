@@ -19,6 +19,7 @@ class MusicController(private val context: Context) {
     private var player: MediaPlayer? = null
     private var index = 0
     private var pausedForVideo = false
+    private var hostPaused = false
 
     init {
         loadTracks()
@@ -62,8 +63,18 @@ class MusicController(private val context: Context) {
         }
     }
 
+    fun onHostPause() {
+        hostPaused = true
+        runCatching { player?.pause() }
+    }
+
+    fun onHostResume() {
+        hostPaused = false
+        sync()
+    }
+
     fun sync() {
-        if (!isEnabled() || pausedForVideo || tracks.isEmpty()) {
+        if (!isEnabled() || pausedForVideo || hostPaused || tracks.isEmpty()) {
             if (!isEnabled() || tracks.isEmpty()) stopPlayer()
             else runCatching { player?.pause() }
             return
@@ -83,7 +94,7 @@ class MusicController(private val context: Context) {
     }
 
     private fun playCurrent() {
-        if (!isEnabled() || pausedForVideo || tracks.isEmpty()) return
+        if (!isEnabled() || pausedForVideo || hostPaused || tracks.isEmpty()) return
         index = index.coerceIn(0, tracks.lastIndex)
         val uri = tracks[index]
         val volume = volume() / 100f
