@@ -50,6 +50,8 @@ class SettingsMigrationInstrumentedTest {
         assertEquals(85, prefs.getInt("night_dim", -1))
         assertEquals(60, prefs.getInt("auto_start", -1))
         assertTrue(prefs.getString("remote_token", "").orEmpty().length >= 16)
+        assertEquals(false, prefs.getBoolean("autonomous_slideshow", true))
+        assertEquals(true, prefs.getBoolean("background_analysis", false))
     }
 
     @Test
