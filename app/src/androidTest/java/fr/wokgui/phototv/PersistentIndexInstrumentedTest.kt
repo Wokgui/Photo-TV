@@ -41,6 +41,26 @@ class PersistentIndexInstrumentedTest {
     }
 
     @Test
+    fun exactDigestRoundTrips() {
+        val uri = Uri.parse("content://phototv-test/cache/digest-1")
+        val signature = MediaMetadataStore.Signature(500L, 900L, "image/jpeg")
+        val digest = "0123456789abcdef".repeat(4)
+
+        MediaMetadataStore.writeExactDigest(context, uri, signature, digest)
+        assertEquals(digest, MediaMetadataStore.readExactDigest(context, uri, signature))
+    }
+
+    @Test
+    fun unknownProviderSignatureIsNotPersisted() {
+        val uri = Uri.parse("content://phototv-test/cache/unstable")
+        val signature = MediaMetadataStore.Signature(0L, 0L, "image/jpeg")
+        val info = MediaInfo(width = 10, height = 10)
+
+        MediaMetadataStore.writeInfo(context, uri, signature, info)
+        assertEquals(null, MediaMetadataStore.readInfo(context, uri, signature))
+    }
+
+    @Test
     fun visualFingerprintRoundTrips() {
         val uri = Uri.parse("content://phototv-test/cache/fingerprint-1")
         val signature = MediaMetadataStore.Signature(100L, 200L, "image/png")
