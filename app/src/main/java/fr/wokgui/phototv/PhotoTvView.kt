@@ -1012,6 +1012,9 @@ class PhotoTvView(
         uriIndex = library.associateBy { it.uri.toString() }
         albumIndex = albums.mapValues { it.value.toList() }
         sourceIndex = sources.mapValues { it.value.toList() }
+        if (remoteSourceFilter != null && !sourceIndex.containsKey(remoteSourceFilter)) {
+            remoteSourceFilter = null
+        }
     }
 
     private fun tagSource(items: List<PhotoItem>, label: String): List<PhotoItem> =
