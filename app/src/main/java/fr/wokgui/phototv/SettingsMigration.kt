@@ -18,7 +18,7 @@ object SettingsMigration {
                 .putInt("transition", prefs.getInt("transition", 0).coerceIn(0, 15))
                 .putFloat("transition_seconds", prefs.getFloat("transition_seconds", 2f).coerceIn(.2f, 4f))
                 .putInt("zoom", prefs.getInt("zoom", 0).coerceIn(0, 2))
-                .putInt("image_mode", prefs.getInt("image_mode", 0).coerceIn(0, 3))
+                .putInt("image_mode", prefs.getInt("image_mode", 0).coerceIn(0, 6))
                 .putInt("smart_selection_mode", prefs.getInt("smart_selection_mode", 0).coerceIn(0, 4))
                 .putInt("date_format", prefs.getInt("date_format", 0).coerceIn(0, 2))
                 .putInt("night_start", prefs.getInt("night_start", 22).coerceIn(0, 23))
