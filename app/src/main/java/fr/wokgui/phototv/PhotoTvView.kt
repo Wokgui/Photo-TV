@@ -908,7 +908,14 @@ class PhotoTvView(
     private fun effectiveDuration(item: PhotoItem?): Int {
         val source = sourceRuleForItem(item)?.durationSeconds?.takeIf { it > 0 }
         val album = ruleForItem(item)?.durationSeconds?.takeIf { it > 0 }
-        return source ?: album ?: durationSeconds
+        val autonomous = if (autonomousSlideshow && item != null) {
+            AutonomousSlideshowPolicy.current(
+                slideNumber = autonomousSlideNumber,
+                scene = currentScene(item),
+                qualityScore = qualityCache[item.uri.toString()]?.score ?: -1
+            ).durationSecondsOverride
+        } else null
+        return source ?: album ?: autonomous ?: durationSeconds
     }
 
     private fun effectiveTransition(item: PhotoItem?): Int {
