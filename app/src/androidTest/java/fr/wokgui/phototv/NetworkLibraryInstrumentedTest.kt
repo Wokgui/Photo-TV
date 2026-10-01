@@ -26,6 +26,7 @@ class NetworkLibraryInstrumentedTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        NetworkLibrary.resetRuntimeStateForTests()
         NetworkLibrary.clearDiskCache(context)
         server = FakeWebDavServer()
         server.start()
@@ -35,6 +36,7 @@ class NetworkLibraryInstrumentedTest {
     fun tearDown() {
         server.close()
         NetworkLibrary.clearDiskCache(context)
+        NetworkLibrary.resetRuntimeStateForTests()
     }
 
     @Test
