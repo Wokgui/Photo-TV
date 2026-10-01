@@ -53,7 +53,7 @@ class PhotoTvView(
 ) : View(context) {
 
     companion object {
-        private const val SETTINGS_SCHEMA_VERSION = 3
+        private const val SETTINGS_SCHEMA_VERSION = 4
     }
 
     private data class Style(
@@ -103,6 +103,7 @@ class PhotoTvView(
     private val clockHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val highResExecutor = Executors.newSingleThreadExecutor()
+    private val analysisExecutor = Executors.newSingleThreadExecutor()
     private val bitmapCache = LinkedHashMap<String, Bitmap>(32, .75f, true)
     private val bitmapLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var bitmapCacheBytes = 0L
@@ -178,6 +179,10 @@ class PhotoTvView(
     private var loop = true
     private var randomOrder = false
     private var smartSelectionMode = SmartSelectionPolicy.OFF
+    private var autonomousSlideshow = false
+    private var backgroundAnalysis = true
+    private var autonomousSlideNumber = 0L
+    private var autonomousImageModeOverride: Int? = null
     private var transitionIndex = 0
     private var transitionSeconds = 2f
     private var kenBurns = true
@@ -217,6 +222,10 @@ class PhotoTvView(
     @Volatile private var lastDecodeFailure = ""
     private val recentUris = java.util.ArrayDeque<String>()
     private val smartCropAnchorCache = java.util.concurrent.ConcurrentHashMap<String, List<SmartCropPolicy.Anchor>>()
+    private val sceneCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @Volatile private var backgroundAnalysisGeneration = 0L
+    @Volatile private var backgroundAnalysisDone = 0
+    @Volatile private var backgroundAnalysisTotal = 0
     private var cacheHits = 0L
     private var cacheMisses = 0L
     private var decodeCount = 0L
@@ -336,6 +345,8 @@ class PhotoTvView(
         loop = prefs.getBoolean("loop", true)
         randomOrder = prefs.getBoolean("random", false)
         smartSelectionMode = prefs.getInt("smart_selection_mode", SmartSelectionPolicy.OFF).coerceIn(0, 4)
+        autonomousSlideshow = prefs.getBoolean("autonomous_slideshow", false)
+        backgroundAnalysis = prefs.getBoolean("background_analysis", true)
         transitionIndex = prefs.getInt("transition", 0).coerceIn(0, transitions.lastIndex)
         transitionSeconds = prefs.getFloat("transition_seconds", 2f)
         kenBurns = prefs.getBoolean("ken", true)
@@ -408,6 +419,8 @@ class PhotoTvView(
             putBoolean("loop", loop)
             putBoolean("random", randomOrder)
             putInt("smart_selection_mode", smartSelectionMode)
+            putBoolean("autonomous_slideshow", autonomousSlideshow)
+            putBoolean("background_analysis", backgroundAnalysis)
             putInt("transition", transitionIndex)
             putFloat("transition_seconds", transitionSeconds)
             putBoolean("ken", kenBurns)
@@ -611,6 +624,8 @@ class PhotoTvView(
         root.put("loop", loop)
         root.put("randomOrder", randomOrder)
         root.put("smartSelectionMode", smartSelectionMode)
+        root.put("autonomousSlideshow", autonomousSlideshow)
+        root.put("backgroundAnalysis", backgroundAnalysis)
         root.put("transitionIndex", transitionIndex)
         root.put("transitionSeconds", transitionSeconds.toDouble())
         root.put("kenBurns", kenBurns)
@@ -685,6 +700,8 @@ class PhotoTvView(
             loop = root.optBoolean("loop", loop)
             randomOrder = root.optBoolean("randomOrder", randomOrder)
             smartSelectionMode = root.optInt("smartSelectionMode", smartSelectionMode).coerceIn(0, 4)
+            autonomousSlideshow = root.optBoolean("autonomousSlideshow", autonomousSlideshow)
+            backgroundAnalysis = root.optBoolean("backgroundAnalysis", backgroundAnalysis)
             transitionIndex = root.optInt("transitionIndex", transitionIndex).coerceIn(0, transitions.lastIndex)
             transitionSeconds = root.optDouble("transitionSeconds", transitionSeconds.toDouble()).toFloat().coerceIn(.2f, 4f)
             kenBurns = root.optBoolean("kenBurns", kenBurns)
