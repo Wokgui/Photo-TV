@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -207,13 +209,37 @@ jobs:
           printf 'mode=%s\ncertificate_sha256=%s\n' "$MODE" "$ACTUAL" > signing-mode.txt
           cp "$APK" Photo-TV.apk
 
+      - name: Prepare versioned release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          BADGING="$("$AAPT" dump badging Photo-TV.apk | head -n 1)"
+          VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
+          VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          cp Photo-TV.apk "Photo-TV-v${VERSION_NAME}.apk"
+          printf 'versionName=%s\nversionCode=%s\ncommit=%s\n' \
+            "$VERSION_NAME" "$VERSION_CODE" "$GITHUB_SHA" > version-info.txt
+          {
+            echo "Photo TV v${VERSION_NAME}"
+            echo
+            echo "Recent changes:"
+            git log --no-merges -20 --pretty='- %s (%h)'
+          } > CHANGELOG.txt
+          echo "PHOTO_TV_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Photo-TV-APK
           path: |
             Photo-TV.apk
+            Photo-TV-v*.apk
             signing-mode.txt
+            version-info.txt
+            CHANGELOG.txt
           if-no-files-found: error
           retention-days: 30
 
