@@ -65,6 +65,9 @@ object NetworkLibrary {
     @Volatile private var cacheMaxBytes = 512L * 1024L * 1024L
     @Volatile private var cacheFreshMs = 24L * 60L * 60L * 1000L
     @Volatile private var offlineUntilMs = 0L
+    @Volatile private var cacheReadHits = 0L
+    @Volatile private var remoteReads = 0L
+    @Volatile private var remoteReadTotalMs = 0L
 
     fun load(
         kind: Kind,
@@ -104,6 +107,7 @@ object NetworkLibrary {
         val now = System.currentTimeMillis()
 
         if (cached.isFile && cached.length() > 0L && now - cached.lastModified() <= cacheFreshMs) {
+            cacheReadHits++
             cached.setLastModified(now)
             return cached.inputStream()
         }
@@ -112,6 +116,7 @@ object NetworkLibrary {
         val tmp = File(cacheDir, pair.second.id + ".tmp")
         tmp.delete()
 
+        val remoteStarted = android.os.SystemClock.elapsedRealtime()
         val downloaded = runCatching {
             openRemote(pair.first, pair.second.remoteUrl)?.use { input ->
                 tmp.outputStream().buffered().use { output ->
@@ -133,6 +138,8 @@ object NetworkLibrary {
             false
         }
 
+        remoteReads++
+        remoteReadTotalMs += (android.os.SystemClock.elapsedRealtime() - remoteStarted).coerceAtLeast(0L)
         if (!downloaded) offlineUntilMs = now + 60_000L
 
         return when {
@@ -177,6 +184,14 @@ object NetworkLibrary {
         cacheFreshMs = ttlHours.coerceIn(1, 168).toLong() * 60L * 60L * 1000L
     }
 
+    fun averageRemoteReadMs(): Long =
+        if (remoteReads <= 0L) 0L else remoteReadTotalMs / remoteReads
+
+    fun runtimeStats(): String {
+        val total = cacheReadHits + remoteReads
+        val cacheRate = if (total <= 0L) 0L else cacheReadHits * 100L / total
+        return "réseau cache " + cacheRate + "% • lecture distante " + averageRemoteReadMs() + " ms"
+    }
     fun cacheStats(context: Context): Pair<Int, Long> {
         val files = File(context.cacheDir, "network-media")
             .listFiles()
