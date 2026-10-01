@@ -965,6 +965,9 @@ class PhotoTvView(
     fun importSettingsForTest(raw: String): Boolean =
         if (automationMode) importSettingsJson(raw) else false
 
+    fun accessibilityDescriptionForTest(): String =
+        if (automationMode) accessibilityDescription() else ""
+
     fun openSettingsAfterUnlock() {
         page = 3
         navFocus = false
