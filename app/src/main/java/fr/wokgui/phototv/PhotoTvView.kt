@@ -537,6 +537,9 @@ class PhotoTvView(
         hiddenAlbums.clear()
         excludedUris.clear()
         savedSelectedAlbums.clear()
+        favoritesOnly = false
+        smartSelectionMode = SmartSelectionPolicy.OFF
+        imageMode = 0
         restoreProfileState(activeProfile)
         if (library.isNotEmpty()) refreshLibraryState(resetCurrent = true)
         activePhotosCacheKey = Long.MIN_VALUE
