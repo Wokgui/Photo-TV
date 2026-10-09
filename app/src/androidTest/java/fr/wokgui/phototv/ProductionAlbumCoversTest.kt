@@ -38,7 +38,26 @@ class ProductionAlbumCoversTest {
                 @Suppress("UNCHECKED_CAST") val result=albumMethod.invoke(ui) as List<Pair<String,Int>>
                 pairs=result
             }
+            // Local photo analysis can add a real automatic group after setLibrary.
+            // Verify the final list visible to the user, including those groups.
+            val analysisDeadline=SystemClock.uptimeMillis()+30_000L
+            var analysisFinished=false
+            do {
+                scenario!!.onActivity {
+                    val done=PhotoTvView::class.java.getDeclaredField("backgroundAnalysisDone").apply { isAccessible=true }.getInt(ui)
+                    val total=PhotoTvView::class.java.getDeclaredField("backgroundAnalysisTotal").apply { isAccessible=true }.getInt(ui)
+                    analysisFinished=done>=total
+                }
+                if(!analysisFinished)SystemClock.sleep(100)
+            } while(!analysisFinished && SystemClock.uptimeMillis()<analysisDeadline)
+            assertTrue("Local analysis must finish before checking the final album list",analysisFinished)
+            SystemClock.sleep(500)
+            scenario!!.onActivity {
+                @Suppress("UNCHECKED_CAST") val result=albumMethod.invoke(ui) as List<Pair<String,Int>>
+                pairs=result
+            }
             assertTrue(pairs.isNotEmpty())
+            assertTrue("Every displayed album must contain real photos",pairs.all { it.second>0 })
             pairs.forEachIndexed { index,pair ->
                 val deadline=SystemClock.uptimeMillis()+120_000L
                 scenario!!.onActivity { PhotoTvView::class.java.getDeclaredField("albumFocus").apply { isAccessible=true;setInt(ui,index) }; ui.invalidate() }
