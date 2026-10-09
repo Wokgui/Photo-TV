@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_IMPORT_SETTINGS = 45
         private const val REQ_LOCAL_FOLDER = 46
         private const val REQ_EXPORT_DIAGNOSTICS = 47
+        private const val REQ_TAKEOUT_ZIP = 48
     }
 
     private lateinit var ui: PhotoTvView
@@ -67,6 +68,18 @@ class MainActivity : AppCompatActivity() {
     private var settingsUnlockedSession = false
     private var automationMode = false
     private var lastResumeNetworkRefreshAt = 0L
+    private var driveGeneration = 0L
+    private var lastDriveCheck = 0L
+    private val driveHandler = Handler(Looper.getMainLooper())
+    private val driveWatcher = object : Runnable {
+        override fun run() {
+            if (!automationMode && DriveSync.generation(this@MainActivity) != driveGeneration) {
+                driveGeneration = DriveSync.generation(this@MainActivity)
+                refreshDriveLibrary()
+            }
+            driveHandler.postDelayed(this, 60_000L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +91,40 @@ class MainActivity : AppCompatActivity() {
 
         automationMode = intent.getBooleanExtra("phototv_test_mode", false)
 
+        showStartupLoading()
+        window.decorView.postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                initializeMainContent()
+                if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) startResumeTasks()
+            }
+        }, 650L)
+    }
+
+    private fun showStartupLoading() {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density + 0.5f).toInt()
+        val cover = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setBackgroundColor(android.graphics.Color.rgb(12, 15, 20))
+        }
+        cover.addView(android.widget.ImageView(this).apply {
+            setImageDrawable(applicationInfo.loadIcon(packageManager))
+        }, LinearLayout.LayoutParams(dp(112), dp(112)))
+        cover.addView(android.widget.TextView(this).apply {
+            text = "Photos TV"
+            textSize = 26f
+            setTextColor(android.graphics.Color.WHITE)
+            setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
+        cover.addView(android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(111, 137, 255))
+        }, LinearLayout.LayoutParams(dp(192), dp(4)).apply { topMargin = dp(12) })
+        setContentView(cover)
+    }
+
+    private fun initializeMainContent() {
         videoView = VideoView(this).apply {
             visibility = View.GONE
             isFocusable = false
@@ -98,6 +145,7 @@ class MainActivity : AppCompatActivity() {
             onExportSettings = { exportSettings() },
             onImportSettings = { importSettings() },
             onAlbumSearch = { requestAlbumSearch() },
+            onScreensaver = { chooseScreensaver() },
             onVideoPlayback = { uri, sound -> handleVideoPlayback(uri, sound) },
             onVideoPause = { pause -> handleVideoPause(pause) },
             supportsVideoPlayback = true,
@@ -145,7 +193,24 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::ui.isInitialized) startResumeTasks()
+    }
+
+    private fun startResumeTasks() {
         if (!automationMode) {
+            driveHandler.removeCallbacksAndMessages(null)
+            driveHandler.postDelayed(driveWatcher, 60_000L)
+            if (DriveSync.configured(this)) {
+                DriveSyncJob.schedule(this)
+                if (DriveSync.generation(this) != driveGeneration) {
+                    driveGeneration = DriveSync.generation(this)
+                    refreshDriveLibrary()
+                }
+                if (android.os.SystemClock.elapsedRealtime() - lastDriveCheck > 60_000L) {
+                    lastDriveCheck = android.os.SystemClock.elapsedRealtime()
+                    refreshDrive()
+                }
+            }
             val now = android.os.SystemClock.elapsedRealtime()
             if (NetworkLibrary.isConfigured() && now - lastResumeNetworkRefreshAt >= 30_000L) {
                 lastResumeNetworkRefreshAt = now
@@ -163,6 +228,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        driveHandler.removeCallbacksAndMessages(null)
         networkRefreshHandler.removeCallbacksAndMessages(null)
         super.onPause()
     }
@@ -235,7 +301,21 @@ class MainActivity : AppCompatActivity() {
     fun automationActiveCountForTest(): Int =
         if (::ui.isInitialized) ui.automationActiveCountForTest() else 0
 
+    private var videoRequestSerial=0L
     private fun handleVideoPlayback(uri: Uri?, sound: Boolean) {
+        val serial=++videoRequestSerial
+        if(uri!=null && DriveRemoteLibrary.isRemote(uri)) {
+            videoView.visibility=View.GONE
+            Thread {
+                val result=runCatching { DriveRemoteLibrary.materialize(this,uri) }
+                runOnUiThread {
+                    if(serial!=videoRequestSerial || isFinishing || isDestroyed)return@runOnUiThread
+                    result.onSuccess { handleVideoPlayback(Uri.fromFile(it),sound) }
+                        .onFailure { Toast.makeText(this,it.message ?: "Vidéo Drive indisponible.",Toast.LENGTH_LONG).show() }
+                }
+            }.start()
+            return
+        }
         if (uri == null) {
             runCatching { videoView.stopPlayback() }
             videoView.visibility = View.GONE
@@ -415,6 +495,7 @@ class MainActivity : AppCompatActivity() {
                 val label = labels.getOrNull(which) ?: return@setItems
                 val source = sources.getOrNull(which) ?: return@setItems
                 val activeLabel = when (source) {
+                    PhotoSourceSpec.Drive -> "Google Photos • Drive en ligne"
                     is PhotoSourceSpec.Tree -> sourceLabelForTree(source.uri, source.exactMode)
                     is PhotoSourceSpec.Picked -> "Sélection de photos"
                 }
@@ -677,9 +758,57 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun chooseScreensaver() {
+        AlertDialog.Builder(this)
+            .setTitle("Économiseur d’écran de la télé")
+            .setMessage("Pour utiliser le diaporama, choisissez Photo TV dans les réglages Android. Pour revenir à l’économiseur habituel, choisissez celui de la télé. Android exige cette sélection dans ses réglages ; ce bouton ne modifie pas le choix à votre place.")
+            .setPositiveButton("Choisir Photo TV") { _, _ -> openScreensaverSettings() }
+            .setNeutralButton("Économiseur de la télé") { _, _ -> openScreensaverSettings() }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun openScreensaverSettings() {
+        val actions = listOf(android.provider.Settings.ACTION_DREAM_SETTINGS, android.provider.Settings.ACTION_SETTINGS)
+        for (action in actions) {
+            if (runCatching { startActivity(Intent(action)); true }.getOrDefault(false)) return
+        }
+        Toast.makeText(this, "Ouvrez les réglages de la télé, puis Économiseur d’écran, et choisissez Photo TV ou l’économiseur habituel.", Toast.LENGTH_LONG).show()
+    }
+
     private fun openExactSource() {
         AlertDialog.Builder(this)
             .setTitle("Google Photos")
+            .setItems(arrayOf("Synchronisation automatique Drive", "Importer un dossier Takeout", "Importer les ZIP Takeout", "À propos de la connexion Google Photos")) { _, choice ->
+                if (choice == 0) { openDriveSync(); return@setItems }
+                if (choice == 2) {
+                    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        type = "*/*"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed"))
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }, REQ_TAKEOUT_ZIP)
+                    return@setItems
+                }
+                if (choice == 3) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Connexion Google Photos")
+                        .setMessage("La connexion automatique de Photo TV doit encore être autorisée par Google. Elle n’est pas active dans cette version. Les noms d’albums et les descriptions ne sont pas fournis par la connexion Ambient actuelle.")
+                        .setPositiveButton("Compris", null)
+                        .setNeutralButton("Conditions Google") { _, _ ->
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://developers.google.com/photos/partner-program/overview")))
+                        }
+                        .show()
+                } else openTakeoutImport()
+            }
+            .setNegativeButton("Fermer", null)
+            .show()
+    }
+
+    private fun openTakeoutImport() {
+        AlertDialog.Builder(this)
+            .setTitle("Importer une sauvegarde Takeout")
             .setMessage(
                 "Pour conserver les noms d'albums exactement tels qu'ils existent dans Google Photos, " +
                     "Photo TV utilise les métadonnées d'un export Google Takeout. " +
@@ -696,6 +825,65 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             .show()
+    }
+
+    private fun refreshDrive() {
+        Thread {
+            val changed = runCatching { DriveSync.sync(this) }.getOrDefault(false)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (changed) { driveGeneration = DriveSync.generation(this); refreshDriveLibrary() }
+            }
+        }.start()
+    }
+
+    private fun openDriveSync() {
+        AlertDialog.Builder(this)
+            .setTitle("Google Photos • Photo TV " + packageManager.getPackageInfo(packageName, 0).versionName)
+            .setMessage(DriveSync.statusText(this) + "\n\nLa télé lit les photos depuis les ZIP Takeout sur Drive. Seul un cache de 256 Mo est conservé sur l’appareil. Les albums masqués restent masqués. Internet est nécessaire pour les photos absentes du cache.")
+            .setPositiveButton(if (DriveSync.configured(this)) "Vérifier maintenant" else "Connecter Google") { _, _ ->
+                if (DriveSync.configured(this)) {
+                    refreshDrive()
+                    Toast.makeText(this, "Vérification des sauvegardes en cours…", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Préparation de la connexion Google…", Toast.LENGTH_SHORT).show()
+                    Thread {
+                        val result = runCatching { DriveSync.pair(this, DriveSync.DEFAULT_SERVICE_URL) }
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            result.onSuccess { url -> showDrivePairing(url) }
+                                .onFailure { Toast.makeText(this, it.message ?: "Connexion impossible.", Toast.LENGTH_LONG).show() }
+                        }
+                    }.start()
+                }
+            }
+            .setNeutralButton("Déconnecter") { _, _ ->
+                Thread {
+                    val result = runCatching { DriveSync.disconnect(this) }
+                    runOnUiThread { Toast.makeText(this, if (result.isSuccess) "Drive déconnecté. Imports locaux conservés." else "Déconnexion impossible ; réessayez avec Internet.", Toast.LENGTH_LONG).show() }
+                }.start()
+            }
+            .setNegativeButton("Fermer", null).show()
+    }
+
+    private fun showDrivePairing(url: String) {
+        val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(url, com.google.zxing.BarcodeFormat.QR_CODE, 320, 320)
+        val bitmap = android.graphics.Bitmap.createBitmap(320, 320, android.graphics.Bitmap.Config.ARGB_8888)
+        for (y in 0 until 320) for (x in 0 until 320) bitmap.setPixel(x, y, if (matrix[x,y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+        val image = android.widget.ImageView(this).apply { setImageBitmap(bitmap); setPadding(12,12,12,12) }
+        val dialog = AlertDialog.Builder(this).setTitle("Autoriser Google sur le téléphone")
+            .setMessage("Scannez ce QR code, autorisez la lecture de Drive et choisissez le dossier Takeout. Le lien expire après 20 minutes.")
+            .setView(image).setPositiveButton("J’ai terminé") { _, _ ->
+                Thread {
+                    val result = runCatching { DriveSync.connected(this) }
+                    runOnUiThread {
+                        if (result.getOrDefault(false)) { DriveSyncJob.schedule(this); refreshDrive(); Toast.makeText(this, "Télé connectée. Les nouveaux exports seront indexés automatiquement.", Toast.LENGTH_LONG).show() }
+                        else Toast.makeText(this, "Terminez l’autorisation Google et le choix du dossier, puis vérifiez de nouveau.", Toast.LENGTH_LONG).show()
+                    }
+                }.start()
+            }.setNeutralButton("Ouvrir le lien") { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .setNegativeButton("Fermer", null).create()
+        dialog.show()
     }
 
     private fun openLocalFolder() {
@@ -717,7 +905,7 @@ class MainActivity : AppCompatActivity() {
                     Intent.EXTRA_MIME_TYPES,
                     arrayOf(
                         "image/jpeg", "image/png", "image/webp", "image/gif",
-                        "image/heic", "image/heif", "video/mp4", "video/webm"
+                        "image/heic", "image/heif", "image/avif"
                     )
                 )
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -728,6 +916,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        driveHandler.removeCallbacksAndMessages(null)
         networkRefreshHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -738,6 +927,39 @@ class MainActivity : AppCompatActivity() {
         if (resultCode != Activity.RESULT_OK || data == null) return
 
         when (requestCode) {
+            REQ_TAKEOUT_ZIP -> {
+                val parts = mutableListOf<Uri>()
+                data.clipData?.let { clip ->
+                    for (i in 0 until clip.itemCount) parts += clip.getItemAt(i).uri
+                }
+                if (parts.isEmpty()) data.data?.let { parts += it }
+                ui.showLoading("Décompression des archives Takeout…")
+                Thread {
+                    val folder = java.io.File(filesDir, "takeout-imports/${java.util.UUID.randomUUID()}")
+                    folder.parentFile?.mkdirs()
+                    val result = runCatching {
+                        TakeoutZip.extract(parts.distinct().map { uri ->
+                            { contentResolver.openInputStream(uri) ?: error("Archive inaccessible.") }
+                        }, folder, (filesDir.usableSpace - 256L * 1024 * 1024).coerceAtLeast(0))
+                        val uri = Uri.fromFile(folder)
+                        val library = TakeoutLibrary.load(this, uri, exactMode = true)
+                        require(library.items.isNotEmpty()) { "Aucune photo compatible dans les archives." }
+                        SourceStore.addTree(this, uri, exactMode = true)
+                        library
+                    }
+                    if (result.isFailure) folder.deleteRecursively()
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        result.onSuccess { library ->
+                            ui.upsertSourceLibrary(library.items, exactAlbums = library.exactAlbums, fallbackSourceName = "Takeout • archive importée")
+                            Toast.makeText(this, "${library.items.size} média(s) importé(s).", Toast.LENGTH_LONG).show()
+                        }.onFailure { failure ->
+                            ui.showLoading("Import interrompu : ${failure.message ?: "archive invalide"}")
+                            Toast.makeText(this, failure.message ?: "Import impossible.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+            }
             REQ_EXPORT_DIAGNOSTICS -> data.data?.let { uri ->
                 val text = pendingDiagnosticText ?: ui.diagnosticReport()
                 val ok = runCatching {
@@ -827,29 +1049,44 @@ class MainActivity : AppCompatActivity() {
         return (if (exactMode) "Takeout" else "Dossier") + " • " + name
     }
 
+    private fun refreshDriveLibrary() {
+        Thread {
+            val items = DriveRemoteLibrary.load(this)
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) ui.upsertSourceLibrary(items, exactAlbums = true, fallbackSourceName = "Google Photos • Drive en ligne")
+            }
+        }.start()
+    }
+
     private fun restoreSavedSource() {
         val sources = SourceStore.loadAll(this)
         if (sources.isEmpty()) return
         Thread {
             val loaded = mutableListOf<Triple<List<PhotoItem>, Boolean, String>>()
+            var unavailableSources = 0
             sources.forEach { source ->
-                when (source) {
-                    is PhotoSourceSpec.Tree -> {
-                        val result = TakeoutLibrary.load(this, source.uri, exactMode = source.exactMode)
-                        loaded += Triple(result.items, result.exactAlbums, sourceLabelForTree(source.uri, source.exactMode))
+                runCatching {
+                    when (source) {
+                        PhotoSourceSpec.Drive -> Triple(DriveRemoteLibrary.load(this), true, "Google Photos • Drive en ligne")
+                        is PhotoSourceSpec.Tree -> {
+                            val result = TakeoutLibrary.load(this, source.uri, exactMode = source.exactMode)
+                            Triple(result.items, result.exactAlbums, sourceLabelForTree(source.uri, source.exactMode))
+                        }
+                        is PhotoSourceSpec.Picked -> Triple(PickedLibrary.load(this, source.uris), false, "Sélection de photos")
                     }
-                    is PhotoSourceSpec.Picked -> {
-                        loaded += Triple(PickedLibrary.load(this, source.uris), false, "Sélection de photos")
-                    }
-                }
+                }.onSuccess { loaded += it }.onFailure { unavailableSources++ }
             }
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 loaded.forEachIndexed { index, value ->
                     if (index == 0) {
                         ui.setLibrary(value.first, exactAlbums = value.second, sourceName = value.third)
                     } else {
                         ui.upsertSourceLibrary(value.first, exactAlbums = value.second, fallbackSourceName = value.third)
                     }
+                }
+                if (unavailableSources > 0) {
+                    Toast.makeText(this, "$unavailableSources source(s) momentanément inaccessible(s). Les autres albums restent disponibles.", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()

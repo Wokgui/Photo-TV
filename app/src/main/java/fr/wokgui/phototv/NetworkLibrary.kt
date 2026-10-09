@@ -182,7 +182,7 @@ object NetworkLibrary {
             configs[cfg.key] = cfg
         }
 
-        return discovered.map(::toPhotoItem)
+        return discovered.filter { MediaTypeDetector.isPhotoType(it.mediaType) }.map(::toPhotoItem)
     }
 
     fun open(context: Context, uri: Uri): InputStream? {
@@ -359,7 +359,7 @@ object NetworkLibrary {
             all.forEach { entries[it.id] = it }
         }
 
-        return all.map(::toPhotoItem)
+        return all.filter { MediaTypeDetector.isPhotoType(it.mediaType) }.map(::toPhotoItem)
     }
 
     fun removeSource(kind: Kind, baseUrl: String, username: String): String? {
@@ -671,7 +671,7 @@ object NetworkLibrary {
         runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
 
     private fun mediaType(name: String, contentType: String?): String? =
-        MediaTypeDetector.classify(name, contentType)
+        MediaTypeDetector.classifyPhoto(name, contentType)
 
     private fun stripExtension(name: String): String {
         val i = name.lastIndexOf('.')

@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 sealed class PhotoSourceSpec {
+    data object Drive : PhotoSourceSpec()
     data class Tree(val uri: Uri, val exactMode: Boolean) : PhotoSourceSpec()
     data class Picked(val uris: List<Uri>) : PhotoSourceSpec()
 }
@@ -31,6 +32,11 @@ object SourceStore {
         val distinct = uris.distinct()
         saveAll(context, listOf(PhotoSourceSpec.Picked(distinct)))
         writeLegacyPicked(context, distinct)
+    }
+
+    fun addDrive(context: Context) {
+        val current=loadAll(context).filter { it !is PhotoSourceSpec.Drive } + PhotoSourceSpec.Drive
+        saveAll(context,current)
     }
 
     fun addTree(context: Context, uri: Uri, exactMode: Boolean) {
@@ -63,6 +69,7 @@ object SourceStore {
     fun describe(context: Context): List<String> =
         loadAll(context).map { source ->
             when (source) {
+                PhotoSourceSpec.Drive -> "Google Photos • Drive en ligne"
                 is PhotoSourceSpec.Tree -> {
                     val decoded = Uri.decode(source.uri.lastPathSegment.orEmpty())
                     val name = decoded.substringAfterLast(':').substringAfterLast('/').ifBlank { "Dossier" }
@@ -93,6 +100,7 @@ object SourceStore {
         val arr = JSONArray()
         sources.forEach { source ->
             when (source) {
+                PhotoSourceSpec.Drive -> arr.put(JSONObject().put("type","drive"))
                 is PhotoSourceSpec.Tree -> arr.put(JSONObject().apply {
                     put("type", "tree")
                     put("uri", source.uri.toString())
@@ -118,6 +126,7 @@ object SourceStore {
                 for (i in 0 until arr.length()) {
                     val o = arr.optJSONObject(i) ?: continue
                     when (o.optString("type")) {
+                        "drive" -> add(PhotoSourceSpec.Drive)
                         "tree" -> {
                             val uri = o.optString("uri").takeIf { it.isNotBlank() }?.let(Uri::parse) ?: continue
                             add(PhotoSourceSpec.Tree(uri, o.optBoolean("exact", false)))

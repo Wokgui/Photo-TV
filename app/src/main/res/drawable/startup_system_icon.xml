@@ -1,0 +1,5 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android draws non-adaptive splash drawables in a 288dp container. -->
+    <item><shape><size android:width="288dp" android:height="288dp" /><solid android:color="@android:color/transparent" /></shape></item>
+    <item android:width="112dp" android:height="112dp" android:gravity="center" android:drawable="@mipmap/ic_launcher" />
+</layer-list>

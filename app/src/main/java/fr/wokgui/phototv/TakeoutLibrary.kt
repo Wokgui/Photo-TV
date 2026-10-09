@@ -9,6 +9,31 @@ import java.io.InputStreamReader
 import java.util.LinkedHashMap
 
 object TakeoutLibrary {
+    internal fun metadataFor(mediaName: String, metadata: List<Pair<String, JSONObject>>): JSONObject? =
+        metadata.firstOrNull { (name, _) ->
+                name.equals("$mediaName.json", true) ||
+                    name.equals("$mediaName.supplemental-metadata.json", true)
+            }?.second
+            ?: metadata.filter { (_, json) -> json.optString("title").trim() == mediaName }
+                .singleOrNull()?.second
+
+    internal fun importedAlbumName(metadata: List<Pair<String, JSONObject>>): String? {
+        val albumFiles = setOf("metadata.json", "métadonnées.json", "metadatos.json", "metadades.json",
+            "metadati.json", "metadáta.json", "metadaten.json", "метаданные.json", "метаданни.json")
+        for ((name, json) in metadata) {
+            val wrapped = json.optJSONObject("albumData")?.optString("title")?.trim().orEmpty()
+            if (wrapped.isNotBlank()) return wrapped
+            if (name.lowercase(java.util.Locale.ROOT) in albumFiles && !json.has("photoTakenTime") && !json.has("url")) {
+                json.optString("title").trim().takeIf { it.isNotBlank() }?.let { return it }
+            }
+        }
+        return null
+    }
+
+    internal fun importedTitle(mediaName: String, metadata: JSONObject?): String =
+        metadata?.optString("title")?.trim()?.takeIf { it.isNotBlank() }
+            ?: stripExtension(mediaName)
+
     data class LoadResult(
         val items: List<PhotoItem>,
         val exactAlbums: Boolean,
@@ -21,14 +46,18 @@ object TakeoutLibrary {
         exactMode: Boolean = true,
         onProgress: ((foldersScanned: Int, mediaFound: Int) -> Unit)? = null
     ): LoadResult {
-        val root = DocumentFile.fromTreeUri(context, treeUri)
+        val root = if (treeUri.scheme == "file") {
+            val folder = java.io.File(treeUri.path ?: return LoadResult(emptyList(), false, 0)).canonicalFile
+            require(folder.path.startsWith(context.filesDir.canonicalPath + java.io.File.separator))
+            DocumentFile.fromFile(folder)
+        } else DocumentFile.fromTreeUri(context, treeUri)
             ?: return LoadResult(emptyList(), exactAlbums = false, missingExactAlbumFolders = 0)
 
         val raw = mutableListOf<PhotoItem>()
         val exactState = ExactState()
         scanFolder(context, root, raw, exactMode, exactState, onProgress)
 
-        val merged = mergeAlbumMemberships(context, raw)
+        val merged = mergeAlbumMemberships(context, raw, treeUri.path?.endsWith("/drive-takeout") == true)
         return LoadResult(
             items = VisualDuplicateDetector.merge(context, merged),
             exactAlbums = exactMode && exactState.foldersWithMedia > 0 && exactState.missingAlbumMetadata == 0,
@@ -52,14 +81,15 @@ object TakeoutLibrary {
         onProgress: ((foldersScanned: Int, mediaFound: Int) -> Unit)?
     ) {
         val children = runCatching { dir.listFiles().toList() }.getOrDefault(emptyList())
-        val directories = children.filter { it.isDirectory }
+        val directories = children.filter { it.isDirectory }.sortedBy { it.lastModified() }
         val reliableFolderSignature = FolderScanIndex.isReliable(children)
         val folderSignature = FolderScanIndex.signature(children, exactMode)
 
         state.foldersScanned++
         if (reliableFolderSignature) FolderScanIndex.read(context, dir.uri, exactMode, folderSignature)?.let { cached ->
-            out += cached.items
-            state.mediaFound += cached.items.size
+                val photos = cached.items.filter { MediaTypeDetector.isPhotoType(it.mediaType) }
+                out += photos
+                state.mediaFound += photos.size
             if (cached.items.isNotEmpty()) {
                 state.foldersWithMedia++
                 if (exactMode && cached.missingExactAlbumMetadata) {
@@ -74,7 +104,7 @@ object TakeoutLibrary {
         }
 
         val media = children.filter {
-            it.isFile && MediaTypeDetector.classify(it.name, it.type) != null
+            it.isFile && MediaTypeDetector.classifyPhoto(it.name, it.type) != null
         }
         val jsons = children.filter { it.isFile && it.name?.endsWith(".json", true) == true }
 
@@ -98,20 +128,11 @@ object TakeoutLibrary {
             if (exactMode && exactName == null) state.missingAlbumMetadata++
         }
 
-        val byDeclaredTitle = linkedMapOf<String, JSONObject>()
-        parsedJson.forEach { (_, root) ->
-            root.optString("title").trim().takeIf { it.isNotBlank() }?.let {
-                byDeclaredTitle[it] = root
-            }
-        }
+        val namedMetadata = parsedJson.map { (file, json) -> file.name.orEmpty() to json }
 
         for (file in media) {
             val mediaName = file.name ?: continue
-            val filenameRoot = parsedJson.firstOrNull { (json, _) ->
-                val n = json.name?.removeSuffix(".json").orEmpty()
-                n == mediaName || n.startsWith(mediaName)
-            }?.second
-            val rootJson = filenameRoot ?: byDeclaredTitle[mediaName]
+            val rootJson = metadataFor(mediaName, namedMetadata)
 
             val mime = file.type.orEmpty()
             val info = MediaInfoReader.read(context, file.uri, mime, mediaName)
@@ -148,7 +169,7 @@ object TakeoutLibrary {
 
             out += PhotoItem(
                 uri = file.uri,
-                title = stripExtension(mediaName),
+                title = importedTitle(mediaName, rootJson),
                 albums = linkedSetOf(albumName),
                 takenAt = takenAt,
                 description = description,
@@ -188,21 +209,10 @@ object TakeoutLibrary {
     }
 
     private fun exactAlbumName(parsed: List<Pair<DocumentFile, JSONObject>>): String? {
-        val ordered = parsed.sortedBy { (file, _) ->
-            if (file.name.equals("metadata.json", true)) 0 else 1
-        }
-        for ((_, root) in ordered) {
-            val exact = root
-                .optJSONObject("albumData")
-                ?.optString("title")
-                ?.trim()
-                .orEmpty()
-            if (exact.isNotBlank()) return exact
-        }
-        return null
+        return importedAlbumName(parsed.map { (file, json) -> file.name.orEmpty() to json })
     }
 
-    private fun mergeAlbumMemberships(context: Context, raw: List<PhotoItem>): List<PhotoItem> {
+    private fun mergeAlbumMemberships(context: Context, raw: List<PhotoItem>, preferLatest: Boolean = false): List<PhotoItem> {
         val roughGroups = raw.groupBy { item ->
             if (item.sourceId.isNotBlank()) {
                 "source:" + item.sourceId
@@ -220,12 +230,12 @@ object TakeoutLibrary {
         }
 
         fun combine(existing: PhotoItem, item: PhotoItem): PhotoItem =
-            existing.copy(
+            (if (preferLatest) item else existing).copy(
                 albums = LinkedHashSet<String>().apply {
                     addAll(existing.albums)
                     addAll(item.albums)
                 },
-                description = existing.description.ifBlank { item.description },
+                description = if (preferLatest) item.description else existing.description.ifBlank { item.description },
                 location = existing.location.ifBlank { item.location },
                 camera = existing.camera.ifBlank { item.camera },
                 width = if (existing.width > 0) existing.width else item.width,

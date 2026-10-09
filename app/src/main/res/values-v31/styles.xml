@@ -1,0 +1,13 @@
+<resources>
+<style name="Theme.PhotoTV" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <item name="android:fontFamily">sans</item>
+    <item name="android:windowFullscreen">true</item>
+    <item name="android:windowActionModeOverlay">true</item>
+    <item name="android:navigationBarColor">#0C0F14</item>
+    <item name="android:statusBarColor">#0C0F14</item>
+    <item name="android:colorAccent">#6F89FF</item>
+    <item name="android:windowBackground">#0C0F14</item>
+    <item name="android:windowSplashScreenBackground">#0C0F14</item>
+    <item name="android:windowSplashScreenAnimatedIcon">@drawable/transparent_splash</item>
+</style>
+</resources>

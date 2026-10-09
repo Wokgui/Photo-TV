@@ -46,6 +46,7 @@ class PhotoTvView(
     private val onExportSettings: () -> Unit = {},
     private val onImportSettings: () -> Unit = {},
     private val onAlbumSearch: () -> Unit = {},
+    private val onScreensaver: () -> Unit = {},
     private val onVideoPlayback: (Uri?, Boolean) -> Unit = { _, _ -> },
     private val onVideoPause: (Boolean) -> Unit = {},
     private val supportsVideoPlayback: Boolean = false,
@@ -135,6 +136,9 @@ class PhotoTvView(
     )
     private val mockAlbumBitmaps = mutableMapOf<Int, Bitmap>()
     private var demoBitmap: Bitmap? = null
+    private val emptySlideshowBackground: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.slideshow_empty_background)
+    }
 
     private var library: List<PhotoItem> = emptyList()
     private var uriIndex: Map<String, PhotoItem> = emptyMap()
@@ -147,6 +151,7 @@ class PhotoTvView(
     private var exactAlbums = false
     private var sourceName = "Démo"
     private var page = 0
+    private var previewControlsVisible = false
     private var navFocus = false
     private var currentPhoto = 0
     private var resumeUri = ""
@@ -185,8 +190,41 @@ class PhotoTvView(
     private var autonomousImageModeOverride: Int? = null
     private var transitionIndex = 0
     private var transitionSeconds = 2f
+    private var fadeIntensityPercent = 100
+    private var hideTitleExtensions = false
     private var kenBurns = true
     private var zoomLevel = 0
+    private var lightInterface = false
+    private var darkTheme = false
+    private var interfaceFont = 0
+    private var interfaceFontScale = 1f
+    private var settingsEditing = false
+    private var editorScroll = 0f
+    private val editorHitBoxes = mutableListOf<Pair<Int, android.graphics.RectF>>()
+    private var settingsScroll = 0f
+    private val settingHitBoxes = mutableListOf<Pair<Int, android.graphics.RectF>>()
+    private var listTouchY = 0f
+    private var listTouchActive = false
+    private var listTouchMoved = false
+    private val driveRetryAfter = java.util.concurrent.ConcurrentHashMap<String,Long>()
+    private var slideshowFont = 0
+    private var renderingSlideshowText = false
+    private var lifecycleClosed = false
+    private val brandIcon: Bitmap by lazy {
+        BitmapFactory.decodeResource(resources, R.drawable.photo_tv_icon_art)
+    }
+    private fun viewportScale() = min(width / 1280f, height / 720f).coerceAtLeast(.001f)
+    private fun viewportLeft() = (width - 1280f * viewportScale()) / 2f
+    private fun viewportTop() = (height - 720f * viewportScale()) / 2f
+    private fun interfaceColor(color: Int): Int {
+        if (!lightInterface || Color.alpha(color) < 240) return color
+        val r = Color.red(color); val g = Color.green(color); val b = Color.blue(color)
+        if (r > 235 && g > 235 && b > 235) return Color.rgb(30, 44, 64)
+        if (r < 65 && g < 85 && b < 110) return if (r > 25) Color.rgb(205, 217, 232) else Color.rgb(248, 250, 253)
+        if (b > 130 && r < 70 && g < 160) return Color.rgb(210, 230, 255)
+        if (r in 90..235 && g in 120..235 && b >= g) return Color.rgb(71, 91, 117)
+        return color
+    }
     private var showDate = true
     private var showTime = true
     private var showTemp = true
@@ -206,7 +244,7 @@ class PhotoTvView(
     private var weatherSummary = "—"
     private var weatherLocation = ""
     private val forecastLines = mutableListOf<String>()
-    private var imageMode = 0
+    private var imageMode = 1
     private var gridSnap = true
     private var oledProtection = true
     private var overlaysAutoHide = false
@@ -249,6 +287,7 @@ class PhotoTvView(
     private var memoriesTabFocus = true
     private var technicalDiagnosticsVisible = false
     private var infoPanelVisible = false
+    private var infoPanelScroll = 0f
     private var slideStartedAt = System.currentTimeMillis()
     private var inactivityToken = 0L
     private var editorMoveMode = false
@@ -263,6 +302,9 @@ class PhotoTvView(
     private var layoutPreset = 0
     private var albumSearch = ""
     private var albumSort = 0
+    private var albumDensity = 1
+    private val albumHitBoxes = mutableListOf<Pair<Int, RectF>>()
+    private val albumDensityLabels = listOf("Grands", "Standard", "Compact")
     private var videoSound = false
     private var remoteEnabled = false
     private var remoteToken = ""
@@ -321,9 +363,8 @@ class PhotoTvView(
         loadPrefs()
         requestFocus()
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        loadDeterministicDemo()
+        if (automationMode) loadDeterministicDemo()
         if (!automationMode) {
-            loadDemo()
             loadWeather()
         } else {
             temperatureC = 17f
@@ -350,8 +391,14 @@ class PhotoTvView(
         backgroundAnalysis = prefs.getBoolean("background_analysis", true)
         transitionIndex = prefs.getInt("transition", 0).coerceIn(0, transitions.lastIndex)
         transitionSeconds = prefs.getFloat("transition_seconds", 2f)
+        fadeIntensityPercent = prefs.getInt("fade_intensity_percent", 100).coerceIn(0, 100)
+        hideTitleExtensions = prefs.getBoolean("hide_title_extensions", false)
         kenBurns = prefs.getBoolean("ken", true)
-        zoomLevel = prefs.getInt("zoom", 0)
+        zoomLevel = prefs.getInt("zoom", 0).coerceIn(-1, 2)
+        darkTheme = prefs.getBoolean("dark_theme", false)
+        interfaceFontScale = prefs.getFloat("interface_font_scale", 1f).coerceIn(.85f, 1.6f)
+        interfaceFont = prefs.getInt("interface_font", 0).coerceIn(0, 3)
+        slideshowFont = prefs.getInt("slideshow_font", 0).coerceIn(0, 3)
         showDate = prefs.getBoolean("date", true)
         showTime = prefs.getBoolean("time", true)
         showTemp = prefs.getBoolean("temp", true)
@@ -365,7 +412,7 @@ class PhotoTvView(
         nightDimPercent = prefs.getInt("night_dim", 45).coerceIn(0, 85)
         nightHideOverlays = prefs.getBoolean("night_hide_overlays", true)
         weatherLocation = prefs.getString("weather_location", "") ?: ""
-        imageMode = prefs.getInt("image_mode", 0).coerceIn(0, 6)
+        imageMode = prefs.getInt("image_mode", 1).coerceIn(0, 6)
         gridSnap = prefs.getBoolean("grid_snap", true)
         oledProtection = prefs.getBoolean("oled", true)
         overlaysAutoHide = prefs.getBoolean("overlay_hide", false)
@@ -374,6 +421,7 @@ class PhotoTvView(
         layoutPreset = prefs.getInt("layout_preset", 0).coerceIn(0, 3)
         albumSearch = prefs.getString("album_search", "") ?: ""
         albumSort = prefs.getInt("album_sort", 0).coerceIn(0, 1)
+        albumDensity = prefs.getInt("album_density", 1).coerceIn(0, 2)
         videoSound = prefs.getBoolean("video_sound", false)
         remoteEnabled = prefs.getBoolean("remote_enabled", false)
         remoteToken = prefs.getString("remote_token", "").orEmpty().ifBlank {
@@ -424,8 +472,14 @@ class PhotoTvView(
             putBoolean("background_analysis", backgroundAnalysis)
             putInt("transition", transitionIndex)
             putFloat("transition_seconds", transitionSeconds)
+            putInt("fade_intensity_percent", fadeIntensityPercent)
+            putBoolean("hide_title_extensions", hideTitleExtensions)
             putBoolean("ken", kenBurns)
             putInt("zoom", zoomLevel)
+            putBoolean("dark_theme", darkTheme)
+            putFloat("interface_font_scale", interfaceFontScale)
+            putInt("interface_font", interfaceFont)
+            putInt("slideshow_font", slideshowFont)
             putBoolean("date", showDate)
             putBoolean("time", showTime)
             putBoolean("temp", showTemp)
@@ -448,6 +502,7 @@ class PhotoTvView(
             putInt("layout_preset", layoutPreset)
             putString("album_search", albumSearch)
             putInt("album_sort", albumSort)
+            putInt("album_density", albumDensity)
             putBoolean("video_sound", videoSound)
             putBoolean("remote_enabled", remoteEnabled)
             putString("remote_token", remoteToken)
@@ -632,8 +687,14 @@ class PhotoTvView(
         root.put("backgroundAnalysis", backgroundAnalysis)
         root.put("transitionIndex", transitionIndex)
         root.put("transitionSeconds", transitionSeconds.toDouble())
+        root.put("fadeIntensityPercent", fadeIntensityPercent)
+        root.put("hideTitleExtensions", hideTitleExtensions)
         root.put("kenBurns", kenBurns)
         root.put("zoomLevel", zoomLevel)
+        root.put("darkTheme", darkTheme)
+        root.put("interfaceFontScale", interfaceFontScale.toDouble())
+        root.put("interfaceFont", interfaceFont)
+        root.put("slideshowFont", slideshowFont)
         root.put("showDate", showDate)
         root.put("showTime", showTime)
         root.put("showTemp", showTemp)
@@ -657,6 +718,7 @@ class PhotoTvView(
         root.put("layoutPreset", layoutPreset)
         root.put("albumSearch", albumSearch)
         root.put("albumSort", albumSort)
+        root.put("albumDensity", albumDensity)
         root.put("videoSound", videoSound)
         root.put("albumRules", albumRulesJson())
         root.put("sourceRules", sourceRulesJson())
@@ -708,8 +770,14 @@ class PhotoTvView(
             backgroundAnalysis = root.optBoolean("backgroundAnalysis", backgroundAnalysis)
             transitionIndex = root.optInt("transitionIndex", transitionIndex).coerceIn(0, transitions.lastIndex)
             transitionSeconds = root.optDouble("transitionSeconds", transitionSeconds.toDouble()).toFloat().coerceIn(.2f, 4f)
+            fadeIntensityPercent = root.optInt("fadeIntensityPercent", fadeIntensityPercent).coerceIn(0, 100)
+            hideTitleExtensions = root.optBoolean("hideTitleExtensions", hideTitleExtensions)
             kenBurns = root.optBoolean("kenBurns", kenBurns)
-            zoomLevel = root.optInt("zoomLevel", zoomLevel).coerceIn(0, 2)
+            zoomLevel = root.optInt("zoomLevel", zoomLevel).coerceIn(-1, 2)
+            darkTheme = root.optBoolean("darkTheme", darkTheme)
+            interfaceFontScale = root.optDouble("interfaceFontScale", interfaceFontScale.toDouble()).toFloat().coerceIn(.85f, 1.6f)
+            interfaceFont = root.optInt("interfaceFont", interfaceFont).coerceIn(0, 3)
+            slideshowFont = root.optInt("slideshowFont", slideshowFont).coerceIn(0, 3)
             showDate = root.optBoolean("showDate", showDate)
             showTime = root.optBoolean("showTime", showTime)
             showTemp = root.optBoolean("showTemp", showTemp)
@@ -733,6 +801,7 @@ class PhotoTvView(
             layoutPreset = root.optInt("layoutPreset", layoutPreset).coerceIn(0, 3)
             albumSearch = root.optString("albumSearch", albumSearch)
             albumSort = root.optInt("albumSort", albumSort).coerceIn(0, 1)
+            albumDensity = root.optInt("albumDensity", albumDensity).coerceIn(0, 2)
             videoSound = root.optBoolean("videoSound", videoSound)
             root.optJSONArray("networkSources")?.let { NetworkSourceStore.importJson(context, it) }
             val networkPrefs = context.getSharedPreferences("photo_tv_network_settings", Context.MODE_PRIVATE)
@@ -770,8 +839,8 @@ class PhotoTvView(
             val availableAlbums = albumIndex.keys.toList()
             if (availableAlbums.isNotEmpty()) {
                 selectedAlbums.retainAll(availableAlbums.toSet())
-                if (selectedAlbums.isEmpty()) selectedAlbums.addAll(availableAlbums)
-                hiddenAlbums.retainAll(availableAlbums.toSet())
+                selectedAlbums.clear()
+                selectedAlbums.addAll(availableAlbums.filterNot { it in hiddenAlbums })
             }
 
             root.optJSONArray("styles")?.let { arr ->
@@ -1050,6 +1119,7 @@ class PhotoTvView(
         quickMenuVisible = false
         infoPanelVisible = false
         page = index.coerceIn(0, 3)
+        previewControlsVisible = false
         navFocus = false
         when (page) {
             1 -> {
@@ -1083,15 +1153,16 @@ class PhotoTvView(
             return "Diaporama. $state. ${item?.title.orEmpty()}. ${albumDisplay(item)}. Flèche gauche : précédente. Flèche droite : suivante. OK : pause ou reprise. Retour : quitter."
         }
         if (navFocus) {
-            val labels = listOf("Aperçu", "Photos", "Éditeur", "Réglages")
+            val labels = navLabels
             return "Navigation principale. ${labels[page.coerceIn(0, labels.lastIndex)]}. Flèches gauche et droite pour changer d'écran. OK pour ouvrir."
         }
         return when (page) {
             0 -> {
                 val item = currentItem()
-                "Aperçu. ${item?.title.orEmpty()}. ${albumDisplay(item)}. Flèches gauche et droite pour changer de photo. OK pour démarrer le diaporama."
+                "Aperçu. ${item?.title.orEmpty()}. ${albumDisplay(item)}. Flèches gauche et droite pour changer de photo. ${if(previewControlsVisible) "OK pour lancer le diaporama. Bas pour les onglets." else "OK pour afficher le menu."}"
             }
             1 -> when (photosRow) {
+                3 -> "Densité des albums : ${albumDensityLabels[albumDensity]}. Gauche et droite ou OK pour modifier. Bas pour parcourir les albums."
                 0 -> "Sources. " + listOf("Google Photos ou Takeout", "Dossier local", "Sélection de photos")[sourceFocus.coerceIn(0, 2)] + ". OK pour ouvrir."
                 1 -> {
                     val name = currentAlbumName()
@@ -1115,13 +1186,18 @@ class PhotoTvView(
             else -> {
                 val categories = listOf(
                     "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-                    "Heure et date", "Température", "Source des photos", "Avancés"
+                    "Heure et date", "Température", "Source des photos", "Intelligence", "Avancés"
                 )
                 val category = categories[settingsCategory.coerceIn(0, categories.lastIndex)]
                 if (settingsColumn == 0) {
                     "Réglages. Catégorie $category. Haut et bas pour changer de catégorie. Droite ou OK pour ouvrir."
                 } else {
-                    "Réglages. $category. Contrôle ${settingsControl + 1}. Utilisez les flèches et OK pour modifier."
+                    val control = when {
+                        settingsCategory == 2 && settingsControl == 10 -> "Police de l’interface : ${fontName(interfaceFont)}"
+                        settingsCategory == 2 && settingsControl == 11 -> "Police du diaporama : ${fontName(slideshowFont)}"
+                        else -> "Contrôle ${settingsControl + 1}"
+                    }
+                    "Réglages. $category. $control. Utilisez les flèches et OK pour modifier."
                 }
             }
         }
@@ -1153,6 +1229,7 @@ class PhotoTvView(
             "albumFocus=$albumFocus photoFocus=$photoFocus editorColumn=$editorColumn " +
             "editorElement=$editorElement editorControl=$editorControl editorMoveMode=$editorMoveMode " +
             "settingsCategory=$settingsCategory settingsColumn=$settingsColumn settingsControl=$settingsControl " +
+            "interfaceFont=$interfaceFont slideshowFont=$slideshowFont interfaceScale=$interfaceFontScale settingsScroll=$settingsScroll editing=$settingsEditing fixedImage=$fixedImage " +
             "rulesOpen=$advancedRulesOpen diagnostics=$interactionDiagnostics " +
             "slideshow=$slideshow paused=$paused currentPhoto=$currentPhoto quickMenu=$quickMenuVisible " +
             "autonomous=$autonomousSlideshow analysis=$backgroundAnalysisDone/$backgroundAnalysisTotal " +
@@ -1202,13 +1279,11 @@ class PhotoTvView(
         }
 
     private fun refreshLibraryState(resetCurrent: Boolean) {
+        library = library.filter { MediaTypeDetector.isPhotoType(it.mediaType) }
         rebuildLibraryIndexes()
         selectedAlbums.clear()
         val allAlbums = albumIndex.keys.toList()
-        if (savedSelectedAlbums.isNotEmpty()) {
-            selectedAlbums.addAll(allAlbums.filter { savedSelectedAlbums.contains(it) })
-        }
-        if (selectedAlbums.isEmpty()) selectedAlbums.addAll(allAlbums)
+        selectedAlbums.addAll(allAlbums.filterNot { it in hiddenAlbums })
 
         if (resetCurrent) {
             currentPhoto = prefs.getInt("resume_index", 0).coerceAtLeast(0)
@@ -1222,7 +1297,7 @@ class PhotoTvView(
         albumFocus = 0
         photoFocus = 0
         loadingText = null
-        if (!automationMode) preload(library.take(48).map { it.uri })
+        if (!automationMode) preload(library.filterNot { DriveRemoteLibrary.isRemote(it.uri) }.take(48).map { it.uri })
         val count = activePhotos().size
         if (count > 0) currentPhoto = currentPhoto.coerceIn(0, count - 1)
         else currentPhoto = 0
@@ -1270,8 +1345,8 @@ class PhotoTvView(
         scheduleBackgroundAnalysis()
 
         val count = activePhotos().size
-        if (resumeWasSlideshow && count > 0) {
-            postDelayed({
+        if (!automationMode && resumeWasSlideshow && count > 0) {
+            handler.postDelayed({
                 if (!slideshow) {
                     startSlideshow()
                     if (resumeShuffleUris.isNotEmpty()) {
@@ -1294,8 +1369,8 @@ class PhotoTvView(
                 resumeWasSlideshow = false
                 resumeShuffleUris.clear()
             }, 450)
-        } else if (startDirectly && count > 0) {
-            postDelayed({ if (!slideshow) startSlideshow() }, 450)
+        } else if (!automationMode && startDirectly && count > 0) {
+            handler.postDelayed({ if (!slideshow) startSlideshow() }, 450)
         }
     }
 
@@ -1327,13 +1402,15 @@ class PhotoTvView(
     fun startAsDream(items: List<PhotoItem>, exactAlbums: Boolean, sourceName: String) {
         setLibrary(items, exactAlbums = exactAlbums, sourceName = sourceName)
         if (activePhotos().isNotEmpty()) {
-            postDelayed({ startSlideshow() }, 150)
+            handler.postDelayed({ startSlideshow() }, 150)
         }
     }
 
     private fun preload(uris: List<Uri>) {
+        if (executor.isShutdown || automationMode) return
         uris.distinct().forEach { uri ->
             val key = uri.toString()
+            if ((driveRetryAfter[key] ?: 0L) > android.os.SystemClock.elapsedRealtime()) return@forEach
             if (failedMediaUris.contains(key)) return@forEach
             val alreadyCached = synchronized(bitmapCache) { bitmapCache.containsKey(key) }
             if (alreadyCached || !bitmapLoading.add(key)) return@forEach
@@ -1342,6 +1419,7 @@ class PhotoTvView(
                 try {
                     val bmp = decodeThumb(uri)
                     if (bmp != null) {
+                        driveRetryAfter.remove(key)
                         synchronized(bitmapCache) {
                             bitmapCache.remove(key)?.let { old ->
                                 bitmapCacheBytes -= old.allocationByteCount.toLong()
@@ -1373,7 +1451,7 @@ class PhotoTvView(
             return
         }
         val snapshot = library.filter { item ->
-            item.mediaType == "image" && !NetworkLibrary.isNetworkUri(item.uri)
+            item.mediaType == "image" && !NetworkLibrary.isNetworkUri(item.uri) && !DriveRemoteLibrary.isRemote(item.uri)
         }
         backgroundAnalysisDone = 0
         backgroundAnalysisTotal = snapshot.size
@@ -1441,6 +1519,14 @@ class PhotoTvView(
 
     private fun registerDecodeFailure(uri: Uri, reason: String) {
         val key = uri.toString()
+        if (DriveRemoteLibrary.isRemote(uri)) {
+            // A failed network/cache read must not permanently remove a Drive
+            // photo or stop a slideshow whose photos have not downloaded yet.
+            driveRetryAfter[key] = android.os.SystemClock.elapsedRealtime() + 15_000L
+            lastDecodeFailure = "Lecture Drive interrompue ; nouvel essai automatique"
+            postDelayed({ if (!lifecycleClosed) invalidate() }, 15_050L)
+            return
+        }
         val transientNetworkFailure =
             NetworkLibrary.isNetworkUri(uri) && NetworkLibrary.isTemporarilyOffline()
 
@@ -1534,7 +1620,8 @@ class PhotoTvView(
     }
 
     private fun openMediaStream(uri: Uri): java.io.InputStream? =
-        if (NetworkLibrary.isNetworkUri(uri)) NetworkLibrary.open(context, uri)
+        if (DriveRemoteLibrary.isRemote(uri)) DriveRemoteLibrary.open(context, uri)
+        else if (NetworkLibrary.isNetworkUri(uri)) NetworkLibrary.open(context, uri)
         else context.contentResolver.openInputStream(uri)
 
     private fun decodeThumb(uri: Uri): Bitmap? {
@@ -1548,7 +1635,8 @@ class PhotoTvView(
                 if (NetworkLibrary.isNetworkUri(uri)) return@runCatching demoBitmap
                 val r = MediaMetadataRetriever()
                 try {
-                    r.setDataSource(context, uri)
+                    if (DriveRemoteLibrary.isRemote(uri)) r.setDataSource(DriveRemoteLibrary.materialize(context,uri).absolutePath)
+                    else r.setDataSource(context, uri)
                     r.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: demoBitmap
                 } finally {
                     runCatching { r.release() }
@@ -1626,7 +1714,9 @@ class PhotoTvView(
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val source = runCatching {
-                if (NetworkLibrary.isNetworkUri(uri)) {
+                if (DriveRemoteLibrary.isRemote(uri)) {
+                    ImageDecoder.createSource(DriveRemoteLibrary.materialize(context,uri))
+                } else if (NetworkLibrary.isNetworkUri(uri)) {
                     NetworkLibrary.materialize(context, uri)?.let(ImageDecoder::createSource)
                 } else {
                     ImageDecoder.createSource(context.contentResolver, uri)
@@ -1682,7 +1772,9 @@ class PhotoTvView(
     }
 
     private fun requestHighRes(uri: Uri) {
+        if (lifecycleClosed || highResExecutor.isShutdown) return
         val key = uri.toString()
+        if ((driveRetryAfter[key] ?: 0L) > android.os.SystemClock.elapsedRealtime()) return
         if (failedMediaUris.contains(key)) return
         val mediaType = uriIndex[key]?.mediaType
         if (mediaType != null && mediaType != "image") return
@@ -1708,7 +1800,8 @@ class PhotoTvView(
                     }
                 }
             }
-            if (bmp != null) postInvalidate()
+            if (bmp != null) { driveRetryAfter.remove(key); postInvalidate() }
+            else if (DriveRemoteLibrary.isRemote(uri)) registerDecodeFailure(uri, "Lecture Drive interrompue")
         }
     }
 
@@ -1795,10 +1888,17 @@ class PhotoTvView(
         return items[currentPhoto]
     }
 
+    private fun currentPhotoLoaded(): Boolean {
+        if (automationMode) return true
+        val key=currentItem()?.uri?.toString() ?: return false
+        return synchronized(highResCache) { highResCache[key]?.isRecycled == false } ||
+            synchronized(bitmapCache) { bitmapCache[key]?.isRecycled == false }
+    }
+
     private fun currentBitmap(): Bitmap? {
         if (automationMode) return demoBitmap
         val item = currentItem()
-        return if (item == null) demoBitmap else {
+        return if (item == null) emptySlideshowBackground else {
             val key = item.uri.toString()
             val high = synchronized(highResCache) { highResCache[key] }
             if (high != null && !high.isRecycled) {
@@ -1814,7 +1914,7 @@ class PhotoTvView(
                 cacheMisses++
                 requestHighRes(item.uri)
                 preload(listOf(item.uri))
-                demoBitmap
+                emptySlideshowBackground
             }
         }
     }
@@ -1854,10 +1954,13 @@ class PhotoTvView(
         }
         contentDescription = accessibilityDescription()
         if (width <= 0 || height <= 0) return
-        val sx = width / 1280f
-        val sy = height / 720f
+        lightInterface = !slideshow && page != 0 && !darkTheme
+        canvas.drawColor(if (lightInterface) Color.rgb(238, 243, 249) else Color.BLACK)
+        val scale = viewportScale()
         canvas.save()
-        canvas.scale(sx, sy)
+        canvas.translate(viewportLeft(), viewportTop())
+        canvas.scale(scale, scale)
+        canvas.clipRect(0f, 0f, 1280f, 720f)
 
         if (slideshow) drawSlideshow(canvas)
         else {
@@ -1865,11 +1968,18 @@ class PhotoTvView(
                 0 -> drawPreview(canvas)
                 1 -> drawPhotos(canvas)
                 2 -> drawEditor(canvas)
-                else -> drawSettings(canvas)
+                3 -> drawSettings(canvas)
+                else -> drawPreview(canvas)
             }
-            drawBottomNav(canvas)
+            if (page != 0 || previewControlsVisible || navFocus) drawBottomNav(canvas)
         }
 
+        if ((slideshow || page == 0) && currentItem()?.uri?.let { DriveRemoteLibrary.isRemote(it) } == true && !currentPhotoLoaded()) {
+            val key=currentItem()?.uri.toString()
+            round(canvas, 300f, 310f, 980f, 410f, 18f, Color.argb(205, 8, 22, 38))
+            text(canvas, if(driveRetryAfter.containsKey(key)) "Lecture Drive interrompue" else "Chargement de la photo depuis Drive…", 640f, 350f, 22f, Color.WHITE, 1, 1)
+            text(canvas, if(driveRetryAfter.containsKey(key)) "Nouvel essai automatique · ← → pour changer de photo" else "La photo apparaîtra entière dès qu’elle sera prête", 640f, 385f, 14f, Color.WHITE, 0, 1)
+        }
         if (interactionDiagnostics) drawInteractionDiagnostics(canvas)
         loadingText?.let { drawLoading(canvas, it) }
         if (historyOverlayVisible) drawHistoryOverlay(canvas)
@@ -2000,7 +2110,7 @@ class PhotoTvView(
             if (!memoriesTabFocus && index == memoriesIndex) {
                 strokeRound(c, x - 3f, y - 3f, x + 233f, y + 115f, 12f, Color.rgb(76, 170, 255), 3f)
             }
-            ellipsizedText(c, item.title, x + 9f, y + 103f, 212f, 10.5f, Color.WHITE)
+            ellipsizedText(c, displayedTitle(item.title), x + 9f, y + 103f, 212f, 10.5f, Color.WHITE)
         }
         text(c, "↑ vers catégories • OK : ouvrir • Retour : fermer", 640f, 625f, 11f, Color.rgb(147, 168, 193), 0, 1)
     }
@@ -2030,7 +2140,7 @@ class PhotoTvView(
             round(c, x, y, x + 220f, y + 126f, 10f, Color.rgb(7, 17, 28))
             if (bmp != null && !bmp.isRecycled) drawBitmapCenterCrop(c, bmp, x + 3f, y + 3f, 214f, 92f, 7f)
             if (i == historyOverlayIndex) strokeRound(c, x - 3f, y - 3f, x + 223f, y + 129f, 12f, Color.rgb(52, 154, 255), 3f)
-            ellipsizedText(c, item.title, x + 10f, y + 115f, 200f, 11f, Color.WHITE)
+            ellipsizedText(c, displayedTitle(item.title), x + 10f, y + 115f, 200f, 11f, Color.WHITE)
         }
         text(c, "Flèches : choisir • OK : ouvrir • Retour : fermer", 640f, 625f, 11f, Color.rgb(147, 168, 193), 0, 1)
     }
@@ -2092,7 +2202,7 @@ class PhotoTvView(
                     val y = 120f + i * 87f
                     box(32f, y, 352f, y + 78f, "Métadonnée ${i + 1}", amber)
                 }
-                box(370f, 64f, 918f, 638f, "Déplacer l'élément", green)
+                box(370f, 200f, 918f, 508.25f, "Déplacer l'élément", green)
                 box(956f, 131f, 1232f, 166f, "Texte", cyan)
                 box(1048f, 175f, 1232f, 210f, "Police", cyan)
                 box(956f, 220f, 1232f, 268f, "Taille", cyan)
@@ -2135,25 +2245,49 @@ class PhotoTvView(
     }
 
     private fun drawPreview(c: Canvas) {
-        drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, currentBitmap())
-        drawBottomGradient(c, 0f, 0f, 1280f, 720f)
-        drawBrand(c, 60f, 20f, "DIAPORAMA")
-        drawClock(c, 1218f, 34f)
+        val wasLight = lightInterface
+        lightInterface = false
+        renderingSlideshowText = true
+        val savedProgress = transitionProgress
+        transitionProgress = 1f
+        drawSlideshow(c)
+        transitionProgress = savedProgress
+        renderingSlideshowText = false
+        p.clearShadowLayer()
+        if (previewControlsVisible || navFocus) {
+            val hint = if (navFocus) "← → Onglets  ·  ↑ Diaporama  ·  OK Masquer" else "← → Photos  ·  OK Diaporama"
+            p.typeface = interfaceTypeface(0); p.textSize = 13f * interfaceFontScale
+            val hintW = p.measureText(hint) + 32f
+            val hintH = 30f * interfaceFontScale
+            val hintX = 640f - hintW / 2f
+            round(c,hintX,18f,hintX+hintW,18f+hintH,12f,Color.argb(175,7,20,36))
+            strokeRound(c,hintX,18f,hintX+hintW,18f+hintH,12f,Color.argb(60,220,235,255),1f)
+            text(c,hint,640f,18f+hintH/2f+4.5f*interfaceFontScale,13f,Color.rgb(233,241,252),0,1)
+            val button = previewLaunchRect()
+            gradientRound(c,button.left,button.top,button.right,button.bottom,14f,Color.rgb(13,141,108),Color.rgb(12,99,162))
+            if (!navFocus) strokeRound(c,button.left-2f,button.top-2f,button.right+2f,button.bottom+2f,16f,Color.rgb(140,247,215),2f)
+            drawBottomIcon(c,button.left+26f,button.centerY(),4)
+            text(c,"Diaporama",button.left+52f,button.centerY()+6f*interfaceFontScale,17f,Color.WHITE,1)
+        }
+        lightInterface = wasLight
+    }
 
-        circle(c, 95f, 352f, 30f, Color.argb(190, 7, 15, 24))
-        text(c, "‹", 95f, 363f, 40f, Color.WHITE, 0, 1)
-        circle(c, 1183f, 352f, 30f, Color.argb(190, 7, 15, 24))
-        text(c, "›", 1183f, 363f, 40f, Color.WHITE, 0, 1)
+    private fun previewLaunchRect(): RectF {
+        p.typeface = interfaceTypeface(1); p.textSize = 17f * interfaceFontScale
+        val w = p.measureText("Diaporama") + 76f
+        val h = 46f * interfaceFontScale
+        return RectF(1248f-w,620f-h,1248f,620f)
+    }
 
-        val item = currentItem()
-        val title = item?.title ?: "001. Opéra d'Oslo"
-        val album = albumDisplay(item)
-        ellipsizedText(c, title, 78f, 568f, 930f, 31f, Color.WHITE, 1)
-        ellipsizedText(c, album, 78f, 607f, 930f, 19f, Color.WHITE, 0)
-
-        val count = activePhotos().size
-        val countText = if (count > 0) "${currentPhoto + 1} / $count" else "3 / 142"
-        text(c, countText, 1215f, 607f, 15f, Color.WHITE, 0, 2)
+    private fun albumColumns() = 3 + albumDensity
+    private fun albumWindowStart(total: Int): Int {
+        val columns = albumColumns()
+        val rows = (total + columns - 1) / columns
+        return (albumFocus / columns - 1).coerceIn(0,max(0,rows-2)) * columns
+    }
+    private fun adjustAlbumDensity(dir: Int) {
+        albumDensity = (albumDensity + dir + 3) % 3
+        savePrefs(); invalidate()
     }
 
     private fun windowStart(index: Int, total: Int, pageSize: Int = 6): Int {
@@ -2167,46 +2301,45 @@ class PhotoTvView(
         drawBrand(c, 58f, 20f, "PHOTOS ET ALBUMS")
 
         val sourceY = 108f
-        drawSourceCard(c, 47f, sourceY, 388f, 102f, "Google Photos", "Se connecter", 0, sourceFocus == 0 && !navFocus, true)
-        drawSourceCard(c, 450f, sourceY, 362f, 102f, "Choisir un dossier", "Stockage local", 1, sourceFocus == 1 && !navFocus, false)
-        drawSourceCard(c, 828f, sourceY, 410f, 102f, "Sélectionner des photos", "Choisir plusieurs fichiers", 2, sourceFocus == 2 && !navFocus, false)
+        drawSourceCard(c, 47f, sourceY, 388f, 102f, "Google Photos", "Connexion et import", 0, sourceFocus == 0 && photosRow == 0 && !navFocus, true)
+        drawSourceCard(c, 450f, sourceY, 362f, 102f, "Choisir un dossier", "Stockage local", 1, sourceFocus == 1 && photosRow == 0 && !navFocus, false)
+        drawSourceCard(c, 828f, sourceY, 410f, 102f, "Sélectionner des photos", "Choisir plusieurs fichiers", 2, sourceFocus == 2 && photosRow == 0 && !navFocus, false)
 
         val albums = albumPairs()
         val albumsTitle = if (library.isEmpty() || exactAlbums) "Mes albums Google Photos" else "Albums et dossiers"
         text(c, albumsTitle, 45f, 250f, 19f, Color.WHITE, 1)
-        text(c, "${albums.size} albums", 1235f, 250f, 13f, Color.rgb(186, 196, 210), 0, 2)
+        val densityFocus = photosRow == 3 && !navFocus
+        val wasLight = lightInterface
+        if (densityFocus) lightInterface = false
+        round(c,780f,222f,1238f,262f,12f,if(densityFocus) Color.rgb(17,91,174) else Color.rgb(14,30,48))
+        strokeRound(c,780f,222f,1238f,262f,12f,Color.rgb(81,148,212),if(densityFocus) 2f else 1f)
+        text(c,"‹  Densité : ${albumDensityLabels[albumDensity]}  ›",1009f,248f,15f,Color.WHITE,1,1)
+        lightInterface = wasLight
 
-        val albumY = 270f
-        val cardW = 185f
-        val cardH = 198f
-        val gap = 14f
-        if (albums.isNotEmpty()) albumFocus = albumFocus.coerceIn(0, albums.lastIndex)
-        val albumStart = windowStart(albumFocus, albums.size)
-        albums.drop(albumStart).take(6).forEachIndexed { slot, pair ->
-            val absoluteIndex = albumStart + slot
-            val x = 47f + slot * (cardW + gap)
-            val focused = photosRow == 1 && albumFocus == absoluteIndex && !navFocus
-            drawAlbumCard(c, x, albumY, cardW, cardH, pair.first, pair.second, absoluteIndex, focused)
+        val columns = albumColumns()
+        val cardW = (1191f-(columns-1)*14f)/columns
+        val cardH = 134f
+        if (albums.isNotEmpty()) albumFocus = albumFocus.coerceIn(0,albums.lastIndex)
+        val albumStart = albumWindowStart(albums.size)
+        albumHitBoxes.clear()
+        albums.drop(albumStart).take(columns*2).forEachIndexed { slot,pair ->
+            val index = albumStart+slot
+            val x = 47f+(slot%columns)*(cardW+14f)
+            val y = 270f+(slot/columns)*148f
+            drawAlbumCard(c,x,y,cardW,cardH,pair.first,pair.second,index,photosRow==1 && albumFocus==index && !navFocus)
+            albumHitBoxes.add(index to RectF(x,y,x+cardW,y+cardH))
         }
-
-        text(c, "Photos de l'album sélectionné", 45f, 500f, 19f, Color.WHITE, 1)
-        val thumbs = currentAlbumPhotos()
-        if (thumbs.isNotEmpty()) photoFocus = photoFocus.coerceIn(0, thumbs.lastIndex)
-        val photoStart = windowStart(photoFocus, thumbs.size)
-        val py = 522f
-        val tw = 185f
-        thumbs.drop(photoStart).take(6).forEachIndexed { slot, item ->
-            val absoluteIndex = photoStart + slot
-            val x = 47f + slot * (tw + gap)
-            val focused = photosRow == 2 && photoFocus == absoluteIndex && !navFocus
-            drawPhotoThumb(c, x, py, tw, 104f, item, focused, slot)
-        }
+        drawScrollIndicator(c,1245f,270f,552f,((albums.size+columns-1)/columns).toFloat(),2f,(albumStart/columns).toFloat())
+        val end = min(albumStart+columns*2,albums.size)
+        ellipsizedText(c,"Flèches : parcourir / défiler  ·  OK : masquer / réafficher",47f,566f+15f*interfaceFontScale,1000f,17f,Color.WHITE,1)
+        text(c,if(albums.isEmpty()) "" else "${albumStart+1}–$end / ${albums.size}",1238f,566f+15f*interfaceFontScale,15f,Color.rgb(130,153,180),0,2)
+        ellipsizedText(c,"$sourceName • ${library.size} médias • ${albums.size} albums",47f,602f+18f*interfaceFontScale,1188f,16f,Color.rgb(130,153,180))
 
     }
 
     private fun albumPairs(): List<Pair<String, Int>> {
         val base = if (library.isEmpty()) {
-            mockAlbums
+            if (automationMode) mockAlbums else emptyList()
         } else {
             albumIndex.entries.map { it.key to it.value.size }
         }
@@ -2227,19 +2360,21 @@ class PhotoTvView(
     }
 
     private fun currentAlbumPhotos(): List<PhotoItem?> {
-        if (library.isEmpty()) return List(6) { null }
+        if (library.isEmpty()) return if (automationMode) List(6) { null } else emptyList()
         val name = currentAlbumName()
         return albumIndex[name].orEmpty().map { it as PhotoItem? }
     }
     private fun albumDisplay(item: PhotoItem?): String {
-        if (item == null) return "Norvège 2026"
+        if (item == null) return if (automationMode) "Norvège 2026" else ""
         val preferred = item.albums.filter { selectedAlbums.contains(it) && !hiddenAlbums.contains(it) }
         val values = if (preferred.isNotEmpty()) preferred else item.albums.toList()
         return values.joinToString(" • ").ifBlank { "Album" }
     }
 
+    private fun displayedTitle(title: String): String = PhotoTitleDisplay.format(title, hideTitleExtensions)
+
     private fun metadataValues(item: PhotoItem? = currentItem()): List<String> = listOf(
-        item?.title ?: "001. Opéra d'Oslo",
+        displayedTitle(item?.title ?: if (automationMode) "001. Opéra d'Oslo" else "Aucune photo chargée"),
         albumDisplay(item),
         itemDate(item),
         currentTime(),
@@ -2257,12 +2392,12 @@ class PhotoTvView(
 
         val leftX = 32f
         val leftW = 320f
-        val startY = 120f
-        val h = 78f
+        val h = 78f * interfaceFontScale.coerceAtLeast(1f)
         val gap = 9f
         val values = metadataValues()
-        val visibleCount = 5
-        val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
+        val visibleCount = (480f / (h + gap)).toInt().coerceAtLeast(1)
+        val startY = 351f - (visibleCount * (h + gap) - gap) / 2f
+        val first = (editorElement - visibleCount / 2).coerceIn(0, max(0, elementNames.size - visibleCount))
         for (slot in 0 until visibleCount) {
             val i = first + slot
             if (i !in elementNames.indices) break
@@ -2278,15 +2413,26 @@ class PhotoTvView(
             text(c, "${first + 1}–${min(first + visibleCount, elementNames.size)} / ${elementNames.size}", leftX + leftW, 623f, 10f, Color.rgb(128, 149, 173), 0, 2)
         }
 
+        drawScrollIndicator(c,leftX+leftW-6f,startY,startY+visibleCount*(h+gap)-gap,elementNames.size.toFloat(),visibleCount.toFloat(),first.toFloat())
+
         val canvasX = 370f
-        val canvasY = 64f
+        val canvasY = 200f
         val canvasW = 548f
-        val canvasH = 574f
+        val canvasH = canvasW * 9f / 16f
         round(c, canvasX, canvasY, canvasX + canvasW, canvasY + canvasH, 5f, Color.rgb(10, 22, 32))
-        drawBackgroundPhoto(c, canvasX, canvasY, canvasW, canvasH, currentBitmap())
-        if (gridSnap) drawEditorGrid(c, canvasX, canvasY, canvasW, canvasH)
-        drawBottomGradient(c, canvasX, canvasY, canvasW, canvasH)
-        drawEditorOverlays(c, canvasX, canvasY, canvasW, canvasH)
+        text(c, "Aperçu complet · écran TV 16/9", canvasX + canvasW / 2f, 156f, 15f, Color.WHITE, 1, 1)
+        c.save()
+        c.translate(canvasX, canvasY)
+        c.scale(canvasW / 1280f, canvasW / 1280f)
+        c.clipRect(0f, 0f, 1280f, 720f)
+        drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, currentBitmap())
+        if (gridSnap) drawEditorGrid(c, 0f, 0f, 1280f, 720f)
+        drawBottomGradient(c, 0f, 0f, 1280f, 720f)
+        drawEditorOverlays(c, 0f, 0f, 1280f, 720f)
+        c.restore()
+        strokeRound(c, canvasX, canvasY, canvasX + canvasW, canvasY + canvasH, 5f, if(editorColumn==1 && !navFocus) Color.rgb(76,190,255) else Color.rgb(81,111,145), if(editorColumn==1 && !navFocus) 3f else 1f)
+        ellipsizedText(c, if(editorMoveMode) "Flèches : déplacer l’élément" else "← Éléments   ·   → Paramètres   ·   ↓ Menu", canvasX + canvasW / 2f, 548f,canvasW,12f,Color.rgb(177,191,209),0,1)
+        ellipsizedText(c, "Appui long sur OK : déplacer · OK : terminer", canvasX + canvasW / 2f,574f,canvasW,14f,Color.rgb(130,153,180),1,1)
 
         val panelX = 940f
         val panelY = 64f
@@ -2295,6 +2441,67 @@ class PhotoTvView(
         round(c, panelX, panelY, panelX + panelW, panelY + panelH, 12f, Color.rgb(17, 29, 43))
         strokeRound(c, panelX, panelY, panelX + panelW, panelY + panelH, 12f, Color.rgb(38, 55, 74), 1f)
         drawEditorPanel(c, panelX, panelY, panelW)
+    }
+
+    private fun drawScrollIndicator(c: Canvas,right:Float,top:Float,bottom:Float,total:Float,visible:Float,offset:Float) {
+        if(total<=visible || visible<=0f || bottom<=top) return
+        val height=bottom-top
+        val thumb=max(24f,height*visible/total).coerceAtMost(height)
+        val y=top+(height-thumb)*(offset/(total-visible)).coerceIn(0f,1f)
+        round(c,right-5f,top,right,bottom,3f,Color.rgb(57,79,105))
+        round(c,right-5f,y,right,y+thumb,3f,Color.rgb(69,163,248))
+    }
+
+    private val wrappedTextCache = linkedMapOf<String,List<String>>()
+    private fun wrappedText(value:String,width:Float):List<String> {
+        val key="$width:${p.textSize}:${p.typeface?.hashCode()}:$value"
+        wrappedTextCache[key]?.let { return it }
+        val lines=TextWrapping.lines(value,width) { p.measureText(it) }
+        if(wrappedTextCache.size>=24) wrappedTextCache.remove(wrappedTextCache.keys.first())
+        wrappedTextCache[key]=lines
+        return lines
+    }
+
+    private fun titleGeometry(value:String,x:Float,y:Float): Pair<List<String>,RectF> {
+        val margin=24f
+        val anchor=x.coerceIn(margin,1280f-margin)
+        val width=when(p.textAlign) {
+            Paint.Align.CENTER -> 2f*min(anchor-margin,1280f-margin-anchor)
+            Paint.Align.RIGHT -> anchor-margin
+            else -> 1280f-margin-anchor
+        }.coerceAtLeast(96f).coerceAtMost(1232f)
+        var lines=wrappedText(value,width)
+        while(lines.size*(p.fontMetrics.descent-p.fontMetrics.ascent)*1.12f>672f && p.textSize>8f) {
+            p.textSize*=.9f
+            lines=wrappedText(value,width)
+        }
+        val fm=p.fontMetrics
+        val lineH=(fm.descent-fm.ascent)*1.12f
+        val height=(lines.size-1)*lineH+fm.descent-fm.ascent
+        val top=(y+fm.ascent-(lines.size-1)*lineH).coerceIn(margin,max(margin,720f-margin-height))
+        val left=when(p.textAlign) { Paint.Align.CENTER -> anchor-width/2f; Paint.Align.RIGHT -> anchor-width; else -> anchor }.coerceIn(margin,1280f-margin-width)
+        val actualWidth=lines.maxOf { p.measureText(it) }.coerceAtMost(width)
+        val actualLeft=when(p.textAlign) { Paint.Align.CENTER -> left+(width-actualWidth)/2f;Paint.Align.RIGHT -> left+width-actualWidth;else -> left }
+        return lines to RectF(actualLeft,top,actualLeft+actualWidth,top+height)
+    }
+
+    private fun drawFullTitle(c:Canvas,value:String,x:Float,y:Float): RectF {
+        val (lines,bounds)=titleGeometry(value,x,y)
+        val fm=p.fontMetrics;val lineH=(fm.descent-fm.ascent)*1.12f
+        val anchor=when(p.textAlign) { Paint.Align.CENTER -> bounds.centerX(); Paint.Align.RIGHT -> bounds.right; else -> bounds.left }
+        lines.forEachIndexed { i,line -> c.drawText(line,anchor,bounds.top-fm.ascent+i*lineH,p) }
+        return bounds
+    }
+
+    private fun albumBaseline(title:String,y:Float):Float {
+        if(!styles[0].visible || title.isBlank()) return y
+        val saved=Paint(p)
+        val style=styles[0];applyStylePaint(style)
+        p.textAlign=when(style.align) { 1 -> Paint.Align.CENTER;2 -> Paint.Align.RIGHT;else -> Paint.Align.LEFT }
+        val bounds=titleGeometry(title,1280f*style.x/100f,720f*style.y/100f).second
+        p.set(saved)
+        val top=y+p.fontMetrics.ascent
+        return if(top<bounds.bottom && y+p.fontMetrics.descent>bounds.top) bounds.top-14f-p.fontMetrics.descent else y
     }
 
     private fun drawEditorGrid(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
@@ -2313,7 +2520,7 @@ class PhotoTvView(
         c.drawLine(x, y + h / 2f, x + w, y + h / 2f, stroke)
     }
 
-    private fun drawEditorOverlays(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
+    private fun drawEditorOverlays(c: Canvas, x: Float, y: Float, w: Float, h: Float, highlightSelected: Boolean = true) {
         val item = currentItem()
         val vals = metadataValues(item)
         styles.forEachIndexed { i, s ->
@@ -2326,25 +2533,26 @@ class PhotoTvView(
             if (!s.visible || !global) return@forEachIndexed
 
             val tx = x + w * s.x / 100f
-            val ty = y + h * s.y / 100f
+            var ty = y + h * s.y / 100f
             applyStylePaint(s)
             p.textSize = s.size
             val align = when (s.align) { 1 -> Paint.Align.CENTER; 2 -> Paint.Align.RIGHT; else -> Paint.Align.LEFT }
             p.textAlign = align
-            c.drawText(vals[i], tx, ty, p)
+            if(i==1) ty=albumBaseline(vals[0],ty)
+            val titleBounds=if(i==0) drawFullTitle(c,vals[i],tx,ty) else { c.drawText(vals[i],tx,ty,p);null }
 
-            if (i == editorElement) {
+            if (highlightSelected && i == editorElement) {
                 val width = p.measureText(vals[i])
                 val fm = p.fontMetrics
-                val left = when (align) {
+                val left = titleBounds?.left ?: when (align) {
                     Paint.Align.CENTER -> tx - width / 2
                     Paint.Align.RIGHT -> tx - width
                     else -> tx
                 }
-                val top = ty + fm.ascent - 8f
-                val right = left + width + 10f
-                val bottom = ty + fm.descent + 8f
-                strokeRound(c, left - 5f, top, right, bottom, 2f, Color.rgb(27, 130, 255), 2f)
+                val top = (titleBounds?.top ?: (ty + fm.ascent)) - 8f
+                val right = (titleBounds?.right ?: (left + width)) + 10f
+                val bottom = (titleBounds?.bottom ?: (ty + fm.descent)) + 8f
+                strokeRound(c, (titleBounds?.left ?: left) - 5f, top, right, bottom, 2f, Color.rgb(27, 130, 255), 2f)
                 listOf(left - 5f to top, right to top, left - 5f to bottom, right to bottom).forEach { (hx, hy) ->
                     circle(c, hx, hy, 5f, Color.WHITE)
                     stroke.style = Paint.Style.STROKE
@@ -2358,55 +2566,36 @@ class PhotoTvView(
     }
 
     private fun drawEditorPanel(c: Canvas, x: Float, y: Float, w: Float) {
-        val s = styles[editorElement]
-        val panelName = elementNames.getOrElse(editorElement) { "Élément" }
-            .replace(" de la photo", "")
-            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.FRANCE) else it.toString() }
-        text(c, "Paramètres : $panelName", x + 16f, y + 28f, 15f, Color.WHITE, 1)
-        text(c, "Texte", x + 16f, y + 60f, 11f, Color.rgb(180, 191, 207))
-        controlBox(c, x + 16f, y + 67f, w - 32f, 35f, currentTextForElement(), editorControl == 0 && editorColumn == 2 && !navFocus)
-
-        text(c, "Police", x + 16f, y + 125f, 11f, Color.rgb(180, 191, 207))
-        controlBox(c, x + 108f, y + 111f, w - 124f, 35f, fontName(s.font), editorControl == 1 && editorColumn == 2 && !navFocus)
-
-        drawSliderRow(c, "Taille", s.size, 12f, 80f, x + 16f, y + 167f, w - 32f, editorControl == 2 && editorColumn == 2 && !navFocus)
-        text(c, "Couleur", x + 16f, y + 240f, 12f, Color.WHITE)
-        round(c, x + 110f, y + 224f, x + 148f, y + 256f, 5f, s.color)
-        if (editorControl == 3 && editorColumn == 2 && !navFocus) strokeRound(c, x + 106f, y + 220f, x + 152f, y + 260f, 7f, Color.rgb(29, 134, 255), 2f)
-
-        drawSliderRow(c, "Position X", s.x, 0f, 100f, x + 16f, y + 276f, w - 32f, editorControl == 4 && editorColumn == 2 && !navFocus)
-        drawSliderRow(c, "Position Y", s.y, 0f, 100f, x + 16f, y + 337f, w - 32f, editorControl == 5 && editorColumn == 2 && !navFocus)
-
-        text(c, "Alignement", x + 16f, y + 420f, 12f, Color.WHITE)
-        val segX = x + 108f
-        val segY = y + 398f
-        val segW = 126f
-        round(c, segX, segY, segX + segW, segY + 36f, 7f, Color.rgb(31, 44, 59))
-        for (i in 0..2) {
-            if (s.align == i) round(c, segX + i * 42f, segY, segX + (i + 1) * 42f, segY + 36f, 7f, Color.rgb(18, 108, 195))
-            drawAlignIcon(c, segX + i * 42f + 21f, segY + 18f, i)
-        }
-        if (editorControl == 6 && editorColumn == 2 && !navFocus) strokeRound(c, segX - 3f, segY - 3f, segX + segW + 3f, segY + 39f, 8f, Color.rgb(29, 134, 255), 2f)
-
-        text(c, "Ombre", x + 16f, y + 478f, 12f, Color.WHITE)
-        drawToggle(c, x + 205f, y + 464f, s.shadow, editorControl == 7 && editorColumn == 2 && !navFocus)
-
-        val actionY = y + 520f
-        val actionW = 62f
-        val actionGap = 5f
-        val actions = listOf("↶", "↷", "Réinit.", "Tout")
-        actions.forEachIndexed { i, label ->
-            val ax = x + 16f + i * (actionW + actionGap)
-            controlBox(
-                c,
-                ax,
-                actionY,
-                actionW,
-                34f,
-                label,
-                editorControl == 8 + i && editorColumn == 2 && !navFocus
-            )
-        }
+        val st=styles[editorElement]
+        ellipsizedText(c, "${elementNames[editorElement]}", x+w/2f,y+32f,w-32f,20f,Color.WHITE,1,1)
+        val rows=listOf("Texte" to currentTextForElement(),"Police" to fontName(st.font),"Taille" to "${st.size.toInt()} points", "Couleur" to "Choisir",
+            "Position X" to "${st.x.toInt()} %","Position Y" to "${st.y.toInt()} %","Alignement" to listOf("Gauche","Centre","Droite")[st.align],
+            "Ombre" to if(st.shadow) "Activée" else "Désactivée","Annuler" to "Dernière modification","Rétablir" to "Dernière modification",
+            "Réinitialiser l’élément" to "Valeurs de base","Réinitialiser tout" to "Valeurs de base")
+        val rowH=70f*interfaceFontScale.coerceAtLeast(1f)
+        p.typeface=interfaceTypeface(0);p.textSize=12f*interfaceFontScale
+        val valueLines=wrappedText(rows[0].second,w-48f)
+        val heights=rows.mapIndexed { i,_ -> if(i==0) max(rowH,(40f+18f*valueLines.size)*interfaceFontScale) else rowH }
+        val starts=heights.runningFold(0f) { total,height -> total+height }
+        val viewport=510f
+        if(starts[editorControl]<editorScroll) editorScroll=starts[editorControl]
+        if(starts[editorControl+1]>editorScroll+viewport) editorScroll=starts[editorControl+1]-viewport
+        editorScroll=editorScroll.coerceIn(0f,max(0f,starts.last()-viewport))
+        editorHitBoxes.clear(); c.save(); c.clipRect(x+8f,y+50f,x+w-8f,y+560f)
+        rows.forEachIndexed { i,row ->
+            val yy=y+50f+starts[i]-editorScroll
+            val hh=heights[i]
+            if(yy+hh>=y+50f && yy<y+560f) {
+                val focus=editorColumn==2 && editorControl==i && !navFocus
+                round(c,x+12f,yy,x+w-12f,yy+hh-8f,9f,Color.rgb(10,24,38))
+                if(focus) strokeRound(c,x+12f,yy,x+w-12f,yy+hh-8f,9f,Color.rgb(105,196,255),3f)
+                ellipsizedText(c,row.first,x+23f,yy+25f*interfaceFontScale,w-48f,13f,Color.WHITE,1)
+                if(i==0) valueLines.forEachIndexed { line,value -> text(c,value,x+23f,yy+(48f+18f*line)*interfaceFontScale,12f,Color.rgb(156,203,255)) }
+                else ellipsizedText(c,row.second,x+23f,yy+48f*interfaceFontScale,w-48f,12f,Color.rgb(156,203,255))
+                editorHitBoxes.add(i to android.graphics.RectF(x+12f,max(y+50f,yy),x+w-12f,min(y+560f,yy+hh-8f)))
+            }
+        }; c.restore()
+        drawScrollIndicator(c,x+w-5f,y+50f,y+560f,starts.last(),viewport,editorScroll)
     }
 
     private fun currentTextForElement(): String =
@@ -2522,68 +2711,142 @@ class PhotoTvView(
         invalidate()
     }
 
+    private data class SettingRow(val id: Int, val label: String, val value: String, val action: Boolean = false)
+
+    private fun settingRows(): List<SettingRow> {
+        fun yes(v: Boolean) = if (v) "Activé" else "Désactivé"
+        fun row(id: Int, label: String, value: String, action: Boolean = false) = SettingRow(id, label, value, action)
+        return when (settingsCategory) {
+            0 -> listOf(row(10,"Cadrage des photos",imageModeLabel()), row(0,"Durée par photo","$durationSeconds secondes"),
+                row(1,"Changement des photos",if(fixedImage) "À la télécommande uniquement" else "Automatique"),
+                row(2,"Lecture en boucle",yes(loop)),row(3,"Ordre des photos",if(randomOrder) "Aléatoire" else "Dans l’ordre"),
+                row(4,"Transition",transitions[transitionIndex]),row(5,"Durée de transition","${format1(transitionSeconds)} secondes"),row(11,"Intensité du fondu","$fadeIntensityPercent %"),
+                row(6,"Effet panoramique",yes(kenBurns)),row(7,"Agrandissement",listOf("Aucun","Léger","Moyen","Fort")[zoomLevel+1]),
+                row(8,"Diaporama intelligent autonome",yes(autonomousSlideshow)),row(9,"Thème",if(darkTheme) "Sombre" else "Clair"))
+            1 -> elementNames.indices.map { row(it,elementNames[it],yes(when(it) { 2->showDate; 3->showTime; 4->showTemp; else->styles[it].visible }),true) } + row(10,"Masquer les extensions des titres",yes(hideTitleExtensions),true)
+            2 -> listOf(row(10,"Police de l’interface",fontName(interfaceFont)),row(13,"Taille du texte de l’interface","${(interfaceFontScale*100).toInt()} %"),
+                row(14,"Thème de l’interface",if(darkTheme) "Sombre" else "Clair"),row(11,"Police du diaporama",fontName(slideshowFont)),row(12,"Modèle de présentation",presetName(layoutPreset))) +
+                elementNames.indices.map { row(it,elementNames[it],"Police, taille et position · Modifier",true) }
+            3 -> transitions.indices.map { row(it,transitions[it],if(transitionIndex == it) "Sélectionnée" else "Choisir",true) }
+            4 -> listOf(row(0,"Afficher la date",yes(showDate)),row(1,"Format de date",dateFormatLabel()),row(2,"Afficher l’heure",yes(showTime)),
+                row(3,"Format de l’heure",if(time24h) "24 h" else "12 h"),row(4,"Afficher les secondes",yes(showSeconds)),row(5,"Mode nuit automatique",yes(nightModeEnabled)),
+                row(6,"Début du mode nuit","%02d:00".format(nightStartHour)),row(7,"Fin du mode nuit","%02d:00".format(nightEndHour)),row(8,"Assombrissement","$nightDimPercent %"),row(9,"Masquer les informations la nuit",yes(nightHideOverlays)))
+            5 -> listOf(row(0,"Afficher la température",yes(showTemp)),row(1,"Unité",if(tempCelsius) "°C" else "°F"),row(2,"Ville météo",weatherLocation.ifBlank { "Automatique" },true),
+                row(3,"Météo actuelle","${tempText()} · $weatherSummary",true),row(4,"Températures du jour","${temperatureLabel(forecastMinC,true)} / ${temperatureLabel(forecastMaxC,true)}",true),
+                row(5,"Température ressentie",temperatureLabel(feelsLikeC,true),true)) + forecastLines.take(3).mapIndexed { i,line->row(6+i,"Prévision ${i+1}",line,true) }
+            6 -> listOf(row(0,"Google Photos","Connexion Drive",true),row(1,"Dossier local","Parcourir",true),row(2,"Choisir des photos","Fichiers",true),
+                row(3,"Tri des albums",if(albumSort == 0) "Nom" else "Nombre de photos"),row(4,"Rechercher un album",albumSearch.ifBlank { "Tous les albums" },true),
+                row(5,"Sélection des albums","Tout sélectionner / masquer",true),row(6,"Albums masqués","Réafficher tous les albums",true),row(7,"Source réseau","SMB / WebDAV",true),row(8,"Analyse en arrière-plan",yes(backgroundAnalysis)))
+            7 -> listOf(row(0,"Diaporama intelligent autonome",yes(autonomousSlideshow)),row(1,"Sélection intelligente",SmartSelectionPolicy.modeLabel(smartSelectionMode)),row(2,"Pré-analyse locale",yes(backgroundAnalysis)),
+                row(3,"Reconnaissance des scènes",currentScene(currentItem()) ?: "En attente",true),row(4,"Recadrage intelligent","Automatique en mode Remplir",true),row(5,"Anti-doublons et diversité","Automatique",true),row(6,"Préchargement adaptatif","Automatique",true))
+            else -> if (advancedRulesOpen) ruleRows() else listOf(
+                row(0,"Affichage de l’image",imageModeLabel()),row(1,"Grille et magnétisme de l’éditeur",yes(gridSnap)),row(2,"Protection OLED",yes(oledProtection)),row(3,"Masquer les informations après 10 s",yes(overlaysAutoHide)),
+                row(4,"Démarrage après inactivité",if(autoStartMinutes == 0) "Désactivé" else "$autoStartMinutes min"),row(5,"Démarrer directement le diaporama",yes(startDirectly)),row(6,"Afficher uniquement les favoris",yes(favoritesOnly)),
+                row(7,"Disposition des informations",presetName(layoutPreset)),row(10,"Son des vidéos",yes(videoSound)),row(15,"Sélection intelligente",SmartSelectionPolicy.modeLabel(smartSelectionMode)),
+                row(14,"Code PIN des réglages","Configurer",true),row(13,"Télécommande depuis le navigateur",yes(remoteEnabled),true),row(12,"Afficher les zones de diagnostic",yes(interactionDiagnostics),true),
+                row(11,"Règles par album ou source","Configurer",true),row(16,"Économiseur d’écran de la télé","Choisir Photos TV ou celui de la télé",true),row(8,"Exporter les réglages","Sauvegarder",true),row(9,"Importer les réglages","Restaurer",true))
+        }
+    }
+
+    private fun ruleRows(): List<SettingRow> {
+        val name = if (rulesBySource) sourceLabels().getOrNull(ruleSourceIndex) else albumPairs().getOrNull(ruleAlbumIndex)?.first
+        val source = sourceRules.getOrPut(name.orEmpty()) { SourceRule() }
+        val album = albumRules.getOrPut(name.orEmpty()) { AlbumRule() }
+        val enabled = if(rulesBySource) source.enabled else album.enabled
+        val start = if(rulesBySource) source.startHour else album.startHour
+        val end = if(rulesBySource) source.endHour else album.endHour
+        val duration = if(rulesBySource) source.durationSeconds else album.durationSeconds
+        val transition = if(rulesBySource) source.transitionIndex else album.transitionIndex
+        val metadata = if(rulesBySource) source.showMetadata else album.showMetadata
+        return listOf(SettingRow(0,if(rulesBySource) "Source" else "Album",name ?: "Aucune photothèque"),SettingRow(1,"Activer la règle",if(enabled) "Activée" else "Désactivée"),
+            SettingRow(2,if(rulesBySource) "Saison" else "Jours",if(rulesBySource) listOf("Toute l’année","Hiver","Printemps","Été","Automne")[source.seasonMode.coerceIn(0,4)] else listOf("Tous","Semaine","Week-end")[album.daysMode.coerceIn(0,2)]),
+            SettingRow(3,"À partir de","%02d:00".format(start)),SettingRow(4,"Jusqu’à","%02d:00".format(end)),SettingRow(5,"Durée par photo",if(duration<=0) "Réglage global" else "$duration s"),
+            SettingRow(6,"Transition",if(transition<0) "Réglage global" else transitions[transition.coerceIn(0,transitions.lastIndex)]),SettingRow(7,"Afficher les métadonnées",if(metadata) "Oui" else "Non"),
+            SettingRow(9,if(rulesBySource) "Voir les règles par album" else "Voir les règles par source","Ouvrir",true),SettingRow(8,"Retour aux réglages avancés","Retour",true))
+    }
+
     private fun drawSettings(c: Canvas) {
         drawAppBackground(c)
         drawBrand(c, 50f, 20f, "RÉGLAGES")
+        val cats = listOf("Diaporama","Éléments affichés","Style et position","Transitions","Heure et date","Température","Source des photos","Intelligence","Avancés")
 
-        val sideX = 32f
-        val sideY = 108f
-        val sideW = 320f
-        val sideH = 475f
-        round(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(6, 18, 29))
-        strokeRound(c, sideX, sideY, sideX + sideW, sideY + sideH, 13f, Color.rgb(22, 45, 69), 1f)
-
-        val cats = listOf(
-            "Diaporama", "Éléments affichés", "Style et position", "Transitions",
-            "Heure et date", "Température", "Source des photos", "Intelligence", "Avancés"
-        )
-        cats.forEachIndexed { i, name ->
-            val yy = sideY + 8f + i * 50f
-            val active = settingsCategory == i
-            if (active) gradientRound(c, sideX + 8f, yy, sideX + sideW - 8f, yy + 50f, 11f, Color.rgb(12, 119, 255), Color.rgb(10, 91, 237))
-            if (settingsColumn == 0 && settingsCategory == i && !navFocus) strokeRound(c, sideX + 5f, yy - 3f, sideX + sideW - 5f, yy + 53f, 12f, Color.rgb(136, 197, 255), 2f)
-            drawSideIcon(c, sideX + 30f, yy + 25f, i)
-            text(c, name, sideX + 58f, yy + 31f, 14f, Color.WHITE)
+        val sideH = 50f * interfaceFontScale.coerceAtLeast(1f)
+        val visible = (510f / sideH).toInt().coerceAtLeast(1)
+        val first = (settingsCategory - visible / 2).coerceIn(0,max(0,cats.size-visible))
+        val sideCount = min(visible, cats.size)
+        val sideTop = 354.5f - (sideCount * sideH + 16f) / 2f
+        round(c,32f,sideTop,352f,sideTop+sideCount*sideH+16f,16f,Color.rgb(6,18,29))
+        strokeRound(c,32f,sideTop,352f,sideTop+sideCount*sideH+16f,16f,Color.rgb(87,124,165),2f)
+        cats.drop(first).take(visible).forEachIndexed { slot,name ->
+            val index = first + slot; val y = sideTop + 8f + slot * sideH
+            val active = settingsCategory == index
+            if(active) { val light=lightInterface; lightInterface=false; round(c,40f,y,344f,y+sideH-6f,11f,Color.rgb(14,102,219)); lightInterface=light }
+            if(active && settingsColumn == 0 && !navFocus) strokeRound(c,40f,y,344f,y+sideH-6f,11f,Color.rgb(146,209,255),3f)
+            val wasLight=lightInterface
+            if(active) lightInterface=false
+            p.shader=null; p.style=Paint.Style.FILL
+            drawSideIcon(c,64f,y+sideH/2f,index)
+            ellipsizedText(c,name,201f,y+sideH/2f+5f*interfaceFontScale,260f,14f,Color.WHITE,if(active) 1 else 0,1)
+            lightInterface=wasLight
         }
+        round(c,380f,77f,1248f,632f,16f,Color.rgb(17,30,44))
+        strokeRound(c,380f,77f,1248f,632f,16f,Color.rgb(87,124,165),2f)
+        drawScrollIndicator(c,346f,sideTop+8f,sideTop+8f+sideCount*sideH,cats.size.toFloat(),sideCount.toFloat(),first.toFloat())
+        ellipsizedText(c,if(advancedRulesOpen && settingsCategory == 8) "Règles par album et source" else cats[settingsCategory],814f,135f,820f,25f,Color.WHITE,1,1)
 
-        val panelX = 380f
-        val panelY = 77f
-        val panelW = 868f
-        val panelH = 536f
-        round(c, panelX, panelY, panelX + panelW, panelY + panelH, 13f, Color.rgb(17, 30, 44))
-        strokeRound(c, panelX, panelY, panelX + panelW, panelY + panelH, 13f, Color.rgb(38, 56, 76), 1f)
-
-        when (settingsCategory) {
-            0 -> drawSettingsSlideshow(c, panelX, panelY)
-            1 -> drawSettingsElements(c, panelX, panelY, panelW)
-            2 -> drawSettingsStyle(c, panelX, panelY, panelW, panelH)
-            3 -> drawSettingsTransitions(c, panelX, panelY)
-            4 -> drawSettingsTime(c, panelX, panelY)
-            5 -> drawSettingsTemp(c, panelX, panelY)
-            6 -> drawSettingsSource(c, panelX, panelY, panelW)
-            7 -> drawSettingsIntelligence(c, panelX, panelY, panelW)
-            else -> if (advancedRulesOpen) drawSettingsRules(c, panelX, panelY, panelW) else drawSettingsAdvanced(c, panelX, panelY)
+        settingHitBoxes.clear()
+        val rows=settingRows()
+        val rowH=78f * interfaceFontScale.coerceAtLeast(1f)
+        val grouped = settingsCategory == 6
+        val groups = if(grouped) listOf(rows.take(3)) + rows.drop(3).map { listOf(it) } else rows.map { listOf(it) }
+        val index=groups.indexOfFirst { group->group.any { it.id == settingsControl } }.coerceAtLeast(0)
+        val viewport=448f
+        val focusTop=index*rowH
+        if(focusTop<settingsScroll) settingsScroll=focusTop
+        if(focusTop+rowH>settingsScroll+viewport) settingsScroll=focusTop+rowH-viewport
+        settingsScroll=settingsScroll.coerceIn(0f,max(0f,groups.size*rowH-viewport))
+        c.save(); c.clipRect(395f,160f,1233f,610f)
+        groups.forEachIndexed { groupIndex,group ->
+            val y=162f+groupIndex*rowH-settingsScroll
+            if(y+rowH>=160f && y<=610f) group.forEachIndexed { slot,row ->
+                val w=820f/group.size; val x=404f+slot*w
+                val focused=settingsColumn==1 && settingsControl==row.id && !navFocus
+                round(c,x,y,x+w-10f,y+rowH-10f,11f,if(focused) Color.rgb(17,61,108) else Color.rgb(9,23,37))
+                if(focused) strokeRound(c,x,y,x+w-10f,y+rowH-10f,11f,if(settingsEditing) Color.rgb(255,200,95) else Color.rgb(105,196,255),3f)
+                ellipsizedText(c,row.label,x+16f,y+28f*interfaceFontScale,w-42f,15f,Color.WHITE,1)
+                ellipsizedText(c,(if(focused && settingsEditing) "‹  " else "")+row.value+(if(focused && settingsEditing) "  ›" else ""),x+16f,y+53f*interfaceFontScale,w-42f,13f,Color.rgb(157,205,255))
+                val rect=android.graphics.RectF(x,max(160f,y),x+w-10f,min(610f,y+rowH-10f))
+                if(rect.height()>0) settingHitBoxes.add(row.id to rect)
+            }
+        }
+        c.restore()
+        if(groups.size*rowH>viewport) {
+            val thumb=viewport*viewport/(groups.size*rowH)
+            val top=162f+(viewport-thumb)*settingsScroll/(groups.size*rowH-viewport)
+            round(c,1235f,162f,1240f,610f,3f,Color.rgb(35,57,81))
+            round(c,1235f,top,1240f,top+thumb,3f,Color.rgb(88,167,243))
         }
     }
 
     private fun drawSettingsSlideshow(c: Canvas, x: Float, y: Float) {
-        text(c, "Diaporama", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        settingsSlider(c, "Durée d'affichage par photo", durationSeconds.toFloat(), 2f, 120f, "$durationSeconds secondes", x, y + 40f, 0)
-        settingsSegment(c, "Mode d'affichage", listOf("Automatique", "Image fixe"), if (fixedImage) 1 else 0, x, y + 86f, 1)
-        settingsToggle(c, "Lecture en boucle", loop, x, y + 133f, 2)
-        settingsChoice(c, "Ordre des photos", if (randomOrder) "Aléatoire" else "Dans l'ordre de l'album", x, y + 180f, 3)
+        text(c, "Diaporama", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
+        settingsSegment(c, "Cadrage des photos", listOf("Photo entière", "Remplir", "Fond flouté"), when (imageMode) { 0 -> 1; 3 -> 2; else -> 0 }, x, y + 42f, 10)
+        settingsSlider(c, "Durée d'affichage par photo", durationSeconds.toFloat(), 2f, 120f, "$durationSeconds secondes", x, y + 84f, 0)
+        settingsSegment(c, "Mode d'affichage", listOf("Automatique", "Image fixe"), if (fixedImage) 1 else 0, x, y + 126f, 1)
+        settingsToggle(c, "Lecture en boucle", loop, x, y + 168f, 2)
+        settingsChoice(c, "Ordre des photos", if (randomOrder) "Aléatoire" else "Dans l'ordre de l'album", x, y + 210f, 3)
 
-        text(c, "Transition entre les photos", x + 22f, y + 252f, 13f, Color.WHITE)
-        drawTransitionCards(c, x + 22f, y + 267f, settingsControl == 4 && settingsColumn == 1 && !navFocus)
+        text(c, "Transition entre les photos", x + 22f, y + 282f, 13f, Color.WHITE)
+        drawTransitionCards(c, x + 22f, y + 291f, settingsControl == 4 && settingsColumn == 1 && !navFocus)
 
         settingsSlider(c, "Durée de la transition", transitionSeconds, .2f, 4f, "${format1(transitionSeconds)} secondes", x, y + 390f, 5)
         settingsToggle(c, "Effet panoramique (Ken Burns)", kenBurns, x, y + 430f, 6)
-        settingsSegment(c, "Style d'agrandissement", listOf("Léger", "Moyen", "Fort"), zoomLevel, x, y + 471f, 7)
+        settingsSegment(c, "Style d'agrandissement", listOf("Aucun", "Léger", "Moyen", "Fort"), zoomLevel + 1, x, y + 471f, 7)
         settingsToggle(c, "Diaporama intelligent autonome", autonomousSlideshow, x, y + 510f, 8)
     }
 
     private fun drawSettingsElements(c: Canvas, x: Float, y: Float, w: Float) {
-        text(c, "Éléments affichés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Éléments affichés", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
         val visibleCount = 6
         val first = (settingsControl - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
         for (slot in 0 until visibleCount) {
@@ -2597,7 +2860,8 @@ class PhotoTvView(
             text(c, elementNames[i], x + 42f, yy + 33f, 14f, Color.WHITE, 1)
             drawToggle(c, x + w - 80f, yy + 13f, elementVisible(i), false)
         }
-        text(c, "${first + 1}–${min(first + visibleCount, elementNames.size)} / ${elementNames.size}", x + w - 24f, y + 515f, 11f, Color.rgb(128, 149, 173), 0, 2)
+        settingsToggle(c, "Masquer les extensions des titres", hideTitleExtensions, x, y + 476f, elementNames.size)
+        text(c, "${first + 1}–${min(first + visibleCount, elementNames.size)} / ${elementNames.size}", x + w - 24f, y + 545f, 11f, Color.rgb(128, 149, 173), 0, 2)
     }
 
     private fun elementVisible(i: Int): Boolean = when (i) {
@@ -2608,23 +2872,30 @@ class PhotoTvView(
     }
 
     private fun drawSettingsStyle(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
-        text(c, "Style et position", x + 22f, y + 34f, 18f, Color.WHITE, 1)
-        text(c, "Chaque élément peut être déplacé, redimensionné et masqué indépendamment.", x + 22f, y + 67f, 13f, Color.rgb(184, 196, 212))
-        val visibleCount = 5
+        text(c, "Style et position", x + w / 2f, y + 34f, 18f, Color.WHITE, 1, 1)
+        text(c, "Police de l’interface", x + 24f, y + 84f, 14f, Color.WHITE)
+        controlBox(c, x + 440f, y + 59f, 400f, 42f, fontName(interfaceFont), settingsControl == 10 && settingsColumn == 1 && !navFocus)
+        text(c, "Police du diaporama", x + 24f, y + 139f, 14f, Color.WHITE)
+        controlBox(c, x + 440f, y + 114f, 400f, 42f, fontName(slideshowFont), settingsControl == 11 && settingsColumn == 1 && !navFocus)
+        text(c, "Éléments du diaporama · réglages individuels dans l’éditeur", x + 24f, y + 192f, 12f, Color.rgb(184, 196, 212))
+        val visibleCount = 4
         val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
         for (slot in 0 until visibleCount) {
             val i = first + slot
             if (i !in elementNames.indices) break
-            val yy = y + 92f + slot * 64f
-            round(c, x + 22f, yy, x + 420f, yy + 50f, 10f, if (i == editorElement) Color.rgb(10, 101, 214) else Color.rgb(11, 25, 38))
-            text(c, elementNames[i], x + 40f, yy + 31f, 14f, Color.WHITE)
-            text(c, "${styles[i].size.toInt()} px  •  X ${styles[i].x.toInt()}  •  Y ${styles[i].y.toInt()}", x + 445f, yy + 31f, 13f, Color.rgb(177, 191, 209))
+            val yy = y + 212f + slot * 64f
+            round(c, x + 22f, yy, x + 840f, yy + 50f, 10f, if (i == editorElement) Color.rgb(10, 101, 214) else Color.rgb(11, 25, 38))
+            if (settingsControl == i && settingsColumn == 1 && !navFocus) strokeRound(c, x + 22f, yy, x + 840f, yy + 50f, 10f, Color.rgb(32, 131, 244), 2f)
+            text(c, elementNames[i], x + 40f, yy + 22f, 14f, Color.WHITE)
+            text(c, "Police : ${fontName(styles[i].font)}", x + 40f, yy + 42f, 10f, Color.rgb(177, 191, 209))
+            text(c, "${styles[i].size.toInt()} px  ·  X ${styles[i].x.toInt()}  ·  Y ${styles[i].y.toInt()}", x + 445f, yy + 31f, 13f, Color.rgb(177, 191, 209))
         }
-        text(c, "OK ouvre l'Éditeur sur l'élément sélectionné.", x + 22f, y + h - 27f, 12f, Color.rgb(126, 151, 181))
+        settingsChoice(c, "Modèle de départ", presetName(layoutPreset), x, y + 476f, 12)
+        text(c, "OK ouvre l’éditeur · Police et taille pour chaque élément", x + w / 2f, y + h - 12f, 12f, Color.rgb(126, 151, 181), 0, 1)
     }
 
     private fun drawSettingsTransitions(c: Canvas, x: Float, y: Float) {
-        text(c, "Transitions", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Transitions", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
         val cols = 4
         transitions.forEachIndexed { i, name ->
             val row = i / cols
@@ -2641,7 +2912,7 @@ class PhotoTvView(
     }
 
     private fun drawSettingsTime(c: Canvas, x: Float, y: Float) {
-        text(c, "Heure et date", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Heure et date", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
         settingsToggle(c, "Afficher la date", showDate, x, y + 55f, 0)
         settingsChoice(c, "Format de date", dateFormatLabel(), x, y + 103f, 1)
         settingsToggle(c, "Afficher l'heure", showTime, x, y + 151f, 2)
@@ -2665,7 +2936,7 @@ class PhotoTvView(
         )
 
     private fun drawSettingsTemp(c: Canvas, x: Float, y: Float) {
-        text(c, "Température", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Température", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
         settingsToggle(c, "Afficher la température", showTemp, x, y + 72f, 0)
         settingsSegment(c, "Unité", listOf("°C", "°F"), if (tempCelsius) 0 else 1, x, y + 132f, 1)
         settingsChoice(
@@ -2691,7 +2962,7 @@ class PhotoTvView(
     }
 
     private fun drawSettingsSource(c: Canvas, x: Float, y: Float, w: Float) {
-        text(c, "Source des photos", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Source des photos", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
 
         val cardW = 264f
         val gap = 12f
@@ -2756,7 +3027,7 @@ class PhotoTvView(
 
         text(
             c,
-            "Appui long OK sur un album : masquer / réafficher.",
+            "OK sur un album : masquer / réafficher durablement.",
             x + 22f, y + 430f, 11f, Color.rgb(130, 154, 181)
         )
         text(
@@ -2786,7 +3057,7 @@ class PhotoTvView(
     }
 
     private fun drawSettingsIntelligence(c: Canvas, x: Float, y: Float, w: Float) {
-        text(c, "Intelligence et performances", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Intelligence et performances", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
         text(c, "Les fonctions automatiques restent visibles ici même lorsqu'elles ne demandent aucun réglage.", x + 22f, y + 58f, 11f, Color.rgb(150, 171, 194))
 
         fun row(
@@ -2856,7 +3127,7 @@ class PhotoTvView(
     }
 
     private fun drawSettingsRules(c: Canvas, x: Float, y: Float, w: Float) {
-        text(c, if (rulesBySource) "Règles par source" else "Règles par album", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, if (rulesBySource) "Règles par source" else "Règles par album", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
         controlBox(c, x + w - 385f, y + 10f, 175f, 38f, if (rulesBySource) "Voir albums" else "Voir sources", settingsColumn == 1 && settingsControl == 9 && !navFocus)
         controlBox(c, x + w - 195f, y + 10f, 170f, 38f, "Retour avancés", settingsColumn == 1 && settingsControl == 8 && !navFocus)
 
@@ -2901,7 +3172,7 @@ class PhotoTvView(
         text(c, "Une photo multi-albums reste visible si au moins une règle autorise son affichage.", x + 22f, y + 528f, 10.5f, Color.rgb(128, 151, 178))
     }
     private fun drawSettingsAdvanced(c: Canvas, x: Float, y: Float) {
-        text(c, "Avancés", x + 22f, y + 34f, 18f, Color.WHITE, 1)
+        text(c, "Avancés", x + 434f, y + 34f, 18f, Color.WHITE, 1, 1)
         controlBox(c, x + 22f, y + 8f, 82f, 38f, "Sélect.", settingsColumn == 1 && settingsControl == 15 && !navFocus)
         controlBox(c, x + 118f, y + 8f, 92f, 38f, "PIN", settingsColumn == 1 && settingsControl == 14 && !navFocus)
         controlBox(c, x + 225f, y + 8f, 205f, 38f, if (remoteEnabled) "Télécommande : ON" else "Télécommande : OFF", settingsColumn == 1 && settingsControl == 13 && !navFocus)
@@ -2926,7 +3197,7 @@ class PhotoTvView(
         settingsToggle(c, "Afficher uniquement les favoris", favoritesOnly, x, y + 368f, 6)
         settingsChoice(c, "Disposition des informations", presetName(layoutPreset), x, y + 421f, 7)
 
-        text(c, "Sauvegarde", x + 22f, y + 487f, 12f, Color.WHITE)
+        controlBox(c, x + 22f, y + 468f, 300f, 38f, "Économiseur de la télé", settingsColumn == 1 && settingsControl == 16 && !navFocus)
         controlBox(c, x + 350f, y + 468f, 180f, 38f, "Exporter", settingsColumn == 1 && settingsControl == 8 && !navFocus)
         controlBox(c, x + 545f, y + 468f, 180f, 38f, "Importer", settingsColumn == 1 && settingsControl == 9 && !navFocus)
 
@@ -3005,7 +3276,7 @@ class PhotoTvView(
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
     }.getOrDefault("?")
 
-    private fun displayImageMode(): Int = autonomousImageModeOverride ?: imageMode
+    private fun displayImageMode(): Int = if (imageMode in 1..3) imageMode else autonomousImageModeOverride ?: imageMode
 
     private fun currentScene(item: PhotoItem?): String? {
         if (item == null || item.mediaType != "image") return null
@@ -3038,7 +3309,7 @@ class PhotoTvView(
     }
 
     private val imageModes: List<String>
-        get() = listOf("Remplir", "Adapter", "Original", "Fond flouté", "Mosaïque 2", "Mosaïque 3", "Mosaïque 4")
+        get() = listOf("Remplir l’écran (recadrage)", "Photo entière", "Original (sans agrandir)", "Photo entière · fond flouté", "Mosaïque 2", "Mosaïque 3", "Mosaïque 4")
 
     private fun imageModeLabel(): String =
         imageModes[imageMode.coerceIn(0, imageModes.lastIndex)]
@@ -3092,16 +3363,28 @@ class PhotoTvView(
         val items = activePhotos()
         val item = currentItem()
         val current = currentBitmap()
-        val previous = if (items.isNotEmpty() && previousPhoto in items.indices) {
-            val key = items[previousPhoto].uri.toString()
-            synchronized(bitmapCache) { bitmapCache[key] } ?: current
-        } else current
+        val previousItem = items.getOrNull(previousPhoto)
+        val previousBitmap = previousItem?.let {
+            val key = it.uri.toString()
+            synchronized(highResCache) { highResCache[key] } ?: synchronized(bitmapCache) { bitmapCache[key] }
+        }
+        val previous = previousBitmap ?: current
 
+        fun drawTransitionLayer(canvas: Canvas, bitmap: Bitmap?, x: Float, y: Float, w: Float, h: Float) {
+            val alpha = imagePaint.alpha
+            val photo = if (previousBitmap != null && bitmap === previous) previousItem else item
+            imagePaint.alpha = 255
+            val saved = canvas.saveLayerAlpha(x, y, x + w, y + h, alpha)
+            drawBackgroundPhoto(canvas, x, y, w, h, bitmap, photo)
+            canvas.restoreToCount(saved)
+            imagePaint.alpha = alpha
+        }
         val localTransition = effectiveTransition(item)
-        val name = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
+        val selectedTransition = transitions[localTransition.coerceIn(0, transitions.lastIndex)]
+        val name = if ((zoomLevel < 0 || displayImageMode() in 1..3) && selectedTransition in listOf("Zoom", "Zoom arrière", "Ken Burns")) "Fondu" else selectedTransition
         if (displayImageMode() >= 4) {
             drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current, item)
-        } else if (item?.mediaType == "video" && supportsVideoPlayback) {
+        } else if (item?.mediaType == "video" && supportsVideoPlayback && slideshow) {
             c.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         } else if (item?.mediaType == "gif") {
             if (!drawAnimatedGif(c, item, 0f, 0f, 1280f, 720f)) {
@@ -3115,18 +3398,18 @@ class PhotoTvView(
 
             name == "Glissement" || name == "Glissement droite" -> {
                 val dir = if (name == "Glissement droite") -1f else 1f
-                drawBitmapCenterCrop(c, previous, -dir * transitionProgress * 1280f, 0f, 1280f, 720f)
-                drawBitmapCenterCrop(c, current, dir * (1f - transitionProgress) * 1280f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, previous, -dir * transitionProgress * 1280f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, current, dir * (1f - transitionProgress) * 1280f, 0f, 1280f, 720f)
             }
 
             name == "Glissement haut" || name == "Glissement bas" -> {
                 val dir = if (name == "Glissement haut") 1f else -1f
-                drawBitmapCenterCrop(c, previous, 0f, -dir * transitionProgress * 720f, 1280f, 720f)
-                drawBitmapCenterCrop(c, current, 0f, dir * (1f - transitionProgress) * 720f, 1280f, 720f)
+                drawTransitionLayer(c, previous, 0f, -dir * transitionProgress * 720f, 1280f, 720f)
+                drawTransitionLayer(c, current, 0f, dir * (1f - transitionProgress) * 720f, 1280f, 720f)
             }
 
             name == "Zoom" || name == "Zoom arrière" -> {
-                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
                 val t = transitionProgress
                 val scale = if (name == "Zoom") .82f + .18f * t else 1.18f - .18f * t
                 c.save()
@@ -3134,38 +3417,38 @@ class PhotoTvView(
                 c.scale(scale, scale)
                 c.translate(-640f, -360f)
                 imagePaint.alpha = (255 * t).toInt().coerceIn(0, 255)
-                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                 imagePaint.alpha = 255
                 c.restore()
             }
 
             name == "Rotation douce" -> {
-                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
                 c.save()
                 c.rotate((1f - transitionProgress) * 4f, 640f, 360f)
                 imagePaint.alpha = (255 * transitionProgress).toInt().coerceIn(0, 255)
-                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                 imagePaint.alpha = 255
                 c.restore()
             }
 
             name == "Balayage" -> {
-                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
                 c.save()
                 c.clipRect(0f, 0f, 1280f * transitionProgress, 720f)
-                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                 c.restore()
             }
 
             name == "Cube 3D" -> {
-                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
                 c.save()
                 val scaleX = (.12f + .88f * transitionProgress).coerceIn(.12f, 1f)
                 c.translate(640f, 0f)
                 c.scale(scaleX, 1f)
                 c.translate(-640f, 0f)
                 imagePaint.alpha = (255 * transitionProgress).toInt().coerceIn(0, 255)
-                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                 imagePaint.alpha = 255
                 c.restore()
             }
@@ -3173,16 +3456,16 @@ class PhotoTvView(
             name == "Fondu au noir" || name == "Fondu au blanc" -> {
                 val bg = if (name == "Fondu au blanc") Color.WHITE else Color.BLACK
                 if (transitionProgress < .5f) {
-                    drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                    drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
                     fill(c, 0f, 0f, 1280f, 720f, Color.argb((transitionProgress * 2f * 255f).toInt(), Color.red(bg), Color.green(bg), Color.blue(bg)))
                 } else {
-                    drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                    drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                     fill(c, 0f, 0f, 1280f, 720f, Color.argb(((1f - transitionProgress) * 2f * 255f).toInt(), Color.red(bg), Color.green(bg), Color.blue(bg)))
                 }
             }
 
             name == "Dissolution" -> {
-                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
                 val cols = 12
                 val rows = 7
                 val total = cols * rows
@@ -3200,26 +3483,27 @@ class PhotoTvView(
                 }
                 c.save()
                 c.clipPath(tilePath)
-                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                 c.restore()
             }
 
             name == "Flou progressif" -> {
-                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
                 imagePaint.alpha = (220f * transitionProgress).toInt().coerceIn(0, 220)
                 drawSoftBackground(c, current, 0f, 0f, 1280f, 720f)
                 imagePaint.alpha = (255f * transitionProgress * transitionProgress).toInt().coerceIn(0, 255)
-                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                 imagePaint.alpha = 255
             }
 
             name == "Aucune" -> drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, current)
 
             else -> {
-                imagePaint.alpha = ((1f - transitionProgress) * 255).toInt().coerceIn(0, 255)
-                drawBitmapCenterCrop(c, previous, 0f, 0f, 1280f, 720f)
-                imagePaint.alpha = (transitionProgress * 255).toInt().coerceIn(0, 255)
-                drawBitmapCenterCrop(c, current, 0f, 0f, 1280f, 720f)
+                val fadeProgress = FadeBlendPolicy.progress(transitionProgress, fadeIntensityPercent)
+                imagePaint.alpha = ((1f - fadeProgress) * 255).toInt().coerceIn(0, 255)
+                drawTransitionLayer(c, previous, 0f, 0f, 1280f, 720f)
+                imagePaint.alpha = (fadeProgress * 255).toInt().coerceIn(0, 255)
+                drawTransitionLayer(c, current, 0f, 0f, 1280f, 720f)
                 imagePaint.alpha = 255
             }
         }
@@ -3228,8 +3512,8 @@ class PhotoTvView(
         val vals = metadataValues(item)
         val ruleAllowsMetadata = effectiveShowMetadata(item)
         val nightActive = isNightModeActive()
-        val hideOverlays = !ruleAllowsMetadata || (nightActive && nightHideOverlays) || (overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L)
-        val shift = oledShift()
+        val hideOverlays = !ruleAllowsMetadata || (nightActive && nightHideOverlays) || (slideshow && overlaysAutoHide && System.currentTimeMillis() - slideStartedAt > 10_000L)
+        val shift = if (slideshow) oledShift() else 0f to 0f
         if (!hideOverlays) {
             styles.forEachIndexed { i, st ->
                 val global = when (i) { 2 -> showDate; 3 -> showTime; 4 -> showTemp; else -> true }
@@ -3238,10 +3522,12 @@ class PhotoTvView(
                 val x = 1280f * st.x / 100f + shift.first
                 val y = 720f * st.y / 100f + shift.second
                 p.textAlign = when (st.align) { 1 -> Paint.Align.CENTER; 2 -> Paint.Align.RIGHT; else -> Paint.Align.LEFT }
-                c.drawText(vals[i], x, y, p)
+                if(i==0) drawFullTitle(c,vals[i],x,y)
+                else c.drawText(vals[i],x,if(i==1) albumBaseline(vals[0],y) else y,p)
             }
         }
 
+        p.clearShadowLayer()
         if (nightActive && nightDimPercent > 0) {
             val alpha = (255f * nightDimPercent / 100f).toInt().coerceIn(0, 230)
             fill(c, 0f, 0f, 1280f, 720f, Color.argb(alpha, 0, 0, 0))
@@ -3256,9 +3542,10 @@ class PhotoTvView(
     }
 
     private fun drawKenBurns(c: Canvas, bmp: Bitmap?, item: PhotoItem?) {
-        if (bmp == null || bmp.isRecycled) return
+        if (bmp == null || bmp.isRecycled || bmp === emptySlideshowBackground) { drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, bmp); return }
+        if (zoomLevel < 0 || displayImageMode() in 1..3) { drawBackgroundPhoto(c, 0f, 0f, 1280f, 720f, bmp); return }
         val localDuration = effectiveDuration(item)
-        val elapsed = (System.currentTimeMillis() - slideStartedAt).coerceAtLeast(0L)
+        val elapsed = if (slideshow) (System.currentTimeMillis() - slideStartedAt).coerceAtLeast(0L) else 0L
         val t = (elapsed.toFloat() / (localDuration * 1000f)).coerceIn(0f, 1f)
         val strength = when (zoomLevel) {
             2 -> .12f
@@ -3323,7 +3610,7 @@ class PhotoTvView(
         strokeRound(c, x, y, x + w, y + h, 16f, Color.rgb(50, 82, 114), 1.3f)
         text(c, "Informations", x + 22f, y + 34f, 18f, Color.WHITE, 1)
         val rows = listOf(
-            "Titre" to (item?.title ?: "—"),
+            "Titre" to displayedTitle(item?.title ?: "—"),
             "Album(s)" to (item?.albums?.joinToString(" • ") ?: "—"),
             "Date" to itemDate(item),
             "Lieu" to (item?.location?.ifBlank { "—" } ?: "—"),
@@ -3332,36 +3619,53 @@ class PhotoTvView(
             "Orientation" to (item?.orientationLabel?.ifBlank { "—" } ?: "—"),
             "Type" to (item?.mediaType ?: "—")
         )
-        rows.forEachIndexed { i, row ->
-            val yy = y + 72f + i * 33f
-            text(c, row.first, x + 22f, yy, 11f, Color.rgb(148, 167, 190))
-            text(c, row.second.take(44), x + 145f, yy, 12f, Color.WHITE)
+        p.typeface=interfaceTypeface(0);p.textSize=12f*interfaceFontScale
+        val wrapped=rows.map { wrappedText(it.second,w-177f) }
+        val heights=wrapped.map { max(33f*interfaceFontScale,(it.size*18f+12f)*interfaceFontScale) }
+        val total=heights.sum();val viewport=h-100f
+        infoPanelScroll=infoPanelScroll.coerceIn(0f,max(0f,total-viewport))
+        var offset=0f
+        c.save();c.clipRect(x+16f,y+55f,x+w-16f,y+h-45f)
+        rows.forEachIndexed { i,row ->
+            val yy=y+72f+offset-infoPanelScroll
+            text(c,row.first,x+22f,yy,11f,Color.rgb(148,167,190))
+            wrapped[i].forEachIndexed { line,value -> text(c,value,x+145f,yy+line*18f*interfaceFontScale,12f,Color.WHITE) }
+            offset+=heights[i]
         }
+        c.restore()
+        drawScrollIndicator(c,x+w-8f,y+55f,y+h-45f,total,viewport,infoPanelScroll)
+        text(c,"↑ ↓ Défiler  ·  OK / Retour : fermer",x+w/2f,y+h-18f,10f,Color.rgb(148,167,190),0,1)
     }
 
+    private val navLabels = listOf("Aperçu", "Photos", "Éditeur", "Réglages")
+    private fun navRects(): List<RectF> {
+        p.typeface = interfaceTypeface(1); p.textSize = 17f * interfaceFontScale
+        val widths = navLabels.map { p.measureText(it) + 72f }
+        var x = (1280f - widths.sum()) / 2f
+        return widths.map { w -> RectF(x,644f,x+w,708f).also { x+=w } }
+    }
     private fun drawBottomNav(c: Canvas) {
-        val x = 218f
-        val y = 644f
-        val w = 872f
-        val h = 60f
-        round(c, x, y, x + w, y + h, 18f, Color.argb(235, 3, 15, 28))
-        strokeRound(c, x, y, x + w, y + h, 18f, Color.rgb(22, 49, 77), 1f)
-
-        val labels = listOf("Aperçu", "Photos", "Éditeur", "Réglages")
-        for (i in 0..3) {
-            val tx = x + i * 218f
+        val wasLight = lightInterface; lightInterface = false
+        val rects = navRects()
+        rects.forEachIndexed { i, r ->
             val active = page == i
-            if (active) gradientRound(c, tx + 3f, y + 4f, tx + 215f, y + h - 4f, 16f, Color.rgb(12, 128, 255), Color.rgb(7, 91, 237))
-            if (navFocus && active) strokeRound(c, tx, y + 1f, tx + 218f, y + h - 1f, 18f, Color.rgb(154, 211, 255), 2f)
-            drawBottomIcon(c, tx + 60f, y + 30f, i)
-            text(c, labels[i], tx + 86f, y + 37f, 13.5f, Color.WHITE)
+            round(c,r.left,r.top,r.right,r.bottom,14f,if(active) Color.rgb(17,80,156) else Color.rgb(7,20,36))
+            if(active) strokeRound(c,r.left+2f,r.top+2f,r.right-2f,r.bottom-2f,12f,if(navFocus) Color.rgb(147,224,255) else Color.rgb(60,140,220),if(navFocus) 3f else 1f)
+            drawBottomIcon(c,r.left+27f,676f,i)
+            text(c,navLabels[i],r.left+52f,682f,17f,Color.WHITE,1)
         }
+        lightInterface = wasLight
     }
 
     private fun drawBrand(c: Canvas, x: Float, y: Float, subtitle: String) {
-        drawCamera(c, x + 15f, y + 18f)
-        text(c, "Photo TV", x + 48f, y + 23f, 25f, Color.WHITE, 1)
-        text(c, subtitle, x + 48f, y + 49f, 11f, Color.rgb(206, 218, 237))
+        c.save()
+        val iconBounds = RectF(x - 8f, y - 4f, x + 50f, y + 54f)
+        val mask = Path().apply { addRoundRect(iconBounds, 13f, 13f, Path.Direction.CW) }
+        c.clipPath(mask)
+        c.drawBitmap(brandIcon, null, iconBounds, imagePaint)
+        c.restore()
+        text(c, "Photo TV", x + 66f, y + 24f, 25f, Color.WHITE, 1)
+        text(c, subtitle, x + 66f, y + 48f, 10.5f, Color.rgb(178, 196, 219))
     }
 
     private fun drawCamera(c: Canvas, x: Float, y: Float) {
@@ -3426,13 +3730,16 @@ class PhotoTvView(
     }
 
     private fun drawSourceCard(c: Canvas, x: Float, y: Float, w: Float, h: Float, title: String, sub: String, icon: Int, focused: Boolean, primary: Boolean) {
-        if (primary) gradientRound(c, x, y, x + w, y + h, 14f, Color.rgb(10, 137, 255), Color.rgb(7, 90, 235))
+        val wasLight=lightInterface
+        if(focused) lightInterface=false
+        if (focused) gradientRound(c, x, y, x + w, y + h, 14f, Color.rgb(10, 137, 255), Color.rgb(7, 90, 235))
         else gradientRound(c, x, y, x + w, y + h, 14f, Color.rgb(18, 33, 49), Color.rgb(10, 23, 36))
-        strokeRound(c, x, y, x + w, y + h, 14f, if (primary) Color.rgb(89, 188, 255) else Color.rgb(39, 58, 79), if (primary) 2f else 1f)
-        if (focused) strokeRound(c, x - 3f, y - 3f, x + w + 3f, y + h + 3f, 16f, Color.rgb(183, 224, 255), 2f)
+        strokeRound(c, x, y, x + w, y + h, 14f, Color.rgb(39, 58, 79), 1f)
+        if (focused) strokeRound(c, x - 3f, y - 3f, x + w + 3f, y + h + 3f, 16f, Color.rgb(183, 224, 255), 3f)
         drawSourceIcon(c, x + 36f, y + h / 2, icon)
-        text(c, title, x + 70f, y + 42f, 16f, Color.WHITE, 1)
-        text(c, sub, x + 70f, y + 67f, 12f, Color.rgb(221, 231, 244))
+        ellipsizedText(c, title, x + 70f, y + 42f, w - 86f, 16f, Color.WHITE, 1)
+        ellipsizedText(c, sub, x + 70f, y + 42f + 25f * interfaceFontScale, w - 86f, 12f, Color.rgb(221, 231, 244))
+        lightInterface=wasLight
     }
 
     private fun drawSourceIcon(c: Canvas, x: Float, y: Float, type: Int) {
@@ -3475,26 +3782,24 @@ class PhotoTvView(
         }
     }
 
-    private fun drawAlbumCard(c: Canvas, x: Float, y: Float, w: Float, h: Float, name: String, count: Int, index: Int, focused: Boolean) {
-        val selected = if (library.isEmpty()) index == 0 else selectedAlbums.contains(name)
-        round(c, x, y, x + w, y + h, 12f, Color.rgb(8, 18, 27))
-        drawBitmapCenterCrop(c, albumBitmap(name, index), x + 5f, y + 5f, w - 10f, 128f, 9f)
-        if (selected) strokeRound(c, x, y, x + w, y + h, 12f, Color.rgb(49, 177, 255), 2f)
-        else strokeRound(c, x, y, x + w, y + h, 12f, Color.rgb(37, 53, 71), 1f)
-        if (focused) strokeRound(c, x - 3f, y - 3f, x + w + 3f, y + h + 3f, 14f, Color.WHITE, 2f)
-        ellipsizedText(c, name, x + 8f, y + 154f, w - 16f, 13f, Color.WHITE, 1)
+    private fun drawAlbumCard(c: Canvas,x:Float,y:Float,w:Float,h:Float,name:String,count:Int,index:Int,focused:Boolean) {
+        val selected = if(library.isEmpty()) index==0 else selectedAlbums.contains(name)
         val hidden = hiddenAlbums.contains(name)
-        text(
-            c,
-            if (hidden) "$count photos • MASQUÉ" else "$count photos",
-            x + 8f,
-            y + 177f,
-            11f,
-            if (hidden) Color.rgb(255, 176, 104) else Color.rgb(190, 200, 214)
-        )
-        if (selected && !hidden) {
-            circle(c, x + w - 16f, y + 122f, 12f, Color.rgb(15, 124, 255))
-            text(c, "✓", x + w - 16f, y + 127f, 13f, Color.WHITE, 1, 1)
+        round(c,x,y,x+w,y+h,12f,Color.rgb(8,18,27))
+        val imageW = (w*.38f).coerceIn(80f,144f)
+        drawBitmapCenterCrop(c,albumBitmap(name,index),x+5f,y+5f,imageW,h-10f,9f)
+        strokeRound(c,x,y,x+w,y+h,12f,if(selected) Color.rgb(49,177,255) else Color.rgb(75,99,128),if(selected) 2f else 1f)
+        if(focused) strokeRound(c,x-3f,y-3f,x+w+3f,y+h+3f,14f,Color.rgb(32,135,242),3f)
+        val textX=x+imageW+18f
+        val textW=w-imageW-28f
+        ellipsizedText(c,name,textX,y+34f*interfaceFontScale,textW,15f,Color.WHITE,1)
+        ellipsizedText(c,"$count photos",textX,y+61f*interfaceFontScale,textW,12f,Color.rgb(130,153,180))
+        ellipsizedText(c,if(hidden) "Masqué" else "Visible",textX,y+78f*interfaceFontScale,textW,11f,if(hidden) Color.rgb(214,117,42) else Color.rgb(130,153,180))
+        if(selected && !hidden) {
+            circle(c,x+imageW-8f,y+h-20f,11f,Color.rgb(15,124,255))
+            val wasLight=lightInterface;lightInterface=false
+            text(c,"✓",x+imageW-8f,y+h-16f,11f,Color.WHITE,1,1)
+            lightInterface=wasLight
         }
     }
 
@@ -3608,7 +3913,7 @@ class PhotoTvView(
     }
 
     private fun drawSideIcon(c: Canvas, x: Float, y: Float, type: Int) {
-        p.color = Color.rgb(224, 231, 241)
+        p.shader=null; p.style=Paint.Style.FILL; p.color = interfaceColor(Color.WHITE)
         when (type) {
             0 -> {
                 val path = Path()
@@ -3618,12 +3923,12 @@ class PhotoTvView(
             1 -> text(c, "T", x, y + 7f, 20f, Color.WHITE, 1, 1)
             2 -> { strokeRound(c, x - 10f, y - 8f, x + 10f, y + 8f, 2f, Color.WHITE, 2f); c.drawLine(x - 6f,y-2f,x+6f,y-2f,stroke) }
             3 -> drawBottomIcon(c, x, y, 1)
-            4 -> { stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
+            4 -> { stroke.style=Paint.Style.STROKE;stroke.color=interfaceColor(Color.WHITE);stroke.strokeWidth=2f;c.drawCircle(x,y,10f,stroke);c.drawLine(x,y,x,y-6f,stroke);c.drawLine(x,y,x+5f,y+2f,stroke) }
             5 -> text(c, "♨", x, y + 7f, 18f, Color.WHITE, 0, 1)
             6 -> drawSourceIcon(c, x, y, 2)
             7 -> {
                 stroke.style = Paint.Style.STROKE
-                stroke.color = Color.WHITE
+                stroke.color = interfaceColor(Color.WHITE)
                 stroke.strokeWidth = 1.8f
                 c.drawCircle(x, y, 9f, stroke)
                 c.drawLine(x - 5f, y, x + 5f, y, stroke)
@@ -3635,32 +3940,32 @@ class PhotoTvView(
     }
 
     private fun drawBottomIcon(c: Canvas, x: Float, y: Float, type: Int) {
-        when (type) {
-            0, 1 -> {
-                stroke.style = Paint.Style.STROKE
-                stroke.color = Color.WHITE
-                stroke.strokeWidth = 1.6f
-                c.drawRoundRect(x - 9f, y - 7f, x + 9f, y + 7f, 2f, 2f, stroke)
-                p.color = Color.WHITE
-                val path = Path()
-                path.moveTo(x - 6f, y + 4f); path.lineTo(x - 1f, y - 1f); path.lineTo(x + 2f, y + 2f); path.lineTo(x + 6f, y - 3f); path.lineTo(x + 8f, y + 4f); path.close()
-                c.drawPath(path, p)
+        p.shader=null; p.clearShadowLayer(); p.style=Paint.Style.FILL
+        val colors = intArrayOf(Color.rgb(38,177,240),Color.rgb(255,173,60),Color.rgb(194,112,250),Color.rgb(58,215,184),Color.rgb(73,224,139))
+        circle(c,x,y,19f,Color.argb(55,Color.red(colors[type]),Color.green(colors[type]),Color.blue(colors[type])))
+        stroke.style=Paint.Style.STROKE;stroke.strokeWidth=2.2f;stroke.color=colors[type]
+        when(type) {
+            0 -> { c.drawRoundRect(x-12,y-8,x+12,y+7,3f,3f,stroke); c.drawLine(x,y+7,x,y+12,stroke);c.drawLine(x-7,y+12,x+7,y+12,stroke) }
+            1 -> {
+                c.drawRoundRect(x-11,y-9,x+11,y+9,3f,3f,stroke)
+                circle(c,x+5,y-4,3f,Color.rgb(255,214,80))
+                p.color=Color.rgb(62,207,151)
+                c.drawPath(Path().apply { moveTo(x-9,y+7);lineTo(x-3,y-1);lineTo(x+1,y+3);lineTo(x+5,y);lineTo(x+9,y+7);close() },p)
             }
-            2 -> {
-                stroke.style = Paint.Style.STROKE; stroke.color=Color.WHITE; stroke.strokeWidth=1.8f
-                c.drawCircle(x,y,9f,stroke)
-                c.drawCircle(x-2f,y-3f,2f,stroke);c.drawCircle(x+4f,y,2f,stroke);c.drawCircle(x-1f,y+5f,2f,stroke)
+            2 -> { c.drawCircle(x,y,11f,stroke); circle(c,x-4,y-4,3f,Color.rgb(255,133,139));circle(c,x+5,y-3,3f,Color.rgb(255,208,78));circle(c,x-2,y+5,3f,Color.rgb(76,217,215)) }
+            3 -> {
+                for(i in 0..2) { val yy=y-8+i*8; c.drawLine(x-11,yy,x+11,yy,stroke);circle(c,x+if(i==1) -4f else 4f,yy,3.5f,colors[type]) }
             }
-            else -> drawGear(c,x,y,8f)
+            4 -> { p.color=colors[type];c.drawPath(Path().apply { moveTo(x-6,y-11);lineTo(x+11,y);lineTo(x-6,y+11);close() },p) }
         }
     }
 
     private fun drawGear(c: Canvas, x: Float, y: Float, r: Float) {
-        p.color = Color.WHITE
+        p.color = interfaceColor(Color.WHITE)
         c.drawCircle(x, y, r, p)
         p.color = Color.rgb(9, 24, 38)
         c.drawCircle(x, y, r * .4f, p)
-        stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=3f
+        stroke.style=Paint.Style.STROKE;stroke.color=interfaceColor(Color.WHITE);stroke.strokeWidth=3f
         for(i in 0 until 8){
             val a=Math.toRadians((i*45).toDouble())
             c.drawLine(x+(Math.cos(a)*r).toFloat(),y+(Math.sin(a)*r).toFloat(),x+(Math.cos(a)*(r+4)).toFloat(),y+(Math.sin(a)*(r+4)).toFloat(),stroke)
@@ -3668,7 +3973,7 @@ class PhotoTvView(
     }
 
     private fun drawAlignIcon(c: Canvas, x: Float, y: Float, align: Int) {
-        stroke.style=Paint.Style.STROKE;stroke.color=Color.WHITE;stroke.strokeWidth=1.5f
+        stroke.style=Paint.Style.STROKE;stroke.color=interfaceColor(Color.WHITE);stroke.strokeWidth=1.5f
         val widths = floatArrayOf(14f, 10f, 16f)
         for(i in 0..2){
             val yy=y-6f+i*6f
@@ -3679,6 +3984,7 @@ class PhotoTvView(
     }
 
     private fun applyStylePaint(s: Style) {
+        p.shader = null
         p.style = Paint.Style.FILL
         p.color = s.color
         p.textSize = s.size
@@ -3691,14 +3997,20 @@ class PhotoTvView(
         if (s.shadow) p.setShadowLayer(6f, 0f, 2f, Color.BLACK) else p.clearShadowLayer()
     }
 
-    private fun fontName(index: Int) = listOf("Inter", "Inter Light", "Serif", "Monospace")[index.coerceIn(0, 3)]
+    private fun fontName(index: Int) = listOf("Sans sérif", "Sans sérif légère", "Sérif", "Monospace")[index.coerceIn(0, 3)]
+    private fun interfaceTypeface(weight: Int): Typeface {
+        val font = if (renderingSlideshowText || slideshow) slideshowFont else interfaceFont
+        val family = listOf("sans-serif", "sans-serif-light", "serif", "monospace")[font.coerceIn(0, 3)]
+        return Typeface.create(family, if (weight == 1) Typeface.BOLD else Typeface.NORMAL)
+    }
+
     private fun format1(v: Float): String = String.format(Locale.FRANCE, "%.1f", v)
 
     private fun drawAppBackground(c: Canvas) {
-        p.shader = LinearGradient(0f, 0f, 1280f, 720f, Color.rgb(4, 13, 21), Color.rgb(1, 7, 12), Shader.TileMode.CLAMP)
+        p.shader = LinearGradient(0f, 0f, 1280f, 720f, if (lightInterface) Color.rgb(245, 248, 252) else Color.rgb(4, 13, 21), if (lightInterface) Color.rgb(231, 239, 249) else Color.rgb(1, 7, 12), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, 1280f, 720f, p)
         p.shader = null
-        p.shader = RadialGradient(1020f, 20f, 520f, Color.argb(95, 33, 75, 118), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        p.shader = RadialGradient(1020f, 20f, 520f, Color.argb(35, 130, 170, 220), Color.TRANSPARENT, Shader.TileMode.CLAMP)
         c.drawRect(0f,0f,1280f,720f,p)
         p.shader=null
     }
@@ -3719,6 +4031,10 @@ class PhotoTvView(
         item: PhotoItem? = currentItem()
     ) {
         fill(c, x, y, x + w, y + h, Color.rgb(6, 12, 18))
+        if (bmp == null || bmp === emptySlideshowBackground) {
+            drawBitmapCenterCrop(c, emptySlideshowBackground, x, y, w, h)
+            return
+        }
         when (displayImageMode()) {
             1 -> drawBitmapFit(c, bmp, x, y, w, h)
             2 -> drawBitmapOriginal(c, bmp, x, y, w, h)
@@ -3764,7 +4080,7 @@ class PhotoTvView(
                 ?: synchronized(bitmapCache) { bitmapCache[key] }
             if (mosaicBitmap == null) {
                 preload(listOf(mosaicItem.uri))
-                fill(c, rect.left, rect.top, rect.right, rect.bottom, Color.rgb(10, 20, 30))
+                drawBitmapCenterCrop(c, emptySlideshowBackground, rect.left, rect.top, rect.width(), rect.height())
             } else {
                 drawBitmapSmartCrop(c, mosaicBitmap, rect.left, rect.top, rect.width(), rect.height(), mosaicItem)
             }
@@ -3963,9 +4279,9 @@ class PhotoTvView(
     private fun text(c: Canvas, s: String, x: Float, y: Float, size: Float, color: Int, weight: Int = 0, align: Int = 0) {
         p.shader = null
         p.style = Paint.Style.FILL
-        p.color = color
-        p.textSize = size
-        p.typeface = Typeface.create("sans-serif", if (weight == 1) Typeface.BOLD else Typeface.NORMAL)
+        p.color = interfaceColor(color)
+        p.textSize = size * if (renderingSlideshowText || slideshow) 1f else interfaceFontScale
+        p.typeface = interfaceTypeface(weight)
         p.textAlign = when (align) { 1 -> Paint.Align.CENTER; 2 -> Paint.Align.RIGHT; else -> Paint.Align.LEFT }
         p.clearShadowLayer()
         c.drawText(s, x, y, p)
@@ -3982,8 +4298,8 @@ class PhotoTvView(
         weight: Int = 0,
         align: Int = 0
     ) {
-        p.textSize = size
-        p.typeface = Typeface.create("sans-serif", if (weight == 1) Typeface.BOLD else Typeface.NORMAL)
+        p.textSize = size * if (renderingSlideshowText || slideshow) 1f else interfaceFontScale
+        p.typeface = interfaceTypeface(weight)
         val limit = maxWidth.coerceAtLeast(1f)
         var safe = s
         if (p.measureText(safe) > limit) {
@@ -4000,26 +4316,27 @@ class PhotoTvView(
     }
 
     private fun fill(c: Canvas, l: Float, t: Float, r: Float, b: Float, color: Int) {
-        p.shader = null; p.style = Paint.Style.FILL; p.color = color; c.drawRect(l,t,r,b,p)
+        p.clearShadowLayer(); p.shader = null; p.style = Paint.Style.FILL; p.color = interfaceColor(color); c.drawRect(l,t,r,b,p)
     }
 
     private fun round(c: Canvas, l: Float, t: Float, r: Float, b: Float, radius: Float, color: Int) {
-        p.shader = null; p.style = Paint.Style.FILL; p.color = color; c.drawRoundRect(l,t,r,b,radius,radius,p)
+        p.clearShadowLayer(); p.shader = null; p.style = Paint.Style.FILL; p.color = interfaceColor(color); c.drawRoundRect(l,t,r,b,radius,radius,p)
     }
 
     private fun gradientRound(c: Canvas, l: Float, t: Float, r: Float, b: Float, radius: Float, c1: Int, c2: Int) {
-        p.shader = LinearGradient(l,t,r,b,c1,c2,Shader.TileMode.CLAMP)
+        p.clearShadowLayer()
+        p.shader = LinearGradient(l,t,r,b,interfaceColor(c1),interfaceColor(c2),Shader.TileMode.CLAMP)
         p.style = Paint.Style.FILL
         c.drawRoundRect(l,t,r,b,radius,radius,p)
         p.shader = null
     }
 
     private fun strokeRound(c: Canvas, l: Float, t: Float, r: Float, b: Float, radius: Float, color: Int, width: Float) {
-        stroke.style=Paint.Style.STROKE;stroke.color=color;stroke.strokeWidth=width;c.drawRoundRect(l,t,r,b,radius,radius,stroke)
+        stroke.style=Paint.Style.STROKE;stroke.color=if (lightInterface && Color.red(color) < 65 && Color.blue(color) < 110) Color.rgb(215, 225, 238) else interfaceColor(color);stroke.strokeWidth=width;c.drawRoundRect(l,t,r,b,radius,radius,stroke)
     }
 
     private fun circle(c: Canvas, x: Float, y: Float, radius: Float, color: Int) {
-        p.shader=null;p.style=Paint.Style.FILL;p.color=color;c.drawCircle(x,y,radius,p)
+        p.clearShadowLayer();p.shader=null;p.style=Paint.Style.FILL;p.color=color;c.drawCircle(x,y,radius,p)
     }
 
     private fun markInteraction() {
@@ -4052,12 +4369,11 @@ class PhotoTvView(
         }
         if (page == 1 && photosRow == 1 && library.isNotEmpty()) {
             val album = currentAlbumName()
-            if (hiddenAlbums.contains(album)) hiddenAlbums.remove(album) else hiddenAlbums.add(album)
-            savePrefs()
-            invalidate()
+            togglePermanentAlbum(album)
             return true
         }
-        if (page == 2 && editorColumn == 1) {
+        if (page == 2 && !navFocus) {
+            editorColumn = 1
             editorMoveMode = !editorMoveMode
             invalidate()
             return true
@@ -4095,6 +4411,9 @@ class PhotoTvView(
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         markInteraction()
+        if (page == 1 && photosRow == 1 && !slideshow &&
+            (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) &&
+            (event?.repeatCount ?: 0) > 0) return true
 
         if (remoteQrVisible) {
             return when (keyCode) {
@@ -4253,6 +4572,8 @@ class PhotoTvView(
 
         if (infoPanelVisible) {
             return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_DOWN -> { infoPanelScroll+=40f*interfaceFontScale;invalidate();true }
+                KeyEvent.KEYCODE_DPAD_UP -> { infoPanelScroll=max(0f,infoPanelScroll-40f*interfaceFontScale);invalidate();true }
                 KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     infoPanelVisible = false
                     invalidate()
@@ -4275,8 +4596,22 @@ class PhotoTvView(
             }
         }
 
+        if (page == 0 && !navFocus && !previewControlsVisible) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> { previewNext(-1); return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { previewNext(1); return true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BACK -> {
+                    previewControlsVisible = true; navFocus = true; invalidate(); return true
+                }
+                else -> return true
+            }
+        }
         when (keyCode) {
-            KeyEvent.KEYCODE_BACK -> if (page == 3 && settingsCategory == 8 && advancedRulesOpen) {
+            KeyEvent.KEYCODE_BACK -> if (page == 3 && settingsEditing) {
+                settingsEditing = false; invalidate(); return true
+            } else if (page == 3 && settingsColumn == 1 && !advancedRulesOpen) {
+                settingsColumn = 0; invalidate(); return true
+            } else if (page == 3 && settingsCategory == 8 && advancedRulesOpen) {
                 advancedRulesOpen = false
                 settingsControl = 0
                 invalidate()
@@ -4333,6 +4668,7 @@ class PhotoTvView(
             }
             3 -> {
                 quickMenuVisible = false
+                infoPanelScroll = 0f
                 infoPanelVisible = true
             }
             4 -> {
@@ -4365,9 +4701,10 @@ class PhotoTvView(
             if (dir < 0) {
                 navFocus = false
                 when (page) {
-                    1 -> photosRow = 2
+                    0 -> previewControlsVisible = true
+                    1 -> photosRow = 1
                     2 -> editorColumn = 1
-                    3 -> settingsColumn = 1
+                    3 -> Unit
                 }
             }
             invalidate()
@@ -4377,27 +4714,43 @@ class PhotoTvView(
 
         when (page) {
             0 -> if (dir > 0) navFocus = true
-            1 -> {
-                photosRow = (photosRow + dir).coerceIn(0, 3)
-                if (photosRow == 3) navFocus = true
+            1 -> when(photosRow) {
+                0 -> if(dir>0) photosRow=3
+                3 -> photosRow=if(dir>0) 1 else 0
+                1 -> {
+                    val columns=albumColumns()
+                    val total=albumPairs().size
+                    if(dir<0 && albumFocus<columns) photosRow=3
+                    else if(dir>0 && albumFocus/columns==(max(0,total-1)/columns)) { photosRow=2;navFocus=true }
+                    else albumFocus=(albumFocus+dir*columns).coerceIn(0,max(0,total-1))
+                }
+                else -> navFocus=true
             }
             2 -> {
                 if (editorColumn == 1 && editorMoveMode) {
                     moveEditorByPixels(0, dir)
                 } else if (editorColumn == 0) {
                     editorElement = (editorElement + dir).coerceIn(0, elementNames.lastIndex)
+                    editorControl = 0; editorScroll = 0f
                 } else if (editorColumn == 2) {
-                    editorControl = (editorControl + dir).coerceIn(0, 11)
+                    if(editorControl == 11 && dir>0) navFocus=true else editorControl = (editorControl + dir).coerceIn(0, 11)
                 } else if (dir > 0) {
                     navFocus = true
                 }
             }
             3 -> {
+                settingsEditing = false
                 if (settingsColumn == 0) {
-                    settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
-                    settingsControl = settingsControl.coerceIn(0, settingsControlMax())
+                    if (dir > 0 && settingsCategory == 8) navFocus = true
+                    else settingsCategory = (settingsCategory + dir).coerceIn(0, 8)
+                    settingsControl = settingRows().first().id
+                    settingsScroll = 0f
                 } else {
-                    settingsControl = (settingsControl + dir).coerceIn(0, settingsControlMax())
+                    val order = settingRows().map { it.id }.distinct()
+                    val index = order.indexOf(settingsControl).coerceAtLeast(0)
+                    if (dir > 0 && index == order.lastIndex) navFocus = true
+                    else settingsControl = order[(index + dir).coerceIn(0, order.lastIndex)]
+                    if (settingsCategory == 6 && settingsControl in 1..2) settingsControl = if (dir > 0) 3 else 0
                 }
             }
         }
@@ -4414,6 +4767,7 @@ class PhotoTvView(
                 return
             }
             page = target
+            previewControlsVisible = false
             invalidate()
             announceAccessibilityState()
             return
@@ -4423,6 +4777,7 @@ class PhotoTvView(
             0 -> if (activePhotos().isNotEmpty()) previewNext(dir)
             1 -> when (photosRow) {
                 0 -> sourceFocus = (sourceFocus + dir).coerceIn(0, 2)
+                3 -> adjustAlbumDensity(dir)
                 1 -> {
                     val size = albumPairs().size
                     val next = (albumFocus + dir).coerceIn(0, max(0, size - 1))
@@ -4441,15 +4796,26 @@ class PhotoTvView(
                 when {
                     editorColumn == 1 && editorMoveMode -> moveEditorByPixels(dir, 0)
                     editorColumn == 1 -> editorColumn = if (dir < 0) 0 else 2
-                    editorColumn == 0 && dir > 0 -> editorColumn = 1
+                    editorColumn == 0 && dir > 0 -> { editorColumn = 1; editorControl = 0; editorScroll = 0f }
                     editorColumn == 2 && dir < 0 -> editorColumn = 1
                     editorColumn == 2 -> adjustEditor(dir)
                 }
             }
             3 -> {
-                if (settingsColumn == 0 && dir > 0) settingsColumn = 1
+                if (settingsColumn == 0 && dir > 0) {
+                    settingsColumn = 1
+                    settingsControl = settingRows().first().id
+                    settingsScroll = 0f
+                    settingsEditing = false
+                } else if (settingsColumn == 1 && settingsCategory == 6 && settingsControl in 0..2) {
+                    if (settingsControl == 0 && dir < 0) settingsColumn = 0
+                    else settingsControl = (settingsControl + dir).coerceIn(0, 2)
+                } else if (settingsColumn == 1 && settingsEditing) adjustSettings(dir)
                 else if (settingsColumn == 1 && dir < 0) settingsColumn = 0
-                else if (settingsColumn == 1) adjustSettings(dir)
+                else if (settingsColumn == 1 && dir > 0 && !settingRows().first { it.id == settingsControl }.action) {
+                    settingsEditing = true
+                    adjustSettings(dir)
+                }
             }
         }
         savePrefs()
@@ -4479,15 +4845,15 @@ class PhotoTvView(
     }
 
     private fun settingsControlMax(): Int = when(settingsCategory) {
-        0 -> 8
-        1 -> elementNames.lastIndex
-        2 -> elementNames.lastIndex
+        0 -> 11
+        1 -> elementNames.size
+        2 -> 14
         3 -> transitions.lastIndex
         4 -> 9
         5 -> 2
         6 -> 8
         7 -> 6
-        else -> if (advancedRulesOpen) 9 else 15
+        else -> if (advancedRulesOpen) 9 else 16
     }
 
     private fun adjustEditor(dir: Int) {
@@ -4595,21 +4961,34 @@ class PhotoTvView(
     private fun adjustSettings(dir: Int) {
         when (settingsCategory) {
             0 -> when (settingsControl) {
+                10 -> { val modes = listOf(1, 0, 3); val index = modes.indexOf(imageMode).coerceAtLeast(0); imageMode = modes[(index + dir + modes.size) % modes.size]; autonomousImageModeOverride = null }
+                9 -> darkTheme = !darkTheme
                 0 -> durationSeconds = (durationSeconds + dir).coerceIn(2, 120)
-                1 -> fixedImage = dir > 0
+                1 -> fixedImage = !fixedImage
                 2 -> loop = !loop
                 3 -> randomOrder = !randomOrder
                 4 -> transitionIndex = (transitionIndex + dir + transitions.size) % transitions.size
                 5 -> transitionSeconds = (transitionSeconds + dir * .1f).coerceIn(.2f, 4f)
+                11 -> fadeIntensityPercent = (fadeIntensityPercent + dir * 5).coerceIn(0, 100)
                 6 -> kenBurns = !kenBurns
-                7 -> zoomLevel = (zoomLevel + dir + 3) % 3
+                7 -> zoomLevel = (zoomLevel + 1 + dir + 4) % 4 - 1
                 8 -> {
                     autonomousSlideshow = !autonomousSlideshow
                     if (!autonomousSlideshow) autonomousImageModeOverride = null
                 }
             }
-            1 -> toggleElement(settingsControl)
-            2 -> editorElement = (editorElement + dir + elementNames.size) % elementNames.size
+            1 -> if (settingsControl == elementNames.size) hideTitleExtensions = !hideTitleExtensions else toggleElement(settingsControl)
+            2 -> when (settingsControl) {
+                13 -> interfaceFontScale = (interfaceFontScale + dir * .05f).coerceIn(.85f, 1.6f)
+                14 -> darkTheme = !darkTheme
+                12 -> applyPreset((layoutPreset + dir + 4) % 4)
+                10 -> interfaceFont = (interfaceFont + dir + 4) % 4
+                11 -> {
+                    slideshowFont = (slideshowFont + dir + 4) % 4
+                    styles.forEach { it.font = slideshowFont }
+                }
+                else -> editorElement = (editorElement + dir + elementNames.size) % elementNames.size
+            }
             3 -> transitionIndex = (transitionIndex + dir + transitions.size) % transitions.size
             4 -> when(settingsControl) {
                 0 -> showDate = !showDate
@@ -4681,17 +5060,29 @@ class PhotoTvView(
         scheduleInactivity()
     }
 
+    private fun launchFromPreview() {
+        if (activePhotos().isNotEmpty()) {
+            navFocus = true
+            startSlideshow()
+        } else {
+            page = 1
+            navFocus = false
+            photosRow = 0
+            sourceFocus = 0
+            invalidate()
+        }
+    }
+
     private fun activate() {
         if (navFocus) {
             navFocus = false
-            when (page) { 1 -> photosRow = 0; 2 -> editorColumn = 0; 3 -> settingsColumn = 0 }
+            when (page) { 0 -> previewControlsVisible = false; 1 -> photosRow = 0; 2 -> editorColumn = 0; 3 -> settingsColumn = 0 }
             invalidate(); return
         }
         when (page) {
-            0 -> {
-                if (activePhotos().isNotEmpty()) startSlideshow() else { page = 1; photosRow = 0; sourceFocus = 0 }
-            }
+            0 -> if (previewControlsVisible) launchFromPreview() else { previewControlsVisible = true; navFocus = true }
             1 -> when (photosRow) {
+                3 -> adjustAlbumDensity(1)
                 0 -> when (sourceFocus) {
                     0 -> onExactSource()
                     1 -> onFolderSource()
@@ -4700,7 +5091,7 @@ class PhotoTvView(
                 1 -> {
                     val name = currentAlbumName()
                     if (library.isNotEmpty()) {
-                        if (selectedAlbums.contains(name)) selectedAlbums.remove(name) else selectedAlbums.add(name)
+                        togglePermanentAlbum(name)
                     }
                 }
                 2 -> if (library.isNotEmpty()) {
@@ -4715,7 +5106,7 @@ class PhotoTvView(
             }
             2 -> {
                 when (editorColumn) {
-                    0 -> editorColumn = 1
+                    0 -> { editorColumn = 2; editorControl = 0; editorScroll = 0f }
                     1 -> editorMoveMode = !editorMoveMode
                     2 -> {
                         val st = styles[editorElement]
@@ -4733,44 +5124,27 @@ class PhotoTvView(
                 }
             }
             3 -> {
-                if (settingsColumn == 0) settingsColumn = 1
-                else when(settingsCategory) {
-                    0 -> adjustSettings(1)
-                    1 -> toggleElement(settingsControl)
-                    2 -> { page = 2; editorColumn = 0 }
-                    3 -> transitionIndex = settingsControl.coerceIn(0, transitions.lastIndex)
-                    4 -> adjustSettings(1)
-                    5 -> if (settingsControl == 2) onWeatherLocation() else adjustSettings(1)
-                    6 -> when (settingsControl) {
-                        0 -> onExactSource()
-                        1 -> onFolderSource()
-                        2 -> onPickPhotos()
-                        3 -> adjustSettings(1)
-                        4 -> onAlbumSearch()
-                        5 -> toggleAllAlbums()
-                        6 -> clearAllMasks()
-                        7 -> onNetworkSource()
-                        8 -> adjustSettings(1)
+                if (settingsColumn == 0) {
+                    settingsColumn = 1; settingsControl = settingRows().first().id
+                    settingsEditing = false; settingsScroll = 0f
+                } else if (!settingRows().first { it.id == settingsControl }.action) {
+                    settingsEditing = !settingsEditing
+                } else when(settingsCategory) {
+                    1 -> if(settingsControl == elementNames.size) hideTitleExtensions = !hideTitleExtensions else toggleElement(settingsControl)
+                    2 -> { page=2; editorElement=settingsControl; editorColumn=0 }
+                    3 -> transitionIndex=settingsControl.coerceIn(0,transitions.lastIndex)
+                    5 -> if(settingsControl == 2) onWeatherLocation() else Unit
+                    6 -> when(settingsControl) {
+                        0 -> onExactSource(); 1 -> onFolderSource(); 2 -> onPickPhotos()
+                        4 -> onAlbumSearch(); 5 -> toggleAllAlbums(); 6 -> clearAllMasks(); 7 -> onNetworkSource()
                     }
-                    7 -> adjustSettings(1)
-                    else -> if (advancedRulesOpen) {
-                        adjustAlbumRule(1)
-                    } else when (settingsControl) {
-                        8 -> onExportSettings()
-                        9 -> onImportSettings()
-                        11 -> {
-                            advancedRulesOpen = true
-                            settingsControl = 0
-                        }
+                    7 -> Unit
+                    8 -> if(advancedRulesOpen) adjustAlbumRule(1) else when(settingsControl) {
+                        8 -> onExportSettings(); 9 -> onImportSettings()
+                        11 -> { advancedRulesOpen=true; settingsControl=0; settingsScroll=0f }
                         12 -> interactionDiagnostics = !interactionDiagnostics
-                        13 -> {
-                            remoteEnabled = !remoteEnabled
-                            updateRemoteServer()
-                            if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
-                        }
-                        14 -> onSettingsPin()
-                        15 -> smartSelectionMode = (smartSelectionMode + 1) % 5
-                        else -> adjustSettings(1)
+                        13 -> { remoteEnabled = !remoteEnabled; updateRemoteServer(); if(remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible=false }
+                        14 -> onSettingsPin(); 16 -> onScreensaver()
                     }
                 }
             }
@@ -4788,7 +5162,7 @@ class PhotoTvView(
             stateProvider = {
                 val item = currentItem()
                 RemoteControlState(
-                    title = item?.title ?: "Photo TV",
+                    title = displayedTitle(item?.title ?: "Photo TV"),
                     album = albumDisplay(item),
                     slideshow = slideshow,
                     paused = paused,
@@ -4804,7 +5178,7 @@ class PhotoTvView(
                     position = currentPhoto,
                     total = activePhotos().size,
                     favorite = item?.uri?.toString()?.let(favorites::contains) == true,
-                    previewTitles = remotePreviewItems().map { it.title },
+                    previewTitles = remotePreviewItems().map { displayedTitle(it.title) },
                     smartMode = SmartSelectionPolicy.modeLabel(smartSelectionMode)
                 )
             },
@@ -5064,14 +5438,32 @@ class PhotoTvView(
         excludedUris.clear()
         sessionExcludedUris.clear()
         hiddenAlbums.clear()
+        selectedAlbums.addAll(albumIndex.keys)
         savePrefs()
+    }
+
+    private fun togglePermanentAlbum(name: String) {
+        if (name.isBlank()) return
+        if (hiddenAlbums.remove(name)) selectedAlbums.add(name)
+        else {
+            hiddenAlbums.add(name)
+            selectedAlbums.remove(name)
+        }
+        currentPhoto = 0
+        photoFocus = 0
+        savePrefs()
+        invalidate()
     }
 
     private fun toggleAllAlbums() {
         val all = albumIndex.keys.toList()
         if (all.isEmpty()) return
-        if (selectedAlbums.containsAll(all)) selectedAlbums.clear()
+        if (all.none { it in hiddenAlbums }) {
+            hiddenAlbums.addAll(all)
+            selectedAlbums.clear()
+        }
         else {
+            hiddenAlbums.removeAll(all.toSet())
             selectedAlbums.clear()
             selectedAlbums.addAll(all)
         }
@@ -5128,6 +5520,7 @@ class PhotoTvView(
     }
 
     private fun startSlideshow() {
+        if (lifecycleClosed) return
         val items = activePhotos()
         if (items.isEmpty()) return
         currentPhoto = currentPhoto.coerceIn(0, items.lastIndex)
@@ -5174,6 +5567,11 @@ class PhotoTvView(
     private fun scheduleSlideshow() {
         handler.removeCallbacksAndMessages(null)
         if (!slideshow || paused || fixedImage || quickMenuVisible || infoPanelVisible) return
+        if (!automationMode && currentItem()?.uri?.let { DriveRemoteLibrary.isRemote(it) } == true && !currentPhotoLoaded()) {
+            slideStartedAt = System.currentTimeMillis()
+            handler.postDelayed({ scheduleSlideshow() }, 500L)
+            return
+        }
         val seconds = effectiveDuration(currentItem())
         handler.postDelayed({ slideshowNext(1) }, seconds * 1000L)
     }
@@ -5375,135 +5773,41 @@ class PhotoTvView(
     private fun handlePhotosTap(x: Float, y: Float) {
         when {
             y in 108f..210f -> {
+                photosRow = 0
+                sourceFocus = if (x < 450f) 0 else if (x < 828f) 1 else 2
                 when {
                     x in 47f..435f -> onExactSource()
                     x in 450f..812f -> onFolderSource()
                     x in 828f..1238f -> onPickPhotos()
                 }
             }
-            y in 270f..468f -> {
-                val slot = ((x - 47f) / 199f).toInt()
-                val albums = albumPairs()
-                val start = windowStart(albumFocus, albums.size)
-                val index = start + slot
-                if (slot in 0 until min(6, albums.size - start) && index in albums.indices &&
-                    x >= 47f + slot * 199f && x <= 232f + slot * 199f
-                ) {
-                    albumFocus = index
-                    photoFocus = 0
-                    val name = albums[index].first
-                    if (library.isNotEmpty()) {
-                        if (selectedAlbums.contains(name)) selectedAlbums.remove(name) else selectedAlbums.add(name)
-                    }
-                }
+            x in 780f..1238f && y in 222f..262f -> {
+                photosRow=3
+                adjustAlbumDensity(if(x<1009f) -1 else 1)
             }
-            y in 522f..626f -> {
-                val slot = ((x - 47f) / 199f).toInt()
-                val photos = currentAlbumPhotos()
-                val start = windowStart(photoFocus, photos.size)
-                val index = start + slot
-                if (slot in 0 until min(6, photos.size - start) && index in photos.indices &&
-                    x >= 47f + slot * 199f && x <= 232f + slot * 199f
-                ) {
-                    photoFocus = index
-                    photos.getOrNull(index)?.let { item ->
-                        val active = activePhotos()
-                        val idx = active.indexOfFirst { it.uri == item.uri }
-                        if (idx >= 0) {
-                            currentPhoto = idx
-                            page = 0
-                            preloadAroundCurrent()
-                        }
-                    }
-                }
+            else -> albumHitBoxes.firstOrNull { it.second.contains(x,y) }?.let { hit ->
+                photosRow=1;albumFocus=hit.first;photoFocus=0
+                if(library.isNotEmpty()) togglePermanentAlbum(currentAlbumName())
             }
+
+
         }
         savePrefs()
         invalidate()
     }
 
     private fun handleEditorTap(x: Float, y: Float) {
-        val visibleCount = 5
-        val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
-
-        if (x in 32f..352f && y in 120f..642f) {
-            val slot = ((y - 120f) / 87f).toInt()
-            val index = first + slot
-            if (slot in 0 until visibleCount && index in elementNames.indices) {
-                editorElement = index
-                editorColumn = 0
-                editorMoveMode = false
-            }
-            invalidate()
-            return
+        if(x in 32f..352f && y in 120f..600f) {
+            val h=78f*interfaceFontScale.coerceAtLeast(1f)+9f
+            val count=(480f/h).toInt().coerceAtLeast(1)
+            val top=351f-(count*h-9f)/2f
+            val first=(editorElement-count/2).coerceIn(0,max(0,elementNames.size-count))
+            editorElement=(first+((y-top)/h).toInt()).coerceIn(0,elementNames.lastIndex);editorColumn=0
+        } else editorHitBoxes.firstOrNull { it.second.contains(x,y) }?.let {
+            editorColumn=2;editorControl=it.first
+            if(editorControl in 1..6) adjustEditor(if(x<1094f) -1 else 1) else activate()
         }
-
-        if (x in 370f..918f && y in 64f..638f) {
-            editorColumn = 1
-            editorMoveMode = !editorMoveMode
-            invalidate()
-            return
-        }
-
-        if (x !in 940f..1248f) return
-        val st = styles[editorElement]
-        editorColumn = 2
-
-        when {
-            y in 126f..171f -> editorControl = 0
-            y in 170f..218f -> {
-                editorControl = 1
-                recordEditorState()
-                st.font = (st.font + 1) % 4
-            }
-            y in 220f..268f -> {
-                editorControl = 2
-                recordEditorState()
-                val t = ((x - 1051f) / 126f).coerceIn(0f, 1f)
-                st.size = 12f + t * 68f
-            }
-            y in 280f..330f -> {
-                editorControl = 3
-                recordEditorState()
-                val colors = listOf(Color.WHITE, Color.rgb(173,196,255), Color.rgb(255,224,112), Color.rgb(255,126,126), Color.rgb(137,230,173))
-                val idx = colors.indexOf(st.color).coerceAtLeast(0)
-                st.color = colors[(idx + 1) % colors.size]
-            }
-            y in 326f..378f -> {
-                editorControl = 4
-                recordEditorState()
-                st.x = (((x - 1051f) / 126f) * 100f).coerceIn(0f, 100f)
-            }
-            y in 387f..439f -> {
-                editorControl = 5
-                recordEditorState()
-                st.y = (((x - 1051f) / 126f) * 100f).coerceIn(0f, 100f)
-            }
-            y in 454f..506f -> {
-                editorControl = 6
-                recordEditorState()
-                st.align = (((x - 1048f) / 42f).toInt()).coerceIn(0, 2)
-            }
-            y in 516f..568f -> {
-                editorControl = 7
-                recordEditorState()
-                st.shadow = !st.shadow
-            }
-            y in 580f..625f -> {
-                val i = ((x - 956f) / 67f).toInt()
-                if (i in 0..3) {
-                    editorControl = 8 + i
-                    when (i) {
-                        0 -> undoEditor()
-                        1 -> redoEditor()
-                        2 -> resetEditorElement()
-                        3 -> resetEditorAll()
-                    }
-                }
-            }
-        }
-        savePrefs()
-        invalidate()
+        savePrefs();invalidate()
     }
 
     private fun setSliderFromTap(x: Float, minValue: Float, maxValue: Float): Float {
@@ -5512,238 +5816,51 @@ class PhotoTvView(
     }
 
     private fun handleSettingsTap(x: Float, y: Float) {
-        if (x in 32f..352f && y in 116f..566f) {
-            val i = ((y - 116f) / 50f).toInt().coerceIn(0, 8)
-            settingsCategory = i
-            settingsColumn = 0
-            settingsControl = settingsControl.coerceIn(0, settingsControlMax())
-            invalidate()
-            return
-        }
-
-        if (x !in 380f..1248f || y !in 77f..613f) return
-        settingsColumn = 1
-
-        when (settingsCategory) {
-            0 -> when {
-                y in 112f..164f -> {
-                    settingsControl = 0
-                    durationSeconds = setSliderFromTap(x, 2f, 120f).toInt().coerceIn(2, 120)
-                }
-                y in 164f..214f -> {
-                    settingsControl = 1
-                    fixedImage = x >= 920f
-                }
-                y in 210f..262f -> { settingsControl = 2; loop = !loop }
-                y in 255f..310f -> { settingsControl = 3; randomOrder = !randomOrder }
-                y in 340f..452f -> {
-                    val i = ((x - 402f) / 141f).toInt()
-                    if (i in 0..5) {
-                        settingsControl = 4
-                        transitionIndex = i
-                    }
-                }
-                y in 455f..515f -> {
-                    settingsControl = 5
-                    transitionSeconds = setSliderFromTap(x, .2f, 4f)
-                }
-                y in 505f..555f -> { settingsControl = 6; kenBurns = !kenBurns }
-                y in 548f..600f -> {
-                    settingsControl = 7
-                    zoomLevel = (((x - 730f) / (380f / 3f)).toInt()).coerceIn(0, 2)
-                }
-            }
-
-            1 -> {
-                val visibleCount = 6
-                val first = (settingsControl - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
-                val slot = ((y - 136f) / 70f).toInt()
-                val idx = first + slot
-                if (slot in 0 until visibleCount && idx in elementNames.indices) {
-                    settingsControl = idx
-                    toggleElement(idx)
-                }
-            }
-
-            2 -> {
-                val visibleCount = 6
-                val first = (editorElement - 2).coerceIn(0, max(0, elementNames.size - visibleCount))
-                val slot = ((y - 164f) / 64f).toInt()
-                val idx = first + slot
-                if (slot in 0 until visibleCount && idx in elementNames.indices) {
-                    editorElement = idx
-                    settingsControl = idx
-                    page = 2
-                    editorColumn = 0
-                }
-            }
-
-            3 -> {
-                val col = ((x - 402f) / 211f).toInt()
-                val row = ((y - 142f) / 104f).toInt()
-                val idx = row * 4 + col
-                if (col in 0..3 && row in 0..3 && idx in transitions.indices) {
-                    settingsControl = idx
-                    transitionIndex = idx
-                }
-            }
-
-            4 -> when {
-                y in 130f..182f -> { settingsControl = 0; showDate = !showDate }
-                y in 184f..238f -> { settingsControl = 1; dateFormatIndex = (dateFormatIndex + 1) % 3 }
-                y in 240f..294f -> { settingsControl = 2; showTime = !showTime }
-                y in 296f..350f -> { settingsControl = 3; time24h = !time24h }
-                y in 352f..408f -> {
-                    settingsControl = 4
-                    showSeconds = !showSeconds
-                    scheduleClock()
-                }
-            }
-
-            5 -> when {
-                y in 136f..190f -> { settingsControl = 0; showTemp = !showTemp }
-                y in 192f..250f -> {
-                    settingsControl = 1
-                    tempCelsius = x < 920f
-                    loadWeather()
-                }
-                y in 252f..316f -> { settingsControl = 2; onWeatherLocation() }
-            }
-
-            6 -> when {
-                y in 145f..260f && x in 402f..666f -> {
-                    settingsControl = 0
-                    onExactSource()
-                }
-                y in 145f..260f && x in 678f..942f -> {
-                    settingsControl = 1
-                    onFolderSource()
-                }
-                y in 145f..260f && x in 954f..1218f -> {
-                    settingsControl = 2
-                    onPickPhotos()
-                }
-                y in 305f..365f -> {
-                    settingsControl = 3
-                    albumSort = (albumSort + 1) % 2
-                }
-                y in 365f..425f -> {
-                    settingsControl = 4
-                    onAlbumSearch()
-                }
-                y in 425f..490f -> {
-                    settingsControl = 5
-                    toggleAllAlbums()
-                }
-                y in 545f..610f && x < 730f -> {
-                    settingsControl = 7
-                    onNetworkSource()
-                }
-                y in 545f..610f -> {
-                    settingsControl = 6
-                    clearAllMasks()
-                }
-            }
-
-            7 -> when {
-                y in 145f..209f -> { settingsControl = 0; autonomousSlideshow = !autonomousSlideshow; if (!autonomousSlideshow) autonomousImageModeOverride = null }
-                y in 210f..274f -> { settingsControl = 1; smartSelectionMode = (smartSelectionMode + 1) % 5 }
-                y in 275f..339f -> {
-                    settingsControl = 2
-                    backgroundAnalysis = !backgroundAnalysis
-                    if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
-                }
-                y in 340f..599f -> settingsControl = (((y - 346f) / 65f).toInt() + 3).coerceIn(3, 6)
-            }
-
-            7 -> {
-                val slot = (((y - 149f) / 64f).toInt()).coerceIn(0, 6)
-                settingsControl = slot
-                when (slot) {
-                    0 -> {
-                        autonomousSlideshow = !autonomousSlideshow
-                        if (!autonomousSlideshow) autonomousImageModeOverride = null
-                    }
-                    1 -> smartSelectionMode = (smartSelectionMode + 1) % 5
-                    2 -> {
-                        backgroundAnalysis = !backgroundAnalysis
-                        if (backgroundAnalysis) scheduleBackgroundAnalysis() else backgroundAnalysisGeneration++
-                    }
-                }
-            }
-
-            else -> if (advancedRulesOpen) {
-                when {
-                    x in 855f..1045f && y in 75f..125f -> {
-                        settingsControl = 9
-                        rulesBySource = !rulesBySource
-                        settingsControl = 0
-                    }
-                    x >= 1045f && y in 75f..125f -> {
-                        advancedRulesOpen = false
-                        settingsControl = 0
-                    }
-                    else -> {
-                        val control = (((y - 120f) / 58f).toInt()).coerceIn(0, 7)
-                        settingsControl = control
-                        adjustAlbumRule(1)
-                    }
-                }
-            } else when {
-                x in 402f..484f && y in 77f..125f -> {
-                    settingsControl = 15
-                    smartSelectionMode = (smartSelectionMode + 1) % 5
-                }
-
-                x in 498f..590f && y in 77f..125f -> {
-                    settingsControl = 14
-                    onSettingsPin()
-                }
-                x in 605f..810f && y in 77f..125f -> {
-                    settingsControl = 13
-                    remoteEnabled = !remoteEnabled
-                    updateRemoteServer()
-                    if (remoteEnabled) showRemoteQrIfAvailable() else remoteQrVisible = false
-                }
-                x in 825f..1030f && y in 77f..125f -> {
-                    settingsControl = 12
-                    interactionDiagnostics = !interactionDiagnostics
-                }
-                x >= 1040f && y in 77f..125f -> {
-                    advancedRulesOpen = true
-                    settingsControl = 0
-                }
-                y in 112f..166f -> { settingsControl = 0; imageMode = (imageMode + 1) % imageModes.size }
-                y in 168f..220f -> { settingsControl = 1; gridSnap = !gridSnap }
-                y in 221f..274f -> { settingsControl = 2; oledProtection = !oledProtection }
-                y in 275f..327f -> { settingsControl = 3; overlaysAutoHide = !overlaysAutoHide }
-                y in 328f..380f -> {
-                    settingsControl = 4
-                    autoStartMinutes = setSliderFromTap(x, 0f, 60f).toInt().coerceIn(0, 60)
-                }
-                y in 381f..433f -> { settingsControl = 5; startDirectly = !startDirectly }
-                y in 434f..486f -> { settingsControl = 6; favoritesOnly = !favoritesOnly }
-                y in 487f..535f -> { settingsControl = 7; applyPreset((layoutPreset + 1) % 4) }
-                y in 536f..578f && x < 1000f -> { settingsControl = 8; onExportSettings() }
-                y in 536f..578f && x >= 1000f -> { settingsControl = 9; onImportSettings() }
-                y in 579f..626f -> { settingsControl = 10; videoSound = !videoSound; syncVideoPlayback() }
+        navFocus = false
+        if (x in 32f..352f && y in 100f..626f) {
+            val rowH = 50f * interfaceFontScale.coerceAtLeast(1f)
+            val visible = (510f / rowH).toInt().coerceAtLeast(1)
+            val first = (settingsCategory - visible / 2).coerceIn(0, max(0, 9 - visible))
+            val top = 354.5f - (min(visible,9)*rowH+16f)/2f + 8f
+            if (y < top || y >= top+min(visible,9)*rowH) return
+            settingsCategory = (first + ((y - top) / rowH).toInt()).coerceIn(0, 8)
+            settingsColumn = 0; settingsControl = settingRows().first().id; settingsEditing = false; settingsScroll = 0f
+        } else {
+            settingHitBoxes.firstOrNull { it.second.contains(x, y) }?.let {
+                settingsColumn = 1; settingsControl = it.first
+                val row = settingRows().first { row -> row.id == settingsControl }
+                if (row.action) activate() else { adjustSettings(if (x < 814f) -1 else 1); settingsEditing = false }
             }
         }
-
-        savePrefs()
-        scheduleInactivity()
-        invalidate()
+        savePrefs(); scheduleInactivity(); invalidate()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         markInteraction()
 
-        val sx = if (width > 0) width / 1280f else 1f
-        val sy = if (height > 0) height / 720f else 1f
-        val x = event.x / sx
-        val y = event.y / sy
+        val scale = viewportScale()
+        val x = (event.x - viewportLeft()) / scale
+        val y = (event.y - viewportTop()) / scale
+        if (x !in 0f..1280f || y !in 0f..720f) return true
         diagnosticTouchX = x
         diagnosticTouchY = y
+
+        if (!slideshow && !quickMenuVisible && !infoPanelVisible &&
+            ((page == 3 && y in 100f..626f) || (page == 2 && (x < 352f || x > 940f)))) {
+            when(event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    listTouchActive=true;listTouchMoved=false;listTouchY=y;navFocus=false
+                    if(page==3) settingsColumn=if(x<352f)0 else 1 else editorColumn=if(x<352f)0 else 2
+                }
+                MotionEvent.ACTION_MOVE -> if(listTouchActive && kotlin.math.abs(y-listTouchY)>50f) {
+                    moveVertical(if(y<listTouchY)1 else -1);listTouchY=y;listTouchMoved=true;return true
+                }
+            }
+        }
+        if(event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            listTouchActive=false
+            if(listTouchMoved) { listTouchMoved=false;return true }
+        }
 
         if (remoteQrVisible) {
             if (event.actionMasked == MotionEvent.ACTION_UP) {
@@ -5756,7 +5873,7 @@ class PhotoTvView(
         if (page == 2 && !slideshow && !quickMenuVisible && !infoPanelVisible) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    if (x in 370f..918f && y in 64f..638f) {
+                    if (x in 370f..918f && y in 200f..508.25f) {
                         touchDraggingEditor = true
                         editorGestureRecorded = true
                         recordEditorState()
@@ -5859,13 +5976,17 @@ class PhotoTvView(
             return true
         }
 
-        if (y >= 638f && x >= 218f && x <= 1090f) {
-            val target = ((x - 218f) / 218f).toInt().coerceIn(0, 3)
+        val tappedTab = navRects().indexOfFirst { it.contains(x,y) }
+        if (tappedTab >= 0 && (page != 0 || previewControlsVisible || navFocus)) {
+            val target = tappedTab
             if (target == 3 && !canOpenSettings()) {
                 onUnlockSettings()
                 return true
             }
             page = target
+            previewControlsVisible = false
+            if (page == 1) photosRow = 0
+            if (page == 3) settingsColumn = 0
             navFocus = false
             editorMoveMode = false
             invalidate()
@@ -5874,10 +5995,10 @@ class PhotoTvView(
 
         when (page) {
             0 -> {
-                if (x < 180f) previewNext(-1)
-                else if (x > 1100f) previewNext(1)
-                else if (activePhotos().isNotEmpty()) startSlideshow()
-                else page = 1
+                if ((previewControlsVisible || navFocus) && previewLaunchRect().contains(x,y)) launchFromPreview()
+                else if (x < 426f) previewNext(-1)
+                else if (x > 854f) previewNext(1)
+                else { previewControlsVisible = !previewControlsVisible; navFocus = previewControlsVisible }
                 invalidate()
             }
             1 -> handlePhotosTap(x, y)
@@ -5891,7 +6012,7 @@ class PhotoTvView(
     private fun moveSelectedEditorElementTo(x: Float, y: Float) {
         val st = styles[editorElement]
         st.x = (((x - 370f) / 548f) * 100f).coerceIn(0f, 100f)
-        st.y = (((y - 64f) / 574f) * 100f).coerceIn(0f, 100f)
+        st.y = (((y - 200f) / 308.25f) * 100f).coerceIn(0f, 100f)
         if (gridSnap) {
             st.x = snapPercent(st.x)
             st.y = snapPercent(st.y)
@@ -5899,6 +6020,7 @@ class PhotoTvView(
     }
 
     override fun onDetachedFromWindow() {
+        lifecycleClosed = true
         remoteServer?.stop()
         remoteServer = null
         remoteQrBitmap = null

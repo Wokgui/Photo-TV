@@ -3,6 +3,13 @@ package fr.wokgui.phototv
 import java.util.Locale
 
 object MediaTypeDetector {
+    fun isPhotoType(type: String): Boolean = type == "image" || type == "gif"
+
+    fun classifyPhoto(name: String?, mimeType: String?): String? {
+        if (classify(name, null) == "video") return null
+        return classify(name, mimeType)?.takeIf(::isPhotoType)
+    }
+
     private val imageExtensions = setOf(
         "jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "avif"
     )

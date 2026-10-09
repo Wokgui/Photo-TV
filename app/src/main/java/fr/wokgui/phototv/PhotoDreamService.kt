@@ -24,35 +24,28 @@ class PhotoDreamService : DreamService() {
         ui = renderer
         setContentView(renderer)
 
-        when (val source = SourceStore.load(this)) {
-            is PhotoSourceSpec.Tree -> Thread {
-                val loaded = TakeoutLibrary.load(
-                    this,
-                    source.uri,
-                    exactMode = source.exactMode
-                )
-                renderer.post {
-                    renderer.startAsDream(
-                        loaded.items,
-                        exactAlbums = loaded.exactAlbums,
-                        sourceName = if (source.exactMode) "Google Photos / Takeout" else "Dossier local"
-                    )
+        Thread {
+            val all = mutableListOf<PhotoItem>()
+            var exact = true
+            SourceStore.loadAll(this).forEach { source ->
+                when (source) {
+                    PhotoSourceSpec.Drive -> all += DriveRemoteLibrary.load(this)
+                    is PhotoSourceSpec.Tree -> runCatching {
+                        val loaded = TakeoutLibrary.load(this, source.uri, source.exactMode)
+                        all += loaded.items
+                        exact = exact && loaded.exactAlbums
+                    }.onFailure { exact = false }
+                    is PhotoSourceSpec.Picked -> {
+                        all += PickedLibrary.load(this, source.uris)
+                        exact = false
+                    }
                 }
-            }.start()
-
-            is PhotoSourceSpec.Picked -> Thread {
-                val items = PickedLibrary.load(this, source.uris)
-                renderer.post {
-                    renderer.startAsDream(
-                        items,
-                        exactAlbums = false,
-                        sourceName = "Sélection de photos"
-                    )
-                }
-            }.start()
-
-            null -> Unit
-        }
+            }
+            renderer.post {
+                if (ui !== renderer) return@post
+                renderer.startAsDream(all.filter { it.mediaType == "image" }, exact, "Photos TV • économiseur")
+            }
+        }.start()
     }
 
     override fun onDetachedFromWindow() {

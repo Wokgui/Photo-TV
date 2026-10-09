@@ -3,7 +3,8 @@
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 <uses-feature android:name="android.software.leanback" android:required="false"/>
 <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
-<application android:theme="@style/Theme.PhotoTV" android:label="Photo TV" android:icon="@drawable/ic_photo_tv" android:banner="@drawable/tv_banner">
+<application android:theme="@style/Theme.PhotoTV" android:label="Photo TV" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:banner="@drawable/tv_banner">
+<service android:name=".DriveSyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
 <activity android:name=".MainActivity" android:screenOrientation="landscape" android:exported="true">
 <intent-filter>
 <action android:name="android.intent.action.MAIN"/>
@@ -13,12 +14,14 @@
 </activity>
 <service
     android:name=".PhotoDreamService"
+    android:label="Photo TV — Diaporama"
     android:exported="true"
     android:permission="android.permission.BIND_DREAM_SERVICE">
     <intent-filter>
         <action android:name="android.service.dreams.DreamService"/>
         <category android:name="android.intent.category.DEFAULT"/>
     </intent-filter>
+    <meta-data android:name="android.service.dream" android:resource="@xml/photo_tv_dream" />
 </service>
 <receiver
     android:name=".BootReceiver"

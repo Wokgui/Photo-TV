@@ -11,8 +11,11 @@ object PickedLibrary {
     fun load(context: Context, uris: List<Uri>): List<PhotoItem> {
         val items = uris.distinct().mapNotNull { uri ->
             runCatching {
+                // A saved URI can outlive its Android access grant.
+                context.contentResolver.openInputStream(uri)?.use { } ?: return@runCatching null
                 val name = displayName(context, uri)
                 val mime = context.contentResolver.getType(uri).orEmpty()
+                val type = MediaTypeDetector.classifyPhoto(name, mime) ?: return@runCatching null
                 val info = MediaInfoReader.read(context, uri, mime, name)
                 PhotoItem(
                     uri = uri,
@@ -23,7 +26,7 @@ object PickedLibrary {
                     camera = info.camera,
                     width = info.width,
                     height = info.height,
-                    mediaType = MediaTypeDetector.classify(name, mime) ?: "image"
+                    mediaType = type
                 )
             }.getOrNull()
         }
