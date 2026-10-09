@@ -3805,7 +3805,7 @@ class PhotoTvView(
 
     private fun albumBitmap(name: String, index: Int): Bitmap? {
         if (library.isEmpty()) return mockAlbumBitmaps[index] ?: demoBitmap
-        val item = library.firstOrNull { it.albums.contains(name) } ?: return demoBitmap
+        val item = albumIndex[name]?.firstOrNull() ?: return if (automationMode) demoBitmap else null
         val cached = synchronized(bitmapCache) { bitmapCache[item.uri.toString()] }
         if (cached == null) preload(listOf(item.uri))
         return cached ?: demoBitmap
