@@ -14,6 +14,7 @@ object DriveRemoteLibrary {
     private const val CACHE_LIMIT=256L*1024*1024
     private const val MEMBER_LIMIT=128L*1024*1024
     private val lock=Any()
+    private val mediaLocks=Array(32) { Any() }
     @Volatile private var references: Map<String,Ref> = emptyMap()
     data class Ref(val archive: String,val size: Long,val entry: RemoteZip.Entry)
     fun isRemote(uri: Uri) = uri.scheme==SCHEME
@@ -145,20 +146,22 @@ object DriveRemoteLibrary {
     }
 
     fun materialize(context: Context,uri: Uri,
-        fetch: (String,Long,Int)->ByteArray = { id,start,count->DriveSync.readRange(context,id,start,count) }): File = synchronized(lock) {
+        fetch: (String,Long,Int)->ByteArray = { id,start,count->DriveSync.readRange(context,id,start,count) }): File {
         require(isRemote(uri));val key=uri.lastPathSegment ?: error("Photo Drive invalide.")
+        return synchronized(mediaLocks[(key.hashCode() and Int.MAX_VALUE) % mediaLocks.size]) {
         require(Regex("[a-f0-9]{64}").matches(key))
         val dir=File(context.cacheDir,"drive-media").apply { mkdirs() };val target=File(dir,key)
         if(target.isFile) { target.setLastModified(System.currentTimeMillis());return@synchronized target }
-        if(references[key]==null)load(context)
+        if(references[key]==null) synchronized(lock) { if(references[key]==null)load(context) }
         val ref=references[key] ?: error("Photo Drive inconnue.")
-        trim(dir,CACHE_LIMIT-ref.entry.uncompressed)
+        synchronized(lock) { trim(dir,CACHE_LIMIT-ref.entry.uncompressed) }
         require(ref.entry.uncompressed<=MEMBER_LIMIT && context.cacheDir.usableSpace>ref.entry.uncompressed+64L*1024*1024) { "Espace insuffisant pour le cache photo." }
         val temp=File(dir,key+".part")
         try {
             temp.outputStream().use { RemoteZip(ref.size) { start,count->fetch(ref.archive,start,count) }.read(ref.entry,it,MEMBER_LIMIT) }
-            check(temp.renameTo(target));trim(dir,CACHE_LIMIT,key);target
+            check(temp.renameTo(target));synchronized(lock) { trim(dir,CACHE_LIMIT,key) };target
         } finally { temp.delete() }
+        }
     }
     private fun trim(dir: File,limit: Long,keep: String="") {
         val files=dir.listFiles().orEmpty().filter { it.isFile && it.extension!="part" }.sortedBy { it.lastModified() }

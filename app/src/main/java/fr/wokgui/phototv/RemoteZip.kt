@@ -60,9 +60,10 @@ class RemoteZip(private val size: Long, private val range: (Long, Int) -> ByteAr
     }
     fun read(entry: Entry, output: OutputStream, maxBytes: Long) {
         require(entry.uncompressed<=maxBytes && entry.flags and 1==0 && entry.method in listOf(0,8)) { "Média ZIP trop grand ou non pris en charge." }
-        // Most Takeout descriptors are tiny. Fetch their local header and data
-        // together to halve network requests while retaining CRC validation.
-        val prefixSize=if(entry.compressed<=65536) minOf(size-entry.offset,30L+entry.name.toByteArray(Charsets.UTF_8).size+256L+entry.compressed).toInt() else 30
+        // Fetch the photo header with its first data block. Large photos then use
+        // 4 MiB ranges rather than many separate 1 MiB network round trips.
+        // Descriptor files still require only their small exact range.
+        val prefixSize=minOf(size-entry.offset,4L*1024*1024,30L+entry.name.toByteArray(Charsets.UTF_8).size+256L+entry.compressed).toInt()
         val local=bytes(entry.offset,prefixSize);require(u32(local,0)==0x04034b50L && u16(local,8)==entry.method)
         val start=Math.addExact(entry.offset,30L+u16(local,26)+u16(local,28))
         require(start<=size-entry.compressed)
@@ -75,7 +76,7 @@ class RemoteZip(private val size: Long, private val range: (Long, Int) -> ByteAr
                 if(len==0)return 0
                 if(cursor==block.size) {
                     if(position>=entry.compressed)return -1
-                    block=bytes(start+position,minOf(1024*1024L,entry.compressed-position).toInt());position+=block.size;cursor=0
+                    block=bytes(start+position,minOf(4*1024*1024L,entry.compressed-position).toInt());position+=block.size;cursor=0
                 }
                 val n=minOf(len,block.size-cursor);System.arraycopy(block,cursor,b,off,n);cursor+=n;return n
             }

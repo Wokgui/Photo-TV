@@ -103,7 +103,7 @@ class PhotoTvView(
     private val inactivityHandler = Handler(Looper.getMainLooper())
     private val clockHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
-    private val highResExecutor = Executors.newSingleThreadExecutor()
+    private val highResExecutor = Executors.newFixedThreadPool(2)
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     private val bitmapCache = LinkedHashMap<String, Bitmap>(32, .75f, true)
     private val bitmapLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -119,6 +119,10 @@ class PhotoTvView(
         val adaptive = Runtime.getRuntime().maxMemory() / 5L
         adaptive.coerceIn(48L * 1024L * 1024L, 192L * 1024L * 1024L)
     }
+    private var displayedPhotoBitmap: Bitmap? = null
+    private var displayedPhotoUri: String? = null
+    private var transitionPhotoBitmap: Bitmap? = null
+    private var plannedNextPhotoUri: String? = null
     private val gifCache = LinkedHashMap<String, Movie>()
     private val gifLoading = linkedSetOf<String>()
     private var softSource: Bitmap? = null
@@ -1379,6 +1383,7 @@ class PhotoTvView(
         exactAlbums: Boolean = false,
         fallbackSourceName: String = "Source"
     ) {
+        val currentUri = currentItem()?.uri
         val label = items.firstOrNull()?.sourceLabel?.takeIf { it.isNotBlank() } ?: fallbackSourceName
         val tagged = tagSource(items, label)
         val wasEmpty = library.isEmpty()
@@ -1386,6 +1391,11 @@ class PhotoTvView(
         library = retained + tagged
         this.exactAlbums = if (wasEmpty) exactAlbums else this.exactAlbums && exactAlbums
         refreshLibraryState(resetCurrent = false)
+        currentUri?.let { uri ->
+            val restored = activePhotos().indexOfFirst { it.uri == uri }
+            if (restored >= 0) currentPhoto = restored
+        }
+        if (slideshow) preloadAroundCurrent()
     }
 
     fun removeSourceByLabel(label: String) {
@@ -1796,7 +1806,9 @@ class PhotoTvView(
                     highResCache[key] = bmp
                     highResCacheBytes += bmp.allocationByteCount.toLong()
                     while (highResCacheBytes > highResCacheLimitBytes && highResCache.size > 1) {
-                        val first = highResCache.entries.firstOrNull() ?: break
+                        val first = highResCache.entries.firstOrNull {
+                            it.key != displayedPhotoUri && it.key != plannedNextPhotoUri
+                        } ?: break
                         highResCacheBytes -= first.value.allocationByteCount.toLong()
                         highResCache.remove(first.key)
                     }
@@ -1894,7 +1906,33 @@ class PhotoTvView(
         if (automationMode) return true
         val key=currentItem()?.uri?.toString() ?: return false
         return synchronized(highResCache) { highResCache[key]?.isRecycled == false } ||
-            synchronized(bitmapCache) { bitmapCache[key]?.isRecycled == false }
+            synchronized(bitmapCache) { bitmapCache[key]?.isRecycled == false } ||
+            (displayedPhotoUri == key && displayedPhotoBitmap?.isRecycled == false)
+    }
+
+    private fun photoReadyForTransition(item: PhotoItem): Boolean {
+        if (automationMode) return true
+        val key = item.uri.toString()
+        // Album thumbnails are not a prepared full-screen slide.
+        return if (item.mediaType == "image")
+            synchronized(highResCache) { highResCache[key]?.isRecycled == false }
+        else synchronized(bitmapCache) { bitmapCache[key]?.isRecycled == false }
+    }
+
+    private fun nextSlideshowIndex(items: List<PhotoItem>, dir: Int): Int? {
+        if (dir > 0) plannedNextPhotoUri?.let { uri ->
+            val planned = items.indexOfFirst { it.uri.toString() == uri }
+            if (planned >= 0 && planned != currentPhoto) return planned
+        }
+        if ((randomOrder || autonomousSlideshow) && items.size > 1) {
+            if (dir < 0) return history.lastOrNull()?.coerceIn(0, items.lastIndex)
+                ?: (currentPhoto - 1 + items.size) % items.size
+            if (shuffleBag.isEmpty()) rebuildShuffleBag()
+            return shuffleBag.firstOrNull()?.coerceIn(0, items.lastIndex) ?: currentPhoto
+        }
+        return if (dir > 0) {
+            if (currentPhoto + 1 < items.size) currentPhoto + 1 else if (loop) 0 else null
+        } else if (currentPhoto > 0) currentPhoto - 1 else if (loop) items.lastIndex else 0
     }
 
     private fun currentBitmap(): Bitmap? {
@@ -1905,18 +1943,23 @@ class PhotoTvView(
             val high = synchronized(highResCache) { highResCache[key] }
             if (high != null && !high.isRecycled) {
                 cacheHits++
+                displayedPhotoBitmap = high
+                displayedPhotoUri = key
                 return high
             }
             val thumb = synchronized(bitmapCache) { bitmapCache[key] }
             if (thumb != null && !thumb.isRecycled) {
                 cacheHits++
                 requestHighRes(item.uri)
+                displayedPhotoBitmap = thumb
+                displayedPhotoUri = key
                 thumb
             } else {
                 cacheMisses++
                 requestHighRes(item.uri)
                 preload(listOf(item.uri))
-                emptySlideshowBackground
+                if (slideshow && displayedPhotoUri == key && displayedPhotoBitmap?.isRecycled == false)
+                    displayedPhotoBitmap else emptySlideshowBackground
             }
         }
     }
@@ -3366,7 +3409,7 @@ class PhotoTvView(
         val item = currentItem()
         val current = currentBitmap()
         val previousItem = items.getOrNull(previousPhoto)
-        val previousBitmap = previousItem?.let {
+        val previousBitmap = transitionPhotoBitmap?.takeUnless { it.isRecycled } ?: previousItem?.let {
             val key = it.uri.toString()
             synchronized(highResCache) { highResCache[key] } ?: synchronized(bitmapCache) { bitmapCache[key] }
         }
@@ -5541,6 +5584,8 @@ class PhotoTvView(
         quickMenuVisible = false
         infoPanelVisible = false
         history.clear()
+        plannedNextPhotoUri = null
+        transitionPhotoBitmap = null
         autonomousSlideNumber = 0L
         updateAutonomousPresentation()
         rememberCurrentUri()
@@ -5563,6 +5608,8 @@ class PhotoTvView(
         handler.removeCallbacksAndMessages(null)
         transitionAnimator?.cancel()
         onVideoPlayback(null, videoSound)
+        plannedNextPhotoUri = null
+        transitionPhotoBitmap = null
         savePrefs()
         scheduleInactivity()
         invalidate()
@@ -5646,8 +5693,13 @@ class PhotoTvView(
         )
         val displayMode = displayImageMode()
         val mosaicCount = if (displayMode >= 4) (displayMode - 2).coerceIn(2, 4) else 1
-        val ahead = max(decision.ahead, mosaicCount - 1)
-        val hdAhead = max(decision.hdAhead, if (displayMode >= 4) mosaicCount else 1)
+        val (targetW, targetH) = highResTarget()
+        val estimatedBitmapBytes = targetW.toLong() * targetH.toLong() * 5L
+        val preparedSlides = (highResCacheLimitBytes / estimatedBitmapBytes.coerceAtLeast(1L)).toInt().coerceIn(2, 4)
+        val ahead = max(decision.ahead, max(mosaicCount - 1, preparedSlides - 1))
+        // Prepare several real upcoming slides within the full-screen bitmap budget.
+        // This gives slow remote downloads more than one slide of advance.
+        val hdAhead = max(decision.hdAhead, max(mosaicCount, preparedSlides))
 
         val indices = if ((randomOrder || autonomousSlideshow) && shuffleBag.isNotEmpty()) {
             buildList {
@@ -5657,9 +5709,13 @@ class PhotoTvView(
         } else {
             (0..ahead).map { (currentPhoto + it) % items.size }
         }
-        val orderedUris = indices.distinct().mapNotNull { items.getOrNull(it)?.uri }
-        preload(orderedUris)
+        val next = nextSlideshowIndex(items, 1)
+        if (next != null) plannedNextPhotoUri = items[next].uri.toString()
+        val prioritized = listOfNotNull(currentPhoto, next) + indices
+        val orderedUris = prioritized.distinct().mapNotNull { items.getOrNull(it)?.uri }
+        // Submit full-screen work first; album thumbnail jobs must not take its place.
         orderedUris.take(hdAhead).forEach { requestHighRes(it) }
+        preload(orderedUris)
         if (orderedUris.any { NetworkLibrary.isNetworkUri(it) }) {
             executor.execute { NetworkLibrary.prefetch(context, orderedUris.take(ahead + 1)) }
         }
@@ -5670,7 +5726,9 @@ class PhotoTvView(
         synchronized(highResCache) {
             val keep = if (aggressive) 1 else 2
             while (highResCache.size > keep) {
-                val first = highResCache.entries.firstOrNull() ?: break
+                val first = highResCache.entries.firstOrNull {
+                    it.key != displayedPhotoUri && it.key != plannedNextPhotoUri
+                } ?: break
                 highResCacheBytes -= first.value.allocationByteCount.toLong()
                 highResCache.remove(first.key)
             }
@@ -5726,38 +5784,34 @@ class PhotoTvView(
         }
 
         currentPhoto = currentPhoto.coerceIn(0, items.lastIndex)
+        val next = nextSlideshowIndex(items, dir)
+        if (next == null) { stopSlideshow(); return }
+        val nextItem = items[next]
+        if (!photoReadyForTransition(nextItem)) {
+            requestHighRes(nextItem.uri)
+            preload(listOf(nextItem.uri))
+            // Never consume the shuffle queue, change the caption, or start a
+            // transition while the following photo is still downloading.
+            handler.removeCallbacksAndMessages(null)
+            handler.postDelayed({
+                if (slideshow && !quickMenuVisible && !infoPanelVisible) slideshowNext(dir)
+            }, 150L)
+            return
+        }
+        transitionPhotoBitmap = currentBitmap()
         previousPhoto = currentPhoto
-
         if ((randomOrder || autonomousSlideshow) && items.size > 1) {
             if (dir < 0) {
-                if (history.isNotEmpty()) {
-                    currentPhoto = history.removeAt(history.lastIndex).coerceIn(0, items.lastIndex)
-                } else {
-                    currentPhoto = (currentPhoto - 1 + items.size) % items.size
-                }
+                if (history.isNotEmpty()) history.removeAt(history.lastIndex)
             } else {
                 history += currentPhoto
                 if (history.size > 100) history.removeAt(0)
-                if (shuffleBag.isEmpty()) rebuildShuffleBag()
-                currentPhoto = if (shuffleBag.isNotEmpty()) shuffleBag.removeAt(0) else currentPhoto
+                val queued = shuffleBag.indexOf(next)
+                if (queued >= 0) shuffleBag.removeAt(queued)
             }
-        } else {
-            if (dir > 0) {
-                history += currentPhoto
-                var next = currentPhoto + 1
-                if (next >= items.size) {
-                    if (loop) next = 0 else {
-                        stopSlideshow()
-                        return
-                    }
-                }
-                currentPhoto = next
-            } else {
-                currentPhoto = if (currentPhoto <= 0) {
-                    if (loop) items.lastIndex else 0
-                } else currentPhoto - 1
-            }
-        }
+        } else if (dir > 0) history += currentPhoto
+        currentPhoto = next
+        plannedNextPhotoUri = null
 
         slideStartedAt = System.currentTimeMillis()
         autonomousSlideNumber++
