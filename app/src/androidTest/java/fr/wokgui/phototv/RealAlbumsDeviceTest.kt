@@ -31,20 +31,21 @@ class RealAlbumsDeviceTest {
         }
         try {
             assertTrue("Drive must already be configured",DriveSync.configured(context))
-            // Complete archive/album discovery; full per-photo title indexing can
-            // continue normally later. Never change the connected Google account.
-            val discovery=runCatching {
-                DriveSync.sync(context) { DriveSync.statusText(context).contains("titres et albums") }
-            }
-            report.put("discoveryStatus",DriveSync.statusText(context))
             val connection=DriveSync::class.java.getDeclaredMethod("connection",Context::class.java).apply { isAccessible=true }.invoke(DriveSync,context) as JSONObject
             val remote=DriveSync::class.java.getDeclaredMethod("json",JSONObject::class.java,String::class.java).apply { isAccessible=true }.invoke(DriveSync,connection,"/archives") as JSONObject
             val expected=remote.getJSONArray("files")
-            val catalogs=File(context.filesDir,"drive-catalog").listFiles().orEmpty().filter { it.extension=="json" }.map { JSONObject(it.readText()) }
-            val missing=(0 until expected.length()).count { i ->
-                val id=expected.getJSONObject(i).getString("id")
-                catalogs.none { it.optString("archive")==id && (it.optBoolean("albumsDiscovered") || it.optBoolean("complete")) }
+            fun missingArchives(): Int {
+                val catalogs=File(context.filesDir,"drive-catalog").listFiles().orEmpty().filter { it.extension=="json" }.map { JSONObject(it.readText()) }
+                return (0 until expected.length()).count { i ->
+                    val id=expected.getJSONObject(i).getString("id")
+                    catalogs.none { it.optString("archive")==id && (it.optBoolean("albumsDiscovered") || it.optBoolean("complete")) }
+                }
             }
+            // Only discover missing albums. Per-photo title indexing remains a
+            // background job and must not delay verification of readable albums.
+            if (missingArchives()>0) runCatching { DriveSync.sync(context) { missingArchives()==0 } }
+            val missing=missingArchives()
+            report.put("discoveryStatus",DriveSync.statusText(context))
             report.put("expectedArchives",expected.length()).put("missingArchives",missing)
             val items=DriveRemoteLibrary.load(context)
             val sources=SourceStore.loadAll(context)
@@ -69,6 +70,7 @@ class RealAlbumsDeviceTest {
                 report.put("displayedAlbums",shown.size).put("emptyOrExampleAlbums",0)
                 ui!!.setAutomationPage(1)
             }
+            output.writeText(report.toString(2))
             val results=JSONArray()
             val failed=mutableListOf<String>()
             val decoded=mutableMapOf<String,Boolean>()
