@@ -3807,10 +3807,20 @@ class PhotoTvView(
 
     private fun albumBitmap(name: String, index: Int): Bitmap? {
         if (library.isEmpty()) return mockAlbumBitmaps[index] ?: demoBitmap
-        val item = albumIndex[name]?.firstOrNull() ?: return if (automationMode) demoBitmap else null
-        val cached = synchronized(bitmapCache) { bitmapCache[item.uri.toString()] }
-        if (cached == null) preload(listOf(item.uri), targetWidth = 600, targetHeight = 450)
-        return cached ?: demoBitmap
+        val items = albumIndex[name].orEmpty()
+        if (items.isEmpty()) return if (automationMode) demoBitmap else null
+        // Keep a real cover from this album even when its first Drive photo
+        // is temporarily unavailable; do not retry the same blocked image forever.
+        synchronized(bitmapCache) {
+            items.firstNotNullOfOrNull { bitmapCache[it.uri.toString()]?.takeUnless { bmp -> bmp.isRecycled } }
+        }?.let { return it }
+        val now = android.os.SystemClock.elapsedRealtime()
+        val item = items.firstOrNull {
+            val key = it.uri.toString()
+            !failedMediaUris.contains(key) && (driveRetryAfter[key] ?: 0L) <= now
+        } ?: return if (automationMode) demoBitmap else null
+        preload(listOf(item.uri), targetWidth = 600, targetHeight = 450)
+        return if (automationMode) demoBitmap else null
     }
 
     private fun drawPhotoThumb(c: Canvas, x: Float, y: Float, w: Float, h: Float, item: PhotoItem?, focused: Boolean, demoIndex: Int = 0) {
