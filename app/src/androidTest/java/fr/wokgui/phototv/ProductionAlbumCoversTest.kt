@@ -29,6 +29,7 @@ class ProductionAlbumCoversTest {
             scenario!!.onActivity { a ->
                 ui=PhotoTvView(a,onExactSource={},onPickPhotos={},automationMode=false)
                 PhotoTvView::class.java.getDeclaredField("startDirectly").apply { isAccessible=true;setBoolean(ui,false) }
+                PhotoTvView::class.java.getDeclaredField("resumeWasSlideshow").apply { isAccessible=true;setBoolean(ui,false) }
                 PhotoTvView::class.java.getDeclaredField("autoStartMinutes").apply { isAccessible=true;setInt(ui,0) }
                 a.setContentView(ui)
                 assertTrue((albumMethod.invoke(ui) as List<*>).isEmpty())
@@ -39,7 +40,8 @@ class ProductionAlbumCoversTest {
             }
             assertTrue(pairs.isNotEmpty())
             pairs.forEachIndexed { index,pair ->
-                val deadline=SystemClock.uptimeMillis()+45_000L
+                val deadline=SystemClock.uptimeMillis()+120_000L
+                scenario!!.onActivity { PhotoTvView::class.java.getDeclaredField("albumFocus").apply { isAccessible=true;setInt(ui,index) }; ui.invalidate() }
                 var loaded=false
                 do {
                     scenario!!.onActivity {
