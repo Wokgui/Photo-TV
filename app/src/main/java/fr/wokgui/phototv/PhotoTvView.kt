@@ -1406,7 +1406,7 @@ class PhotoTvView(
         }
     }
 
-    private fun preload(uris: List<Uri>) {
+    private fun preload(uris: List<Uri>, targetWidth: Int = 1200, targetHeight: Int = 900) {
         if (executor.isShutdown || automationMode) return
         uris.distinct().forEach { uri ->
             val key = uri.toString()
@@ -1417,7 +1417,7 @@ class PhotoTvView(
 
             executor.execute {
                 try {
-                    val bmp = decodeThumb(uri)
+                    val bmp = decodeThumb(uri, targetWidth, targetHeight)
                     if (bmp != null) {
                         driveRetryAfter.remove(key)
                         synchronized(bitmapCache) {
@@ -1624,7 +1624,7 @@ class PhotoTvView(
         else if (NetworkLibrary.isNetworkUri(uri)) NetworkLibrary.open(context, uri)
         else context.contentResolver.openInputStream(uri)
 
-    private fun decodeThumb(uri: Uri): Bitmap? {
+    private fun decodeThumb(uri: Uri, targetWidth: Int = 1200, targetHeight: Int = 900): Bitmap? {
         return runCatching {
             val key = uri.toString()
             val mediaType = uriIndex[key]?.mediaType
@@ -1651,14 +1651,14 @@ class PhotoTvView(
                     append('|').append(signature.size)
                     append('|').append(item?.width ?: 0).append('x').append(item?.height ?: 0)
                     append('|').append(item?.takenAt ?: 0L)
-                    append("|tv1200x900")
+                    append("|tv${targetWidth}x${targetHeight}")
                 }
                 if (signature.cacheable) {
                     ThumbnailDiskCache.read(context, persistentKey)?.let { bytes ->
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { return@runCatching it }
                     }
                 }
-                val decoded = decodeBitmap(uri, 1200, 900)
+                val decoded = decodeBitmap(uri, targetWidth, targetHeight)
                 if (decoded != null && !decoded.isRecycled) {
                     runCatching {
                         java.io.ByteArrayOutputStream().use { stream ->
@@ -1700,13 +1700,15 @@ class PhotoTvView(
             if (decoded != null) {
                 val oriented = applyExifOrientation(uri, decoded)
                 val maxPixels = (targetWidth.toLong() * targetHeight.toLong() * 5L / 4L)
-                    .coerceAtLeast(1_500_000L)
+                    .coerceAtLeast(if (targetWidth <= 600 && targetHeight <= 450) 150_000L else 1_500_000L)
                 val pixels = oriented.width.toLong() * oriented.height.toLong()
                 if (pixels > maxPixels) {
                     val scale = kotlin.math.sqrt(maxPixels.toDouble() / pixels.toDouble()).toFloat()
                     val outW = max(1, (oriented.width * scale).toInt())
                     val outH = max(1, (oriented.height * scale).toInt())
-                    return Bitmap.createScaledBitmap(oriented, outW, outH, true)
+                    return Bitmap.createScaledBitmap(oriented, outW, outH, true).also { scaled ->
+                        if (scaled !== oriented) oriented.recycle()
+                    }
                 }
                 return oriented
             }
@@ -3807,7 +3809,7 @@ class PhotoTvView(
         if (library.isEmpty()) return mockAlbumBitmaps[index] ?: demoBitmap
         val item = albumIndex[name]?.firstOrNull() ?: return if (automationMode) demoBitmap else null
         val cached = synchronized(bitmapCache) { bitmapCache[item.uri.toString()] }
-        if (cached == null) preload(listOf(item.uri))
+        if (cached == null) preload(listOf(item.uri), targetWidth = 600, targetHeight = 450)
         return cached ?: demoBitmap
     }
 

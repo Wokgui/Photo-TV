@@ -53,11 +53,32 @@ class ProductionAlbumCoversTest {
                 assertTrue("Cover unavailable for loaded album ${pair.first}",loaded)
                 android.util.Log.i("RealAlbumCovers","Cover ${index+1}/${pairs.size} loaded")
             }
-            scenario!!.onActivity { ui.setAutomationPage(1) }
+            var visibleCount=0
+            scenario!!.onActivity {
+                PhotoTvView::class.java.getDeclaredField("albumFocus").apply { isAccessible=true;setInt(ui,0) }
+                ui.setAutomationPage(1)
+                visibleCount=(PhotoTvView::class.java.getDeclaredMethod("albumColumns").apply { isAccessible=true }.invoke(ui) as Int)*2
+            }
+            val visible=pairs.take(visibleCount)
+            val deadline=SystemClock.uptimeMillis()+120_000L
+            var allVisible=false
+            do {
+                scenario!!.onActivity {
+                    allVisible=visible.mapIndexed { index,pair -> coverMethod.invoke(ui,pair.first,index) as Bitmap? }.all { it!=null && !it.isRecycled }
+                }
+                if(!allVisible)SystemClock.sleep(100)
+            } while(!allVisible && SystemClock.uptimeMillis()<deadline)
+            assertTrue("Visible album covers must fit in memory together",allVisible)
+            repeat(3) {
+                SystemClock.sleep(500)
+                scenario!!.onActivity {
+                    assertTrue(visible.mapIndexed { index,pair -> coverMethod.invoke(ui,pair.first,index) as Bitmap? }.all { it!=null && !it.isRecycled })
+                }
+            }
             SystemClock.sleep(1200)
             val device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
             assertTrue(device.takeScreenshot(File(context.getExternalFilesDir(null),"production-albums-screen.png")))
-            File(context.getExternalFilesDir(null),"album-covers-verification.json").writeText(JSONObject().put("verifiedCovers",pairs.size).put("emptyExampleAlbums",0).put("actualPhotos",items.size).toString(2))
+            File(context.getExternalFilesDir(null),"album-covers-verification.json").writeText(JSONObject().put("verifiedCovers",pairs.size).put("visibleCoversRetained",visible.size).put("emptyExampleAlbums",0).put("actualPhotos",items.size).toString(2))
         } finally {
             scenario?.close()
             saved.forEach { (name,values) ->
