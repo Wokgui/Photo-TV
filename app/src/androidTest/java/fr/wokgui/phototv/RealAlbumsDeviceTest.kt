@@ -30,7 +30,7 @@ class RealAlbumsDeviceTest {
             context.getSharedPreferences(it,Context.MODE_PRIVATE).all.toMap()
         }
         try {
-            assertTrue("Drive must already be configured",DriveSync.configured(context))
+            org.junit.Assume.assumeTrue("Requires a device configured with Google Drive", DriveSync.configured(context))
             val connection=DriveSync::class.java.getDeclaredMethod("connection",Context::class.java).apply { isAccessible=true }.invoke(DriveSync,context) as JSONObject
             val remote=DriveSync::class.java.getDeclaredMethod("json",JSONObject::class.java,String::class.java).apply { isAccessible=true }.invoke(DriveSync,connection,"/archives") as JSONObject
             val expected=remote.getJSONArray("files")

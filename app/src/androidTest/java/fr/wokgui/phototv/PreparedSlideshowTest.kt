@@ -110,6 +110,7 @@ class PreparedSlideshowTest {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val saved=listOf("photo_tv_ui","photo_tv_network_settings").associateWith { context.getSharedPreferences(it,0).all.toMap() }
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).wakeUp()
+        org.junit.Assume.assumeTrue("Requires a device configured with Google Drive", DriveSync.configured(context))
         val items=DriveRemoteLibrary.load(context).filter { it.mediaType == "image" }.groupBy { it.albums.firstOrNull() }.values.take(8).map { it.first() }
         assertEquals(8,items.size)
         val scenario=ActivityScenario.launch<MainActivity>(Intent(context,MainActivity::class.java).putExtra("phototv_test_mode",true))

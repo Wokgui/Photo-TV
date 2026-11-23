@@ -106,6 +106,11 @@ class MainActivity : AppCompatActivity() {
 
         automationMode = intent.getBooleanExtra("phototv_test_mode", false)
 
+        if (automationMode) {
+            initializeMainContent()
+            return
+        }
+
         showStartupLoading()
         window.decorView.postDelayed({
             if (!isFinishing && !isDestroyed) {

@@ -17,7 +17,9 @@ class ProductionAlbumCoversTest {
     @Test fun everyLoadedAlbumHasItsOwnRealCover() {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val saved=listOf("photo_tv_ui","photo_tv_network_settings").associateWith { context.getSharedPreferences(it,0).all.toMap() }
-        val items=DriveRemoteLibrary.load(context)+SourceStore.loadAll(context).filterIsInstance<PhotoSourceSpec.Picked>().flatMap { PickedLibrary.load(context,it.uris) }
+        val sources = SourceStore.loadAll(context)
+        org.junit.Assume.assumeTrue("Requires a device with a real photo source", DriveSync.configured(context) || sources.any { it is PhotoSourceSpec.Picked })
+        val items = DriveRemoteLibrary.load(context) + sources.filterIsInstance<PhotoSourceSpec.Picked>().flatMap { PickedLibrary.load(context, it.uris) }
         var scenario:ActivityScenario<MainActivity>?=null
         try {
             scenario=ActivityScenario.launch(Intent(context,MainActivity::class.java).putExtra("phototv_test_mode",true))
