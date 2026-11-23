@@ -79,6 +79,8 @@ class MainActivity : AppCompatActivity() {
             }
             driveHandler.postDelayed(this, 60_000L)
         }
+    }
+
     private var loadingGeneration = 0
 
     private fun beginLibraryLoad(message: String): Int {
