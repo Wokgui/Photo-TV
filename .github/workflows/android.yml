@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       PHOTO_TV_RELEASE_KEYSTORE_B64: ${{ secrets.PHOTO_TV_RELEASE_KEYSTORE_B64 }}
@@ -247,7 +247,7 @@ jobs:
 
   android-tv:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Checkout
@@ -306,7 +306,7 @@ jobs:
 
   resolution-smoke:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -368,7 +368,7 @@ jobs:
 
   marathon-tv:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Checkout
@@ -422,7 +422,7 @@ jobs:
       - resolution-smoke
       - marathon-tv
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/chargement-annulable-0-39')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
