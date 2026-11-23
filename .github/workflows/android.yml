@@ -455,7 +455,7 @@ jobs:
           APKSIGNER="$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
           signer_digest() {
-            "$APKSIGNER" verify --print-certs "$1" | sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' | sort
+            "$APKSIGNER" verify --print-certs "$1" | sed -nE 's/^(Signer|V[0-9.]+ Signer)[^:]*:?[[:space:]]+certificate SHA-256 digest:[[:space:]]*([0-9A-Fa-f]{64})[[:space:]]*$/\2/p' | tr '[:upper:]' '[:lower:]' | sort -u
           }
           OLD_SIGNER="$(signer_digest "$RUNNER_TEMP/previous-release.apk")"
           NEW_SIGNER="$(signer_digest release-bundle/Photo-TV-v*.apk)"
