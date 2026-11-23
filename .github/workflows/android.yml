@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - codex/chargement-annulable-0-39
   pull_request:
     branches:
       - main
@@ -420,7 +421,7 @@ jobs:
       - android-tv
       - resolution-smoke
       - marathon-tv
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/chargement-annulable-0-39')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -447,9 +448,22 @@ jobs:
           COMMIT="$(sed -n 's/^commit=//p' version-info.txt)"
           test -n "$VERSION_NAME"
           test "$COMMIT" = "$GITHUB_SHA"
-          TAG="v$VERSION_NAME"
+          TAG="android-v$VERSION_NAME"
 
           cd ..
+          gh release download 'android-v0.39' --pattern 'Photos-TV-0.39.apk' --output "$RUNNER_TEMP/previous-release.apk"
+          APKSIGNER="$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          signer_digest() {
+            "$APKSIGNER" verify --print-certs "$1" | sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' | sort
+          }
+          OLD_SIGNER="$(signer_digest "$RUNNER_TEMP/previous-release.apk")"
+          NEW_SIGNER="$(signer_digest release-bundle/Photo-TV-v*.apk)"
+          test -n "$OLD_SIGNER"
+          if [ "$OLD_SIGNER" != "$NEW_SIGNER" ]; then
+            echo "::error::La signature diffère de celle de l’APK déjà publié."
+            exit 1
+          fi
           if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
