@@ -61,7 +61,7 @@ class TvRemoteNavigationTest {
         val end = SystemClock.uptimeMillis() + timeoutMs
         var state = currentState(s)
         while (SystemClock.uptimeMillis() < end) {
-            if (expected.all { state.contains(it) }) return
+            if (expected.all { it in state.split(' ') }) return
             SystemClock.sleep(50)
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             state = currentState(s)
@@ -111,7 +111,7 @@ class TvRemoteNavigationTest {
     fun bottomNavigationAndPhotoRowsAreRemoteReachable() {
         val s = launch(0)
 
-        press(s, { device.pressDPadDown() }, "page=0", "navFocus=true")
+        press(s, { device.pressEnter() }, "page=0", "navFocus=true")
         press(s, { device.pressDPadRight() }, "page=1", "navFocus=true")
         press(s, { device.pressDPadRight() }, "page=2", "navFocus=true")
         press(s, { device.pressDPadRight() }, "page=3", "navFocus=true")
@@ -201,10 +201,13 @@ class TvRemoteNavigationTest {
 
         press(s, { device.pressDPadRight() }, "settingsColumn=1")
         awaitState(s, "settingsControl=10")
-        repeat(8) { device.pressDPadDown() }
-        awaitState(s, "settingsControl=7")
-        repeat(8) { device.pressDPadUp() }
-        awaitState(s, "settingsControl=10")
+        val slideshowControls = listOf(10, 0, 1, 2, 3, 4, 5, 11, 6, 7)
+        slideshowControls.drop(1).forEach { control ->
+            press(s, { device.pressDPadDown() }, "settingsControl=$control")
+        }
+        slideshowControls.asReversed().drop(1).forEach { control ->
+            press(s, { device.pressDPadUp() }, "settingsControl=$control")
+        }
         press(s, { device.pressDPadLeft() }, "settingsColumn=0")
 
         repeat(7) { device.pressDPadDown() }
@@ -230,6 +233,7 @@ class TvRemoteNavigationTest {
         awaitState(s, "settingsControl=8")
         press(s, { device.pressEnter() }, "rulesOpen=false", "settingsControl=0")
 
+        press(s, { device.pressBack() }, "settingsColumn=0")
         press(s, { device.pressBack() }, "page=0")
     }
 }
