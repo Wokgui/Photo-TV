@@ -1358,7 +1358,7 @@ class PhotoTvView(
         scheduleBackgroundAnalysis()
 
         val count = activePhotos().size
-        if (!automationMode && resumeWasSlideshow && count > 0) {
+        if (resumeWasSlideshow && count > 0) {
             handler.postDelayed({
                 if (!slideshow) {
                     startSlideshow()

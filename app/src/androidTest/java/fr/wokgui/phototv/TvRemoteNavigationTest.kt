@@ -124,19 +124,16 @@ class TvRemoteNavigationTest {
         press(photos, { device.pressDPadLeft() }, "sourceFocus=1")
         press(photos, { device.pressDPadLeft() }, "sourceFocus=0")
 
+        press(photos, { device.pressDPadDown() }, "photosRow=3")
         press(photos, { device.pressDPadDown() }, "photosRow=1")
         repeat(5) { device.pressDPadRight() }
         awaitState(photos, "albumFocus=5")
         repeat(5) { device.pressDPadLeft() }
         awaitState(photos, "albumFocus=0")
-
-        press(photos, { device.pressDPadDown() }, "photosRow=2")
         repeat(5) { device.pressDPadRight() }
-        awaitState(photos, "photoFocus=5")
-        repeat(5) { device.pressDPadLeft() }
-        awaitState(photos, "photoFocus=0")
+        awaitState(photos, "albumFocus=5")
 
-        press(photos, { device.pressDPadDown() }, "photosRow=3", "navFocus=true")
+        press(photos, { device.pressDPadDown() }, "photosRow=2", "navFocus=true")
         press(photos, { device.pressDPadLeft() }, "page=0", "navFocus=true")
     }
 
@@ -156,6 +153,10 @@ class TvRemoteNavigationTest {
             assertTrue(description.contains("Dossier local"))
         }
 
+        press(s, { device.pressDPadDown() }, "photosRow=3")
+        s.onActivity { activity ->
+            assertTrue(activity.accessibilityDescriptionForTest().contains("Densité des albums"))
+        }
         press(s, { device.pressDPadDown() }, "photosRow=1")
         s.onActivity { activity ->
             val description = activity.accessibilityDescriptionForTest()
@@ -199,10 +200,11 @@ class TvRemoteNavigationTest {
         awaitState(s, "settingsCategory=0")
 
         press(s, { device.pressDPadRight() }, "settingsColumn=1")
-        repeat(7) { device.pressDPadDown() }
+        awaitState(s, "settingsControl=10")
+        repeat(8) { device.pressDPadDown() }
         awaitState(s, "settingsControl=7")
-        repeat(7) { device.pressDPadUp() }
-        awaitState(s, "settingsControl=0")
+        repeat(8) { device.pressDPadUp() }
+        awaitState(s, "settingsControl=10")
         press(s, { device.pressDPadLeft() }, "settingsColumn=0")
 
         repeat(7) { device.pressDPadDown() }
@@ -221,10 +223,10 @@ class TvRemoteNavigationTest {
         awaitState(s, "settingsControl=12")
         press(s, { device.pressEnter() }, "diagnostics=true")
 
-        press(s, { device.pressDPadUp() }, "settingsControl=11")
+        press(s, { device.pressDPadDown() }, "settingsControl=11")
         press(s, { device.pressEnter() }, "rulesOpen=true", "settingsControl=0")
 
-        repeat(8) { device.pressDPadDown() }
+        repeat(9) { device.pressDPadDown() }
         awaitState(s, "settingsControl=8")
         press(s, { device.pressEnter() }, "rulesOpen=false", "settingsControl=0")
 
