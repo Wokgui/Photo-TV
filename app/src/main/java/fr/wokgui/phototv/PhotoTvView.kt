@@ -360,6 +360,7 @@ class PhotoTvView(
 
     private val prefs = context.getSharedPreferences("photo_tv_ui", Context.MODE_PRIVATE)
     private var loadingText: String? = null
+    private val dismissLoading = Runnable { showLoading("") }
 
     init {
         isFocusable = true
@@ -1061,7 +1062,15 @@ class PhotoTvView(
     }
 
     fun showLoading(message: String) {
+        removeCallbacks(dismissLoading)
         loadingText = message.takeIf { it.isNotBlank() }
+        if (loadingText != null) postDelayed(dismissLoading, 5_000L)
+        invalidate()
+    }
+
+    fun updateLoading(message: String) {
+        if (loadingText == null || loadingText == message) return
+        loadingText = message
         invalidate()
     }
 
@@ -1300,11 +1309,11 @@ class PhotoTvView(
 
         albumFocus = 0
         photoFocus = 0
-        loadingText = null
         if (!automationMode) preload(library.filterNot { DriveRemoteLibrary.isRemote(it.uri) }.take(48).map { it.uri })
         val count = activePhotos().size
         if (count > 0) currentPhoto = currentPhoto.coerceIn(0, count - 1)
         else currentPhoto = 0
+        preloadAroundCurrent()
 
         val labels = library.map { it.sourceLabel.ifBlank { "Source" } }.distinct()
         sourceName = when (labels.size) {
@@ -2286,7 +2295,8 @@ class PhotoTvView(
         round(c, 430f, 305f, 850f, 415f, 18f, Color.rgb(12, 24, 37))
         strokeRound(c, 430f, 305f, 850f, 415f, 18f, Color.rgb(48, 88, 126), 1.5f)
         text(c, "Photo TV", 640f, 340f, 23f, Color.WHITE, 1, 1)
-        text(c, msg, 640f, 380f, 14f, Color.rgb(190, 203, 220), 0, 1)
+        text(c, msg, 640f, 375f, 14f, Color.rgb(190, 203, 220), 0, 1)
+        text(c, "Retour pour continuer pendant le chargement", 640f, 398f, 13f, Color.WHITE, 0, 1)
     }
 
     private fun drawPreview(c: Canvas) {
@@ -4469,6 +4479,11 @@ class PhotoTvView(
         if (page == 1 && photosRow == 1 && !slideshow &&
             (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) &&
             (event?.repeatCount ?: 0) > 0) return true
+
+        if (keyCode == KeyEvent.KEYCODE_BACK && loadingText != null) {
+            showLoading("")
+            return true
+        }
 
         if (remoteQrVisible) {
             return when (keyCode) {

@@ -79,6 +79,19 @@ class MainActivity : AppCompatActivity() {
             }
             driveHandler.postDelayed(this, 60_000L)
         }
+    private var loadingGeneration = 0
+
+    private fun beginLibraryLoad(message: String): Int {
+        ui.showLoading(message)
+        return ++loadingGeneration
+    }
+
+    private fun endLibraryLoad(generation: Int) {
+        if (generation == loadingGeneration) ui.showLoading("")
+    }
+
+    private fun showLibraryLoadFailure(error: Throwable) {
+        Toast.makeText(this, "Chargement impossible : " + (error.message ?: "source indisponible"), Toast.LENGTH_LONG).show()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -629,27 +642,30 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "Adresse réseau manquante", Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
-                ui.showLoading("Connexion au réseau…")
+                val generation = beginLibraryLoad("Connexion au réseau…")
+                val username = user.text?.toString().orEmpty()
+                val secret = password.text?.toString().orEmpty()
                 Thread {
                     val result = runCatching {
                         NetworkLibrary.load(
                             kind = kind,
                             baseUrl = address,
-                            username = user.text?.toString().orEmpty(),
-                            password = password.text?.toString().orEmpty()
+                            username = username,
+                            password = secret
                         )
                     }
                     runOnUiThread {
+                        if (isDestroyed || isFinishing) return@runOnUiThread
+                        endLibraryLoad(generation)
                         result.onSuccess { items ->
                             if (items.isEmpty()) {
-                                ui.showLoading("")
                                 Toast.makeText(this, "Aucune photo compatible trouvée", Toast.LENGTH_LONG).show()
                             } else {
                                 NetworkSourceStore.upsert(
                                     context = this,
                                     kind = kind,
                                     baseUrl = address,
-                                    username = user.text?.toString().orEmpty()
+                                    username = username
                                 )
                                 currentNetworkSourceName = items.firstOrNull()?.sourceLabel
                                     ?.takeIf { it.isNotBlank() }
@@ -663,12 +679,7 @@ class MainActivity : AppCompatActivity() {
                                 Toast.makeText(this, "${items.size} médias réseau chargés", Toast.LENGTH_SHORT).show()
                             }
                         }.onFailure { error ->
-                            ui.showLoading("")
-                            Toast.makeText(
-                                this,
-                                "Connexion impossible : " + (error.message ?: "erreur réseau"),
-                                Toast.LENGTH_LONG
-                            ).show()
+                            showLibraryLoadFailure(error)
                         }
                     }
                 }.start()
@@ -1092,10 +1103,16 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
     private fun importPicked(uris: List<Uri>, silent: Boolean, merge: Boolean = false) {
-        if (!silent) ui.showLoading("Analyse des médias sélectionnés…")
+        val generation = if (silent) null else beginLibraryLoad("Analyse des médias sélectionnés…")
         Thread {
-            val items = PickedLibrary.load(this, uris)
+            val result = runCatching { PickedLibrary.load(this, uris) }
             runOnUiThread {
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                generation?.let(::endLibraryLoad)
+                val items = result.getOrElse { error ->
+                    if (!silent) showLibraryLoadFailure(error)
+                    return@runOnUiThread
+                }
                 if (merge) {
                     ui.upsertSourceLibrary(items, exactAlbums = false, fallbackSourceName = "Sélection de photos")
                 } else {
@@ -1114,30 +1131,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun importTree(uri: Uri, silent: Boolean, exactMode: Boolean, merge: Boolean = false) {
-        if (!silent) {
-            ui.showLoading(
-                if (exactMode) "Analyse de Google Photos / Takeout…"
-                else "Analyse du dossier local…"
-            )
-        }
+        val generation = if (silent) null else beginLibraryLoad(
+            if (exactMode) "Analyse de Google Photos / Takeout…" else "Analyse du dossier local…"
+        )
         Thread {
-            val loaded = TakeoutLibrary.load(
-                this,
-                uri,
-                exactMode = exactMode,
-                onProgress = if (silent) null else { folders, media ->
-                    ui.post {
-                        ui.showLoading(
-                            if (exactMode) {
-                                "Analyse Takeout… $folders dossiers • $media médias"
-                            } else {
-                                "Analyse du dossier… $folders dossiers • $media médias"
+            var lastProgressAt = 0L
+            val result = runCatching {
+                TakeoutLibrary.load(this, uri, exactMode) { folders, media ->
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (generation != null && now - lastProgressAt >= 250L) {
+                        lastProgressAt = now
+                        ui.post {
+                            if (!isDestroyed && generation == loadingGeneration) {
+                                val source = if (exactMode) "Takeout" else "Dossier local"
+                                ui.updateLoading("$source · $folders dossiers · $media médias")
                             }
-                        )
+                        }
                     }
                 }
-            )
+            }
             runOnUiThread {
+                if (isDestroyed || isFinishing) return@runOnUiThread
+                generation?.let(::endLibraryLoad)
+                val loaded = result.getOrElse { error ->
+                    if (!silent) showLibraryLoadFailure(error)
+                    return@runOnUiThread
+                }
                 val source = sourceLabelForTree(uri, exactMode)
                 if (merge) {
                     ui.upsertSourceLibrary(
